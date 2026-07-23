@@ -2,7 +2,7 @@ services:
   # 1. CORE BACKEND (Spring Boot Java)
   core-api:
     build:
-      context: ./Backend_Java
+      context: ./core-backend
       dockerfile: Dockerfile
     container_name: finance-core-api
     ports:
@@ -32,7 +32,7 @@ services:
   # 2. DATA MINING SERVICE (FastAPI & Donut)
   data-mining-api:
     build: 
-      context: ./FastApi_Ai_Mining
+      context: ./ai-service
       dockerfile: Dockerfile
     container_name: finance-data-mining
     ports:
