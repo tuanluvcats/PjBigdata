@@ -1,0 +1,11 @@
+target/
+
+# IDEA 
+.idea/
+*.iml
+.settings/
+.classpath
+.project
+
+# Git
+.git/
