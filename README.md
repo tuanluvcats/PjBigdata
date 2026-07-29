@@ -1,11 +1,5 @@
 #  LedgerMind - Intelligent Personal Finance Management
 
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Java Version](https://img.shields.io/badge/Java-21-blue)
-![Flutter Version](https://img.shields.io/badge/Flutter-3.x-cyan)
-![Docker](https://img.shields.io/badge/Docker-Enabled-blue)
-![Architecture](https://img.shields.io/badge/Architecture-Monorepo-orange)
-
 ##  1. Project Pitch
 **LedgerMind** is a comprehensive, automated personal finance management system designed to eliminate the friction of manual expense tracking. By seamlessly integrating a robust Java backend, an intuitive Flutter mobile application, and Python-driven Data Mining capabilities, LedgerMind empowers users to digitize their financial data, gain actionable insights, and master their cash flow with AI-assisted automation.
 
@@ -13,14 +7,14 @@
 
 This project adopts a **Monorepo** architecture, housing multiple independent services engineered for high performance and scalability.
 
-###  Core Backend (Java)
+###  Core Backend
 - **Framework:** Spring Boot 3.x (Spring Web, Spring Security, Spring Data JPA)
 - **Language:** Java 21 (JDK 21)
 - **Authentication:** OAuth2 (Google & Facebook Meta Login Integration)
 - **Database:** Relational Database with Hibernate ORM
 - **Optimization:** JVM memory tuning (`-XX:MaxRAMPercentage=75.0`), custom Spring profiles (`prod`).
 
-###  AI & Data Mining Service (Python)
+###  AI & Data Mining Service 
 - **Purpose:** Automated receipt processing and financial data categorization.
 - **Ecosystem:** Python (Integrated Data Mining models).
 
