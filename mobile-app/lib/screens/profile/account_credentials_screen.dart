@@ -3,7 +3,7 @@ import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/services/sqflite_helper.dart';
-import 'package:finance_ai_app/services/app_repository.dart';
+import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/widgets/common/custom_text_field.dart';
 import 'package:finance_ai_app/widgets/common/primary_button.dart';
 

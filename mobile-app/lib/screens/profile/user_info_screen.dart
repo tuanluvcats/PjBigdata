@@ -4,7 +4,7 @@ import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/screens/profile/set_user_info.dart';
 import 'package:finance_ai_app/services/session_service.dart';
-import 'package:finance_ai_app/services/app_repository.dart';
+import 'package:finance_ai_app/repositories/app_repository.dart';
 
 class UserInfoScreen extends StatefulWidget {
   const UserInfoScreen({super.key});

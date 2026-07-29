@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/wallet_model.dart';
 import 'package:finance_ai_app/services/session_service.dart';
-import 'package:finance_ai_app/services/app_repository.dart';
+import 'package:finance_ai_app/repositories/app_repository.dart';
 
 class TransferPage extends StatefulWidget {
   const TransferPage({super.key});

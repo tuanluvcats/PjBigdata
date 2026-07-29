@@ -1,5 +1,5 @@
 name: finance_ai_app
-description: "DonutPay - MoMo-inspired finance app with AI receipt scanning"
+description: "LedgerMind - Smart personal finance app with AI" 
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -45,9 +45,15 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1 
 
 flutter:
   uses-material-design: true
   assets:
     - assets/payment/
     - assets/images/
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/logo.png"

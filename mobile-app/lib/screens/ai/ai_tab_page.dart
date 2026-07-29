@@ -8,7 +8,7 @@ import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/services/session_service.dart';
-import 'package:finance_ai_app/services/app_repository.dart';
+import 'package:finance_ai_app/repositories/app_repository.dart';
 
 class AITabPage extends StatefulWidget {
   const AITabPage({super.key});

@@ -5,11 +5,12 @@ class AppConfig {
 
   static const String _apiBase = String.fromEnvironment(
     "API_BASE",
-    defaultValue: "http://localhost:8080",
+    defaultValue: "https://ledgermind.dev",
   );
+  
   static const String _mlBase = String.fromEnvironment(
     "ML_BASE",
-    defaultValue: "http://localhost:8000",
+    defaultValue: "https://ledgermind.dev/ai",
   );
 
   static String get apiBaseUrl => _apiBase;
@@ -17,7 +18,7 @@ class AppConfig {
   static const String apiVersion = "/api";
 
   static const String googleServerClientId =
-      "450918412846-k6u2bcm1a5ap8kctiq0ebrosmg4getn1.apps.googleusercontent.com";
+      "357487248201-up4rikcc0d65r2mbdihs81192obh2jvd.apps.googleusercontent.com";
 
   static bool get isDemo => mode == AppMode.demo;
   static bool get isFull => mode == AppMode.full;

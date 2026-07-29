@@ -8,7 +8,7 @@ import 'package:finance_ai_app/models/wallet_model.dart';
 import 'package:finance_ai_app/models/budget_model.dart';
 import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/services/sqflite_helper.dart';
-import 'package:finance_ai_app/services/app_repository.dart';
+import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/screens/transfer/transfer_page.dart';
 import 'package:finance_ai_app/screens/profile/savings_page.dart';
 import 'package:finance_ai_app/screens/linked/linked_services_page.dart';

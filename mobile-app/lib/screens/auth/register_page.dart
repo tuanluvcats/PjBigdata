@@ -5,7 +5,7 @@ import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/screens/profile/set_user_info.dart';
-import 'package:finance_ai_app/services/local_auth_repository.dart';
+import 'package:finance_ai_app/repositories/local_auth_repository.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/services/social_auth_service.dart';
 import 'package:finance_ai_app/services/session_service.dart';
@@ -138,16 +138,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _handleSocial(
       Future<Map<String, dynamic>> Function() signIn) async {
     if (!AppConfig.isFull) {
-      _comingSoon();
       return;
     }
     try {
       final res = await signIn();
       final data = (res['data'] as Map?) ?? res;
       final token = (data['token'] ?? res['token'])?.toString() ?? '';
+      final refreshToken = (data['refreshToken'] ?? res['refreshToken'])?.toString() ?? '';
+      
       final user = data['user'] as Map?;
       final userId = (user?['id'] ?? data['userId'] ?? res['userId']) as int?;
-      if (token.isNotEmpty) await SessionService.setToken(token);
+      if (token.isNotEmpty && refreshToken.isNotEmpty) {
+        await SessionService.setTokens(token, refreshToken);
+      }
+      
       if (userId != null) {
         await SessionService.setCurrentUserId(userId);
       }

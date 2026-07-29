@@ -7,7 +7,7 @@ import 'package:finance_ai_app/widgets/common/primary_button.dart';
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/services/session_service.dart';
-import 'package:finance_ai_app/services/local_auth_repository.dart';
+import 'package:finance_ai_app/repositories/local_auth_repository.dart';
 import 'package:finance_ai_app/services/social_auth_service.dart';
 import 'package:finance_ai_app/widgets/dialogs/app_dialog.dart';
 
@@ -48,15 +48,21 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    try {
+   try {
       if (AppConfig.isFull) {
         final result = await RemoteApiHelper.instance.login(normalizedEmail, normalizedPassword);
         final data = (result['data'] as Map?) ?? result;
+        
         final token = (data['token'] ?? result['token'])?.toString() ?? '';
+        final refreshToken = (data['refreshToken'] ?? result['refreshToken'])?.toString() ?? '';
+        
         final user = data['user'] as Map?;
-        final userId =
-            (user?['id'] ?? data['userId'] ?? result['userId'] ?? result['id']) as int?;
-        if (token.isNotEmpty) await SessionService.setToken(token);
+        final userId = (user?['id'] ?? data['userId'] ?? result['userId'] ?? result['id']) as int?;
+        
+        if (token.isNotEmpty && refreshToken.isNotEmpty) {
+          await SessionService.setTokens(token, refreshToken);
+        }
+        
         if (userId != null) {
           await SessionService.setCurrentUserId(userId);
           if (!context.mounted) return;
@@ -186,19 +192,24 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> _handleSocial(
+Future<void> _handleSocial(
       Future<Map<String, dynamic>> Function() signIn) async {
     if (!AppConfig.isFull) {
-      _comingSoon();
       return;
     }
     try {
       final res = await signIn();
       final data = (res['data'] as Map?) ?? res;
       final token = (data['token'] ?? res['token'])?.toString() ?? '';
+      final refreshToken = (data['refreshToken'] ?? res['refreshToken'])?.toString() ?? '';
+      
       final user = data['user'] as Map?;
       final userId = (user?['id'] ?? data['userId'] ?? res['userId']) as int?;
-      if (token.isNotEmpty) await SessionService.setToken(token);
+      
+      if (token.isNotEmpty && refreshToken.isNotEmpty) {
+        await SessionService.setTokens(token, refreshToken);
+      }
+      
       if (userId != null) {
         await SessionService.setCurrentUserId(userId);
       }

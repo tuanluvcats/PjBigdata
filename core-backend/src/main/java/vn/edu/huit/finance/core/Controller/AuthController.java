@@ -73,7 +73,8 @@ public class AuthController {
             );
             loginAttemptService.recordSuccess(email, ipAddress);
 
-            String token = jwtUtil.generateToken(email);
+            String token = jwtUtil.generateToken(email); 
+            String refreshToken = jwtUtil.generateRefreshToken(email);
 
             User user = userRepository.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản với email này!"));
@@ -91,6 +92,7 @@ public class AuthController {
 
             java.util.Map<String, Object> data = new java.util.HashMap<>();
             data.put("token", token);
+            data.put("refreshToken", refreshToken);
             data.put("user", userData);
 
             java.util.Map<String, Object> response = new java.util.HashMap<>();
@@ -134,6 +136,7 @@ public class AuthController {
             userRepository.save(user);
             auditLogService.logAction(user.getEmail(), "LOGIN_SUCCESS", "Người dùng đăng nhập App qua: " + provider);
             String jwt = jwtUtil.generateToken(user.getEmail());
+            String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
 
             java.util.Map<String, Object> userData = new java.util.HashMap<>();
             userData.put("id", user.getId());
@@ -142,6 +145,7 @@ public class AuthController {
 
             java.util.Map<String, Object> data = new java.util.HashMap<>();
             data.put("token", jwt);
+            data.put("refreshToken", refreshToken);
             data.put("user", userData);
 
             java.util.Map<String, Object> response = new java.util.HashMap<>();
@@ -150,8 +154,8 @@ public class AuthController {
             response.put("data", data);
             return ResponseEntity.ok(response);
 
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(401).body(java.util.Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(java.util.Map.of("message", "Lỗi xác thực: " + e.getMessage()));
         }
     }
 
@@ -187,5 +191,27 @@ public class AuthController {
             return forwardedFor.split(",")[0].trim();
         }
         return request.getRemoteAddr();
+    }
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refreshToken(@RequestBody java.util.Map<String, String> request) {
+        String refreshToken = request.get("refreshToken");
+        
+        if (refreshToken != null && jwtUtil.validateToken(refreshToken)) {
+            String email = jwtUtil.extractUsername(refreshToken);
+            String newToken = jwtUtil.generateToken(email);
+            String newRefreshToken = jwtUtil.generateRefreshToken(email);
+            
+            java.util.Map<String, Object> data = new java.util.HashMap<>();
+            data.put("token", newToken);
+            data.put("refreshToken", newRefreshToken); 
+            
+            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            response.put("code", 200);
+            response.put("message", "Refresh token thành công");
+            response.put("data", data);
+            
+            return ResponseEntity.ok(response);
+        }
+        return ResponseEntity.status(401).body(java.util.Map.of("message", "Refresh token không hợp lệ hoặc đã hết hạn"));
     }
 }

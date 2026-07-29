@@ -7,8 +7,9 @@ import 'package:finance_ai_app/screens/auth/login_page.dart';
 import 'package:finance_ai_app/screens/main_scaffold.dart';
 import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
-
 import 'package:finance_ai_app/core/constants/transaction_categories.dart'; 
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +64,7 @@ class _DonutPayAppState extends State<DonutPayApp> {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: AppTheme.themeNotifier,
       builder: (_, themeMode, __) => MaterialApp(
+        navigatorKey: navigatorKey, 
         title: 'Donut Pay',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,

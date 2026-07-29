@@ -7,10 +7,23 @@ services:
     container_name: finance-core-api
     ports:
       - "8080:8080"
+    env_file:           
+      - .env
     environment:
       - DB_URL=${DB_URL}
       - DB_USERNAME=${DB_USERNAME}
       - DB_PASSWORD=${DB_PASSWORD}
+      - SPRING_MAIL_HOST=smtp.gmail.com
+      - SPRING_MAIL_PORT=587
+      - SPRING_MAIL_USERNAME=${MAIL_USERNAME}
+      - SPRING_MAIL_PASSWORD=${MAIL_PASSWORD}
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
+      - PAYMENT_SECRET=${PAYMENT_SECRET}
+      - PAYMENT_MOCK_GATEWAY_URL=${MOCK_GATEWAY_URL}
+      - PAYMENT_WEBHOOK_URL=${PAYMENT_WEBHOOK_URL}
+      - PAYMENT_VNPAY_SECRET=${VNPAY_SECRET}
+      - PAYMENT_ZALOPAY_SECRET=${ZALOPAY_SECRET}
       - SPRING_PROFILES_ACTIVE=prod
       - DATA_MINING_URL=http://data-mining-api:8000 
     restart: unless-stopped

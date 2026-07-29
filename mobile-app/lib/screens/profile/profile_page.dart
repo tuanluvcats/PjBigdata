@@ -13,7 +13,7 @@ import 'package:finance_ai_app/screens/transfer/transfer_page.dart';
 import 'package:finance_ai_app/screens/linked/linked_services_page.dart';
 import 'package:finance_ai_app/screens/auth/login_page.dart';
 import 'package:finance_ai_app/services/session_service.dart';
-import 'package:finance_ai_app/services/app_repository.dart';
+import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/widgets/dialogs/app_dialog.dart';
 
 class ProfilePage extends StatefulWidget {

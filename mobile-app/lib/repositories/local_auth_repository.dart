@@ -1,5 +1,5 @@
 import 'package:finance_ai_app/models/user_model.dart';
-import 'package:finance_ai_app/services/auth_repository.dart';
+import 'package:finance_ai_app/repositories/auth_repository.dart';
 import 'package:finance_ai_app/services/sqflite_helper.dart';
 
 class LocalAuthRepository implements AuthRepository {

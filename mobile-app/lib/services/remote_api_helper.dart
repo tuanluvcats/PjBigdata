@@ -6,6 +6,9 @@ import 'package:finance_ai_app/models/transaction_model.dart';
 import 'dart:convert'; 
 import 'package:http/http.dart' as http; 
 import 'package:flutter/foundation.dart'; 
+import 'package:flutter/material.dart'; 
+import 'package:finance_ai_app/main.dart'; 
+import 'package:finance_ai_app/screens/auth/login_page.dart'; 
 class RemoteApiHelper {
   static final RemoteApiHelper instance = RemoteApiHelper._();
   RemoteApiHelper._();
@@ -15,7 +18,7 @@ class RemoteApiHelper {
 
   bool _initialized = false;
 
-  void init() {
+void init() {
     if (_initialized) return;
     _initialized = true;
 
@@ -25,6 +28,7 @@ class RemoteApiHelper {
       receiveTimeout: const Duration(seconds: 30),
       headers: {'Content-Type': 'application/json'},
     ));
+    
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         final token = SessionService.currentToken;
@@ -32,6 +36,52 @@ class RemoteApiHelper {
           options.headers['Authorization'] = 'Bearer $token';
         }
         handler.next(options);
+      },
+      onError: (DioException e, handler) async {
+        if (e.response?.statusCode == 401) {
+          final refreshToken = SessionService.currentRefreshToken;
+          
+          if (refreshToken != null) {
+            try {
+              final refreshDio = Dio(); 
+              final res = await refreshDio.post(
+                '${AppConfig.apiBaseUrl}${AppConfig.apiVersion}/auth/refresh',
+                data: {'refreshToken': refreshToken},
+              );
+
+              final newToken = res.data['data']['token'];
+              await SessionService.setTokens(newToken, refreshToken);
+
+              final options = e.requestOptions;
+              options.headers['Authorization'] = 'Bearer $newToken';
+
+              final cloneReq = await refreshDio.request(
+                options.path,
+                options: Options(
+                  method: options.method,
+                  headers: options.headers,
+                ),
+                data: options.data,
+                queryParameters: options.queryParameters,
+              );
+              return handler.resolve(cloneReq);
+              
+          } catch (refreshError) {
+              await SessionService.clearSession();
+              navigatorKey.currentState?.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
+            }
+          } else {
+            await SessionService.clearSession();
+            navigatorKey.currentState?.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+              (route) => false,
+            );
+          }
+        }
+        handler.next(e);
       },
     ));
 
@@ -46,7 +96,6 @@ class RemoteApiHelper {
     final res = await _dio.post('/auth/login', data: {'email': email, 'password': password});
     return Map<String, dynamic>.from(res.data);
   }
-
   Future<Map<String, dynamic>> socialLogin({
     required String provider,
     required String token,
@@ -59,7 +108,16 @@ class RemoteApiHelper {
       if (email != null) 'email': email,
       if (name != null) 'name': name,
     });
-    return Map<String, dynamic>.from(res.data);
+ var responseData = res.data;
+    if (responseData is String) {
+      try {
+        responseData = jsonDecode(responseData);
+      } catch (e) {
+        throw Exception('Máy chủ đang gặp sự cố, vui lòng thử lại sau!');
+      }
+    }
+    
+    return Map<String, dynamic>.from(responseData);
   }
 
   Future<Map<String, dynamic>> register({

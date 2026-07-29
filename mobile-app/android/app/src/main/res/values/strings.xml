@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Donut Finance</string>
+    <string name="app_name">LedgerMind</string>
 
     <string name="facebook_app_id">YOUR_FB_APP_ID</string>
     <string name="fb_login_protocol_scheme">fbYOUR_FB_APP_ID</string>

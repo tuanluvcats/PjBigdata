@@ -1,4 +1,4 @@
-package com.example.finance_ai_app
+package dev.ledgermind.dev
 
 import io.flutter.embedding.android.FlutterActivity
 
