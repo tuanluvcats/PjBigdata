@@ -16,6 +16,7 @@ import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 @Component
@@ -36,6 +37,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return; 
         }
+        
         String authHeader = request.getHeader("Authorization");
         String token = null;
         String username = null;
@@ -45,7 +47,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             try {
                 username = jwtUtil.extractUsername(token);
             } catch (Exception e) {
-                System.out.println(" Báo động: Token không hợp lệ hoặc đã hết hạn!");
+                System.out.println("Báo động: Token không hợp lệ hoặc đã hết hạn!");
             }
         }
 
@@ -70,8 +72,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    user.setLastActionTime(LocalDateTime.now());
-                    userRepository.save(user);
+                    
+                    // 🔥 FIX CHÍ MẠNG: Chỉ lưu Database nếu lần tương tác cuối đã quá 5 phút
+                    LocalDateTime now = LocalDateTime.now();
+                    if (user.getLastActionTime() == null || Duration.between(user.getLastActionTime(), now).toMinutes() > 5) {
+                        user.setLastActionTime(now);
+                        userRepository.save(user);
+                    }
+                    
                 } catch (AuthenticationException e) {
                     response.sendError(HttpStatus.UNAUTHORIZED.value(), e.getMessage());
                     return;

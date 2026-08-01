@@ -2,7 +2,7 @@ package vn.edu.huit.finance.core.Entity;
 import org.hibernate.envers.Audited;
 import jakarta.persistence.*;
 import lombok.*;
-
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -40,7 +40,7 @@ public class User extends BaseEntity {
     private LocalDateTime lastLoginTime;
 
     private LocalDateTime lastActionTime;
-
+    @JsonIgnore
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @ToString.Exclude
     private List<Transaction> transactions;

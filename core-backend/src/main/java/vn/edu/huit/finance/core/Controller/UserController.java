@@ -6,14 +6,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import vn.edu.huit.finance.core.Dto.ApiResponse;
+import vn.edu.huit.finance.core.Dto.UserResponseDto;
 import vn.edu.huit.finance.core.Dto.UserUpdateDto;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.UserService;
-
-import java.util.HashMap;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/users")
@@ -24,9 +22,9 @@ public class UserController {
 
     @Autowired
     private UserService userService;
+    
     @Autowired
     private AuditLogService auditLogService;
-
 
     private User currentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -47,26 +45,31 @@ public class UserController {
         }
     }
 
-    @GetMapping("/me")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> me() {
-        User u = currentUser();
-        Map<String, Object> data = new HashMap<>();
-        data.put("id", u.getId());
-        data.put("email", u.getEmail());
-        data.put("username", u.getUsername());
-        data.put("phone", u.getPhone());
-        data.put("role", u.getRole());
-        data.put("walletBalance", u.getWalletBalance());
+    // Hàm tiện ích map Entity sang DTO
+    private UserResponseDto mapToDto(User u) {
+        return UserResponseDto.builder()
+                .id(u.getId())
+                .username(u.getUsername())
+                .email(u.getEmail())
+                .phone(u.getPhone())
+                .role(u.getRole())
+                .walletBalance(u.getWalletBalance())
+                .build();
+    }
 
-        ApiResponse<Map<String, Object>> response = ApiResponse.<Map<String, Object>>builder()
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<UserResponseDto>> me() {
+        User u = currentUser();
+        ApiResponse<UserResponseDto> response = ApiResponse.<UserResponseDto>builder()
                 .code(200)
                 .message("OK")
-                .data(data)
+                .data(mapToDto(u))
                 .build();
         return ResponseEntity.ok(response);
     }
+
     @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateProfile(
+    public ResponseEntity<ApiResponse<UserResponseDto>> updateProfile(
             @PathVariable Long id,
             @RequestBody UserUpdateDto dto) {
 
@@ -81,16 +84,10 @@ public class UserController {
             System.out.println("Lỗi ghi log: " + e.getMessage());
         }
 
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("id", updatedUser.getId());
-        data.put("username", updatedUser.getUsername());
-        data.put("phone", updatedUser.getPhone());
-
-        ApiResponse<Map<String, Object>> response = ApiResponse.<Map<String, Object>>builder()
+        ApiResponse<UserResponseDto> response = ApiResponse.<UserResponseDto>builder()
                 .code(200)
                 .message("Cập nhật thông tin cá nhân thành công!")
-                .data(data)
+                .data(mapToDto(updatedUser))
                 .build();
         return ResponseEntity.ok(response);
     }

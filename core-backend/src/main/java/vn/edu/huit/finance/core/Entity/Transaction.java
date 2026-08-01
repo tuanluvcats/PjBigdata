@@ -1,5 +1,5 @@
 package vn.edu.huit.finance.core.Entity;
-
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -48,14 +48,17 @@ public class Transaction extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnore
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
+    @JsonIgnore
     private Category category;
 
-    @OneToOne(cascade = CascadeType.ALL)
+    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY)    
     @JoinColumn(name = "receipt_id", referencedColumnName = "id")
+    @JsonIgnore
     private Receipt receipt;
     @Column(name = "raw_receipt_data", columnDefinition = "TEXT")
     private String rawReceiptData;
