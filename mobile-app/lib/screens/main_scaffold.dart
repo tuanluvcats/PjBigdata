@@ -22,8 +22,15 @@ class _MainScaffoldState extends State<MainScaffold> {
   final _ledgerKey = GlobalKey<LedgerPageState>();
   final _dashboardKey = GlobalKey<DashboardPageState>();
 
-  late final List<Widget> _pages = [
-    DashboardPage(key: _dashboardKey),
+late final List<Widget> _pages = [
+    DashboardPage(
+      key: _dashboardKey,
+      onNavigateToAI: () {
+        setState(() {
+          _currentIndex = 2;
+        });
+      },
+    ),
     LedgerPage(key: _ledgerKey),
     const AITabPage(),
     const ProfilePage(),
@@ -105,7 +112,7 @@ class _MainScaffoldState extends State<MainScaffold> {
             builder: (_) => ReviewFormPage(imagePath: images.first),
           ),
         );
-        if (saved == true) {
+        if (saved == true && mounted) {
           _ledgerKey.currentState?.reload();
           setState(() => _currentIndex = 1);
         }
@@ -122,7 +129,14 @@ class _MainScaffoldState extends State<MainScaffold> {
     ImageSource source,
   ) async {
     final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: source);
+    
+
+    final XFile? image = await picker.pickImage(
+      source: source,
+      imageQuality: 50,
+      maxWidth: 1280,
+      maxHeight: 1280,
+    );
 
     if (image != null && context.mounted) {
       Navigator.pop(context);
@@ -132,7 +146,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           builder: (_) => ReviewFormPage(imagePath: image.path),
         ),
       );
-      if (saved == true) {
+      if (saved == true && mounted) {
         _ledgerKey.currentState?.reload();
         setState(() => _currentIndex = 1);
       }
@@ -172,7 +186,6 @@ class _MainScaffoldState extends State<MainScaffold> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _pages),
-
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: Container(
         margin: const EdgeInsets.only(top: 30),
@@ -197,7 +210,6 @@ class _MainScaffoldState extends State<MainScaffold> {
           ),
         ),
       ),
-
       bottomNavigationBar: BottomAppBar(
         color: Colors.white,
         shape: const CircularNotchedRectangle(),
@@ -227,14 +239,18 @@ class _MainScaffoldState extends State<MainScaffold> {
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          setState(() {
-            _currentIndex = index;
-          });
-          if (index == 0) {
-            _dashboardKey.currentState?.reload();
-          } else if (index == 1) {
-            _ledgerKey.currentState?.reload();
+       onTap: () {
+          if (_currentIndex == index) {
+            if (index == 0) {
+              _dashboardKey.currentState?.reload();
+            } else if (index == 1) {
+              _ledgerKey.currentState?.reload();
+            }
+          } 
+          else {
+            setState(() {
+              _currentIndex = index;
+            });
           }
         },
         child: Column(

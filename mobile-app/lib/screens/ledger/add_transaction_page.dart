@@ -22,17 +22,15 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   bool _isExpense = true;
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
-  late String _selectedCategory;
+  String _selectedCategory = 'Khác'; 
   late DateTime _selectedDate;
 
   @override
   void initState() {
     super.initState();
-    if (TransactionCategories.expenseSelectable.isNotEmpty) {
-      _selectedCategory = TransactionCategories.expenseSelectable.first;
-    } else {
-      _selectedCategory = 'Khác'; 
-    }
+    
+
+    _initCategories();
 
     final initial = widget.initialDate;
     if (initial == null) {
@@ -40,13 +38,21 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     } else {
       final now = DateTime.now();
       _selectedDate = DateTime(
-        initial.year,
-        initial.month,
-        initial.day,
-        now.hour,
-        now.minute,
-        now.second,
+        initial.year, initial.month, initial.day,
+        now.hour, now.minute, now.second,
       );
+    }
+  }
+
+
+  Future<void> _initCategories() async {
+    if (TransactionCategories.expenseSelectable.isEmpty) {
+      await TransactionCategories.loadFromApi();
+    }
+    if (mounted && TransactionCategories.expenseSelectable.isNotEmpty) {
+      setState(() {
+        _selectedCategory = TransactionCategories.expenseSelectable.first;
+      });
     }
   }
 
@@ -56,7 +62,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     final yyyy = date.year.toString();
     return '$dd/$mm/$yyyy';
   }
-void _setIsExpense(bool isExpense) {
+
+  void _setIsExpense(bool isExpense) {
     if (_isExpense == isExpense) return;
     setState(() {
       _isExpense = isExpense;
@@ -68,7 +75,14 @@ void _setIsExpense(bool isExpense) {
   }
 
   Future<void> _pickCategory() async {
+
+    if (TransactionCategories.forType(isExpense: _isExpense).isEmpty) {
+      await TransactionCategories.loadFromApi();
+    }
+
+    if (!mounted) return;
     final categories = TransactionCategories.forType(isExpense: _isExpense);
+    
     final picked = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppTheme.navyLight,
@@ -103,16 +117,11 @@ void _setIsExpense(bool isExpense) {
                     category,
                     style: TextStyle(
                       color: selected ? AppTheme.textWhite : AppTheme.textGray,
-                      fontWeight: selected
-                          ? FontWeight.w700
-                          : FontWeight.normal,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
                     ),
                   ),
                   trailing: selected
-                      ? const Icon(
-                          Icons.check_rounded,
-                          color: AppTheme.mintAccent,
-                        )
+                      ? const Icon(Icons.check_rounded, color: AppTheme.mintAccent)
                       : null,
                   onTap: () => Navigator.pop(context, category),
                 );
@@ -123,8 +132,7 @@ void _setIsExpense(bool isExpense) {
       },
     );
 
-    if (!mounted) return;
-    if (picked == null) return;
+    if (!mounted || picked == null) return;
     setState(() {
       _selectedCategory = picked;
     });
@@ -132,9 +140,7 @@ void _setIsExpense(bool isExpense) {
 
   Future<void> _pickDate() async {
     final initialDate = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
+      _selectedDate.year, _selectedDate.month, _selectedDate.day,
     );
 
     final picked = await showDatePicker(
@@ -144,17 +150,12 @@ void _setIsExpense(bool isExpense) {
       lastDate: DateTime(2100),
     );
 
-    if (!mounted) return;
-    if (picked == null) return;
+    if (!mounted || picked == null) return;
 
     setState(() {
       _selectedDate = DateTime(
-        picked.year,
-        picked.month,
-        picked.day,
-        _selectedDate.hour,
-        _selectedDate.minute,
-        _selectedDate.second,
+        picked.year, picked.month, picked.day,
+        _selectedDate.hour, _selectedDate.minute, _selectedDate.second,
       );
     });
   }
@@ -171,24 +172,18 @@ void _setIsExpense(bool isExpense) {
     final userId = SessionService.currentUserId;
     if (userId == null) {
       if (!mounted) return;
-      await AppDialog.error(context,
-          title: 'Phiên đăng nhập hết hạn',
-          message: 'Vui lòng đăng nhập lại.');
+      await AppDialog.error(context, title: 'Phiên đăng nhập hết hạn', message: 'Vui lòng đăng nhập lại.');
       return;
     }
 
     final amount = _parseAmount(_amountController.text.trim());
     if (amount == null) {
       if (!mounted) return;
-      await AppDialog.error(context,
-          title: 'Số tiền không hợp lệ',
-          message: 'Vui lòng nhập số tiền hợp lệ.');
+      await AppDialog.error(context, title: 'Số tiền không hợp lệ', message: 'Vui lòng nhập số tiền hợp lệ.');
       return;
     }
 
-    final title = _noteController.text.trim().isEmpty
-        ? _selectedCategory
-        : _noteController.text.trim();
+    final title = _noteController.text.trim().isEmpty ? _selectedCategory : _noteController.text.trim();
 
     final transaction = TransactionModel.draft(
       title: title,
@@ -214,15 +209,12 @@ void _setIsExpense(bool isExpense) {
       }
 
       if (!mounted) return;
-      await AppDialog.success(context,
-          title: 'Thành công',
-          message: 'Đã thêm giao dịch mới.');
+      await AppDialog.success(context, title: 'Thành công', message: 'Đã thêm giao dịch mới.');
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      await AppDialog.error(context,
-          title: 'Lưu thất bại', message: '$e');
+      await AppDialog.error(context, title: 'Lưu thất bại', message: '$e');
     }
   }
 
@@ -237,28 +229,17 @@ void _setIsExpense(bool isExpense) {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Thêm giao dịch',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.pop(context),
-        ),
+        title: const Text('Thêm giao dịch', style: TextStyle(fontWeight: FontWeight.bold)),
+        leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             _buildTypeToggle(),
             const SizedBox(height: 32),
-
-            const Text(
-              'Số tiền',
-              style: TextStyle(color: AppTheme.textGray, fontSize: 14),
-            ),
+            const Text('Số tiền', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
             TextField(
               controller: _amountController,
               keyboardType: TextInputType.number,
@@ -269,34 +250,21 @@ void _setIsExpense(bool isExpense) {
               ),
               decoration: InputDecoration(
                 hintText: '0',
-                hintStyle: TextStyle(
-                  color: AppTheme.textGray.withValues(alpha: 0.3),
-                  fontSize: 40,
-                ),
+                hintStyle: TextStyle(color: AppTheme.textGray.withValues(alpha: 0.3), fontSize: 40),
                 suffixText: 'đ',
-                suffixStyle: const TextStyle(
-                  color: AppTheme.textWhite,
-                  fontSize: 24,
-                ),
+                suffixStyle: const TextStyle(color: AppTheme.textWhite, fontSize: 24),
                 border: InputBorder.none,
               ),
             ),
             Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
             const SizedBox(height: 24),
-
-            const Text(
-              'Danh mục',
-              style: TextStyle(color: AppTheme.textGray, fontSize: 14),
-            ),
+            const Text('Danh mục', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
             const SizedBox(height: 8),
             InkWell(
               onTap: _pickCategory,
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppTheme.navyLight,
-                  borderRadius: BorderRadius.circular(16),
-                ),
+                decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(16)),
                 child: Row(
                   children: [
                     Container(
@@ -305,73 +273,37 @@ void _setIsExpense(bool isExpense) {
                         color: AppTheme.mintAccent.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(
-                        TransactionCategories.iconFor(_selectedCategory),
-                        color: AppTheme.mintAccent,
-                      ),
+                      child: Icon(TransactionCategories.iconFor(_selectedCategory), color: AppTheme.mintAccent),
                     ),
                     const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        _selectedCategory,
-                        style: const TextStyle(
-                          color: AppTheme.textWhite,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: AppTheme.textGray,
-                    ),
+                    Expanded(child: Text(_selectedCategory, style: const TextStyle(color: AppTheme.textWhite, fontSize: 16))),
+                    const Icon(Icons.chevron_right_rounded, color: AppTheme.textGray),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 24),
-
             Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Ngày giao dịch',
-                        style: TextStyle(
-                          color: AppTheme.textGray,
-                          fontSize: 14,
-                        ),
-                      ),
+                      const Text('Ngày giao dịch', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
                       const SizedBox(height: 8),
                       InkWell(
                         onTap: _pickDate,
                         borderRadius: BorderRadius.circular(16),
                         child: Container(
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: AppTheme.navyLight,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                          decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(16)),
                           child: Row(
                             children: [
-                              const Icon(
-                                Icons.calendar_today_rounded,
-                                color: AppTheme.textGray,
-                                size: 20,
-                              ),
+                              const Icon(Icons.calendar_today_rounded, color: AppTheme.textGray, size: 20),
                               const SizedBox(width: 12),
-                              Text(
-                                _formatDate(_selectedDate),
-                                style: const TextStyle(
-                                  color: AppTheme.textWhite,
-                                ),
-                              ),
+                              Text(_formatDate(_selectedDate), style: const TextStyle(color: AppTheme.textWhite)),
                               const Spacer(),
-                              const Icon(
-                                Icons.chevron_right_rounded,
-                                color: AppTheme.textGray,
-                              ),
+                              const Icon(Icons.chevron_right_rounded, color: AppTheme.textGray),
                             ],
                           ),
                         ),
@@ -382,11 +314,7 @@ void _setIsExpense(bool isExpense) {
               ],
             ),
             const SizedBox(height: 24),
-
-            const Text(
-              'Ghi chú (Tùy chọn)',
-              style: TextStyle(color: AppTheme.textGray, fontSize: 14),
-            ),
+            const Text('Ghi chú (Tùy chọn)', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
             const SizedBox(height: 8),
             TextField(
               controller: _noteController,
@@ -396,14 +324,10 @@ void _setIsExpense(bool isExpense) {
                 hintStyle: const TextStyle(color: AppTheme.textGray),
                 filled: true,
                 fillColor: AppTheme.navyLight,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
               ),
             ),
             const SizedBox(height: 40),
-
             SizedBox(
               width: double.infinity,
               height: 56,
@@ -411,15 +335,10 @@ void _setIsExpense(bool isExpense) {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.mintAccent,
                   foregroundColor: AppTheme.navyDark,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
                 onPressed: _saveTransaction,
-                child: const Text(
-                  'Lưu giao dịch',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+                child: const Text('Lưu giao dịch', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -431,10 +350,7 @@ void _setIsExpense(bool isExpense) {
   Widget _buildTypeToggle() {
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppTheme.navyLight,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(12)),
       child: Row(
         children: [
           Expanded(
@@ -442,18 +358,9 @@ void _setIsExpense(bool isExpense) {
               onTap: () => _setIsExpense(true),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: _isExpense ? AppTheme.dangerColor : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                decoration: BoxDecoration(color: _isExpense ? AppTheme.dangerColor : Colors.transparent, borderRadius: BorderRadius.circular(8)),
                 child: Center(
-                  child: Text(
-                    'Tiền chi',
-                    style: TextStyle(
-                      color: _isExpense ? Colors.white : AppTheme.textGray,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: Text('Tiền chi', style: TextStyle(color: _isExpense ? Colors.white : AppTheme.textGray, fontWeight: FontWeight.bold)),
                 ),
               ),
             ),
@@ -463,20 +370,9 @@ void _setIsExpense(bool isExpense) {
               onTap: () => _setIsExpense(false),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: !_isExpense ? AppTheme.mintAccent : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                decoration: BoxDecoration(color: !_isExpense ? AppTheme.mintAccent : Colors.transparent, borderRadius: BorderRadius.circular(8)),
                 child: Center(
-                  child: Text(
-                    'Tiền thu',
-                    style: TextStyle(
-                      color: !_isExpense
-                          ? AppTheme.navyDark
-                          : AppTheme.textGray,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: Text('Tiền thu', style: TextStyle(color: !_isExpense ? AppTheme.navyDark : AppTheme.textGray, fontWeight: FontWeight.bold)),
                 ),
               ),
             ),

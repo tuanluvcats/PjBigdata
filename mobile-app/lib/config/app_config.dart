@@ -5,12 +5,12 @@ class AppConfig {
 
   static const String _apiBase = String.fromEnvironment(
     "API_BASE",
-    defaultValue: "https://ledgermind.dev",
+    defaultValue: "https://api.ledgermind.dev", 
   );
   
   static const String _mlBase = String.fromEnvironment(
     "ML_BASE",
-    defaultValue: "https://ledgermind.dev/ai",
+    defaultValue: "https://api.ledgermind.dev/ai", 
   );
 
   static String get apiBaseUrl => _apiBase;

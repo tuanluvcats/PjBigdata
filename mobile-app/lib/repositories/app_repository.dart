@@ -36,6 +36,26 @@ class AppRepository {
     return [WalletModel(name: 'Ví chính', balance: bal, userId: userId)];
   }
 
+  Future<Map<String, dynamic>> getHomeSummary(int userId) async {
+    final results = await Future.wait([
+      getCurrentUser(userId),
+      getTransactions(userId),
+    ]);
+
+    final user = results[0] as UserModel?;
+    final txs = results[1] as List<TransactionModel>;
+
+    final bal = txs.fold<double>(
+        0.0, (s, t) => s + (t.isExpense ? -t.amount : t.amount));
+    final wallets = [WalletModel(name: 'Ví chính', balance: bal, userId: userId)];
+
+    return {
+      'user': user,
+      'transactions': txs,
+      'wallets': wallets,
+    };
+  }
+
   Future<void> addTransaction({
     required int userId,
     required double amount,

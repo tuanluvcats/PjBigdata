@@ -1,9 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
-
+import 'package:finance_ai_app/services/remote_api_helper.dart';
+import 'package:finance_ai_app/services/session_service.dart'; 
 class SavingsPage extends StatefulWidget {
   const SavingsPage({super.key});
 
@@ -17,31 +16,37 @@ class _SavingsPageState extends State<SavingsPage> {
 
   final _fmtCur = NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
 
-  @override
+@override
   void initState() {
     super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('savings_goals') ?? '[]';
-    if (!mounted) return;
-    setState(() {
-      _goals = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-      _isLoading = false;
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _load();
     });
   }
 
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('savings_goals', jsonEncode(_goals));
+
+  Future<void> _load() async {
+    try {
+      final goals = await RemoteApiHelper.instance.fetchSavings();
+      if (!mounted) return;
+      setState(() {
+        _goals = goals;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _goals = [];
+        _isLoading = false;
+      });
+    }
   }
 
   double get _totalSaved =>
       _goals.fold(0.0, (s, g) => s + ((g['current'] as num?) ?? 0).toDouble());
   double get _totalTarget =>
       _goals.fold(0.0, (s, g) => s + ((g['target'] as num?) ?? 0).toDouble());
+
 
   void _addGoal() {
     final titleCtrl = TextEditingController();
@@ -83,23 +88,20 @@ class _SavingsPageState extends State<SavingsPage> {
             ),
             onPressed: () async {
               final title = titleCtrl.text.trim();
-              final target = double.tryParse(
-                      targetCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ??
-                  0;
+              final target = double.tryParse(targetCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
               if (title.isEmpty || target <= 0) return;
-              final current = double.tryParse(
-                      currentCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ??
-                  0;
-              setState(() {
-                _goals.add({
-                  'id': DateTime.now().millisecondsSinceEpoch.toString(),
-                  'title': title,
-                  'target': target,
-                  'current': current,
-                  'deadline': deadlineCtrl.text.trim(),
-                });
+              
+              final current = double.tryParse(currentCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+              
+
+              await RemoteApiHelper.instance.addSaving({
+                'title': title,
+                'target': target,
+                'current': current,
+                'deadline': deadlineCtrl.text.trim(),
               });
-              await _save();
+              SessionService.needRefreshAI.value = true;
+              _load();
               if (!ctx.mounted) return;
               Navigator.pop(ctx);
             },
@@ -110,10 +112,10 @@ class _SavingsPageState extends State<SavingsPage> {
     );
   }
 
+
   void _editAmount(int index) {
     final goal = _goals[index];
-    final ctrl = TextEditingController(
-        text: ((goal['current'] as num?) ?? 0).toInt().toString());
+    final ctrl = TextEditingController(text: ((goal['current'] as num?) ?? 0).toInt().toString());
 
     showDialog(
       context: context,
@@ -121,8 +123,7 @@ class _SavingsPageState extends State<SavingsPage> {
         backgroundColor: AppTheme.navyLight,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Cập nhật: ${goal['title']}',
-            style: const TextStyle(
-                color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+            style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
         content: _field(ctrl, 'Số tiền đã tiết kiệm (₫)', TextInputType.number),
         actions: [
           TextButton(
@@ -136,11 +137,10 @@ class _SavingsPageState extends State<SavingsPage> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () async {
-              final val = double.tryParse(
-                      ctrl.text.replaceAll(RegExp(r'[^\d]'), '')) ??
-                  0;
-              setState(() => _goals[index] = {...goal, 'current': val});
-              await _save();
+              final val = double.tryParse(ctrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+              await RemoteApiHelper.instance.updateSavingCurrent(goal['id'].toString(), val);
+              SessionService.needRefreshAI.value = true;
+              _load();
               if (!ctx.mounted) return;
               Navigator.pop(ctx);
             },
@@ -151,26 +151,20 @@ class _SavingsPageState extends State<SavingsPage> {
     );
   }
 
-  void _deleteGoal(int index) {
+
+Future<void> _deleteGoal(int index) async {
     final removed = _goals[index];
-    setState(() => _goals.removeAt(index));
-    _save();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đã xóa: ${removed['title']}'),
-        action: SnackBarAction(
-          label: 'Hoàn tác',
-          onPressed: () {
-            setState(() => _goals.insert(index, removed));
-            _save();
-          },
-        ),
-      ),
-    );
+    setState(() => _goals.removeAt(index)); 
+    await RemoteApiHelper.instance.deleteSaving(removed['id'].toString());
+    SessionService.needRefreshAI.value = true;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã xóa mục tiêu: ${removed['title']}')),
+      );
+    }
   }
 
-  TextField _field(
-      TextEditingController ctrl, String label, TextInputType type) {
+  TextField _field(TextEditingController ctrl, String label, TextInputType type) {
     return TextField(
       controller: ctrl,
       keyboardType: type,
@@ -197,10 +191,7 @@ class _SavingsPageState extends State<SavingsPage> {
         elevation: 0,
         iconTheme: const IconThemeData(color: AppTheme.textWhite),
         title: const Text('Sổ tiết kiệm',
-            style: TextStyle(
-                color: AppTheme.textWhite,
-                fontWeight: FontWeight.bold,
-                fontSize: 20)),
+            style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 20)),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_rounded, color: AppTheme.mintAccent),
@@ -208,9 +199,8 @@ class _SavingsPageState extends State<SavingsPage> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.mintAccent))
+     body: _isLoading
+          ? _buildSkeletonLoading()
           : RefreshIndicator(
               onRefresh: _load,
               color: AppTheme.mintAccent,
@@ -230,8 +220,7 @@ class _SavingsPageState extends State<SavingsPage> {
   }
 
   Widget _buildSummaryCard() {
-    final progress =
-        _totalTarget > 0 ? (_totalSaved / _totalTarget).clamp(0.0, 1.0) : 0.0;
+    final progress = _totalTarget > 0 ? (_totalSaved / _totalTarget).clamp(0.0, 1.0) : 0.0;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -261,31 +250,23 @@ class _SavingsPageState extends State<SavingsPage> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Tổng đã tiết kiệm',
-                        style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    const Text('Tổng đã tiết kiệm', style: TextStyle(color: Colors.white70, fontSize: 13)),
                     const SizedBox(height: 4),
                     Text(
                       _fmtCur.format(_totalSaved),
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800),
+                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800),
                     ),
                   ],
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '${_goals.length} mục tiêu',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -297,10 +278,7 @@ class _SavingsPageState extends State<SavingsPage> {
                 Text('Mục tiêu: ${_fmtCur.format(_totalTarget)}',
                     style: const TextStyle(color: Colors.white70, fontSize: 12)),
                 Text('${(progress * 100).toStringAsFixed(0)}%',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12)),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
               ],
             ),
             const SizedBox(height: 8),
@@ -322,24 +300,9 @@ class _SavingsPageState extends State<SavingsPage> {
   Widget _buildActionGrid() {
     final actions = [
       (Icons.add_circle_rounded, 'Thêm\nmục tiêu', _addGoal),
-      (
-        Icons.savings_rounded,
-        'Nạp tiền',
-        () => ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt')))
-      ),
-      (
-        Icons.account_balance_wallet_rounded,
-        'Rút tiền',
-        () => ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt')))
-      ),
-      (
-        Icons.share_rounded,
-        'Chia sẻ',
-        () => ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt')))
-      ),
+      (Icons.savings_rounded, 'Nạp tiền', () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt')))),
+      (Icons.account_balance_wallet_rounded, 'Rút tiền', () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt')))),
+      (Icons.share_rounded, 'Chia sẻ', () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt')))),
     ];
 
     return Padding(
@@ -364,10 +327,7 @@ class _SavingsPageState extends State<SavingsPage> {
                       Text(
                         a.$2,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: AppTheme.textGray,
-                            fontSize: 11,
-                            height: 1.3),
+                        style: const TextStyle(color: AppTheme.textGray, fontSize: 11, height: 1.3),
                       ),
                     ],
                   ),
@@ -387,14 +347,10 @@ class _SavingsPageState extends State<SavingsPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Danh sách mục tiêu',
-                  style: TextStyle(
-                      color: AppTheme.textWhite,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold)),
+                  style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
               if (_goals.isNotEmpty)
                 Text('${_goals.length} mục tiêu',
-                    style:
-                        const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+                    style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
             ],
           ),
           const SizedBox(height: 12),
@@ -410,11 +366,9 @@ class _SavingsPageState extends State<SavingsPage> {
                 children: [
                   Icon(Icons.savings_outlined, color: AppTheme.textGray, size: 48),
                   SizedBox(height: 12),
-                  Text('Chưa có mục tiêu nào.',
-                      style: TextStyle(color: AppTheme.textGray)),
+                  Text('Chưa có mục tiêu nào.', style: TextStyle(color: AppTheme.textGray)),
                   SizedBox(height: 4),
-                  Text('Nhấn "+" để tạo mục tiêu tiết kiệm.',
-                      style: TextStyle(color: AppTheme.textGray, fontSize: 12)),
+                  Text('Nhấn "+" để tạo mục tiêu tiết kiệm.', style: TextStyle(color: AppTheme.textGray, fontSize: 12)),
                 ],
               ),
             )
@@ -423,11 +377,9 @@ class _SavingsPageState extends State<SavingsPage> {
               final g = _goals[i];
               final target = ((g['target'] as num?) ?? 0).toDouble();
               final current = ((g['current'] as num?) ?? 0).toDouble();
-              final progress =
-                  target > 0 ? (current / target).clamp(0.0, 1.0) : 0.0;
+              final progress = target > 0 ? (current / target).clamp(0.0, 1.0) : 0.0;
               final isComplete = progress >= 1.0;
-              final pctText =
-                  '${(progress * 100).toStringAsFixed(0)}%';
+              final pctText = '${(progress * 100).toStringAsFixed(0)}%';
               final goalId = g['id']?.toString() ?? '$i';
 
               return Padding(
@@ -461,14 +413,11 @@ class _SavingsPageState extends State<SavingsPage> {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.mintAccent
-                                      .withValues(alpha: 0.12),
+                                  color: AppTheme.mintAccent.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: Icon(
-                                  isComplete
-                                      ? Icons.check_circle_rounded
-                                      : Icons.savings_rounded,
+                                  isComplete ? Icons.check_circle_rounded : Icons.savings_rounded,
                                   color: AppTheme.mintAccent,
                                   size: 22,
                                 ),
@@ -480,17 +429,12 @@ class _SavingsPageState extends State<SavingsPage> {
                                   children: [
                                     Text(
                                       g['title']?.toString() ?? '',
-                                      style: const TextStyle(
-                                          color: AppTheme.textWhite,
-                                          fontWeight: FontWeight.bold),
+                                      style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold),
                                     ),
-                                    if ((g['deadline']?.toString() ?? '')
-                                        .isNotEmpty)
+                                    if ((g['deadline']?.toString() ?? '').isNotEmpty)
                                       Text(
                                         'Hạn: ${g['deadline']}',
-                                        style: const TextStyle(
-                                            color: AppTheme.textGray,
-                                            fontSize: 11),
+                                        style: const TextStyle(color: AppTheme.textGray, fontSize: 11),
                                       ),
                                   ],
                                 ),
@@ -500,19 +444,11 @@ class _SavingsPageState extends State<SavingsPage> {
                                 children: [
                                   Text(
                                     _fmtCur.format(current),
-                                    style: const TextStyle(
-                                        color: AppTheme.mintAccent,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14),
+                                    style: const TextStyle(color: AppTheme.mintAccent, fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
                                   Text(
                                     pctText,
-                                    style: TextStyle(
-                                        color: isComplete
-                                            ? AppTheme.mintAccent
-                                            : AppTheme.textGray,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600),
+                                    style: TextStyle(color: isComplete ? AppTheme.mintAccent : AppTheme.textGray, fontSize: 11, fontWeight: FontWeight.w600),
                                   ),
                                 ],
                               ),
@@ -526,33 +462,20 @@ class _SavingsPageState extends State<SavingsPage> {
                                   borderRadius: BorderRadius.circular(4),
                                   child: LinearProgressIndicator(
                                     value: progress,
-                                    backgroundColor: AppTheme.textGray
-                                        .withValues(alpha: 0.2),
-                                    valueColor: AlwaysStoppedAnimation(
-                                      isComplete
-                                          ? AppTheme.mintAccent
-                                          : Colors.orangeAccent,
-                                    ),
+                                    backgroundColor: AppTheme.textGray.withValues(alpha: 0.2),
+                                    valueColor: AlwaysStoppedAnimation(isComplete ? AppTheme.mintAccent : Colors.orangeAccent),
                                     minHeight: 6,
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.mintAccent
-                                      .withValues(alpha: 0.12),
+                                  color: AppTheme.mintAccent.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Text(
-                                  'Cập nhật',
-                                  style: TextStyle(
-                                      color: AppTheme.mintAccent,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600),
-                                ),
+                                child: const Text('Cập nhật', style: TextStyle(color: AppTheme.mintAccent, fontSize: 11, fontWeight: FontWeight.w600)),
                               ),
                             ],
                           ),
@@ -560,12 +483,8 @@ class _SavingsPageState extends State<SavingsPage> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(_fmtCur.format(current),
-                                  style: const TextStyle(
-                                      color: AppTheme.textGray, fontSize: 11)),
-                              Text('/ ${_fmtCur.format(target)}',
-                                  style: const TextStyle(
-                                      color: AppTheme.textGray, fontSize: 11)),
+                              Text(_fmtCur.format(current), style: const TextStyle(color: AppTheme.textGray, fontSize: 11)),
+                              Text('/ ${_fmtCur.format(target)}', style: const TextStyle(color: AppTheme.textGray, fontSize: 11)),
                             ],
                           ),
                         ],
@@ -576,6 +495,63 @@ class _SavingsPageState extends State<SavingsPage> {
               );
             }),
         ],
+      ),
+    );
+  }
+  Widget _buildSkeletonLoading() {
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 32, top: 16),
+      physics: const NeverScrollableScrollPhysics(), 
+      children: [
+        _buildSkeletonBox(height: 180, margin: const EdgeInsets.symmetric(horizontal: 20)),
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(4, (_) => Column(
+              children: [
+                _buildSkeletonBox(width: 64, height: 64, shape: BoxShape.rectangle, borderRadius: 18),
+                const SizedBox(height: 8),
+                _buildSkeletonBox(width: 40, height: 10, borderRadius: 4),
+              ],
+            )),
+          ),
+        ),
+        const SizedBox(height: 32),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: _buildSkeletonBox(width: 150, height: 20, borderRadius: 6),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            children: List.generate(3, (_) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildSkeletonBox(height: 90, borderRadius: 20),
+            )),
+          ),
+        )
+      ],
+    );
+  }
+
+  Widget _buildSkeletonBox({
+    double? width, 
+    double? height, 
+    EdgeInsetsGeometry? margin, 
+    BoxShape shape = BoxShape.rectangle,
+    double borderRadius = 20,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      margin: margin,
+      decoration: BoxDecoration(
+        color: AppTheme.navyLight.withValues(alpha: 0.6), 
+        shape: shape,
+        borderRadius: shape == BoxShape.rectangle ? BorderRadius.circular(borderRadius) : null,
       ),
     );
   }

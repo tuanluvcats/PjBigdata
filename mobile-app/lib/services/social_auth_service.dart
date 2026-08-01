@@ -14,19 +14,20 @@ class SocialAuthService {
   );
 
   Future<Map<String, dynamic>> signInWithGoogle() async {
-
-    try {
-      await _google.signOut();
-    } catch (_) {}
-    final account = await _google.signIn();
+    GoogleSignInAccount? account = _google.currentUser;
+    account ??= await _google.signInSilently();
+    account ??= await _google.signIn();  
     if (account == null) {
       throw Exception('Đã hủy đăng nhập Google');
     }
     final auth = await account.authentication;
     final idToken = auth.idToken;
+    
     if (idToken == null || idToken.isEmpty) {
       throw Exception('Không lấy được Google idToken (kiểm tra serverClientId)');
     }
+
+
     return RemoteApiHelper.instance.socialLogin(
       provider: 'google',
       token: idToken,
@@ -39,12 +40,15 @@ class SocialAuthService {
     final result = await FacebookAuth.instance.login(
       permissions: const ['email', 'public_profile'],
     );
+    
     if (result.status != LoginStatus.success || result.accessToken == null) {
       throw Exception(
           'Đăng nhập Facebook thất bại: ${result.message ?? result.status}');
     }
+    
     final token = result.accessToken!.tokenString;
     final data = await FacebookAuth.instance.getUserData(fields: 'email,name');
+    
     return RemoteApiHelper.instance.socialLogin(
       provider: 'facebook',
       token: token,
@@ -54,7 +58,9 @@ class SocialAuthService {
   }
 
   Future<void> signOut() async {
-    await _google.signOut();
-    await FacebookAuth.instance.logOut();
+    try {
+      await _google.disconnect(); 
+      await FacebookAuth.instance.logOut();
+    } catch (_) {}
   }
 }

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:flutter/material.dart';
 
 import 'package:finance_ai_app/core/theme/app_theme.dart';
@@ -25,7 +26,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _rememberMe = false;
   bool _obscure = true;
-
+  bool _isLoginLoading = false;
+  bool _isSocialLoading = false;
   @override
   void dispose() {
     _emailController.dispose();
@@ -47,8 +49,9 @@ class _LoginScreenState extends State<LoginScreen> {
           message: 'Vui lòng nhập email và mật khẩu.');
       return;
     }
-
-   try {
+    if (_isLoginLoading || _isSocialLoading) return;
+    setState(() => _isLoginLoading = true);
+    try {
       if (AppConfig.isFull) {
         final result = await RemoteApiHelper.instance.login(normalizedEmail, normalizedPassword);
         final data = (result['data'] as Map?) ?? result;
@@ -65,6 +68,9 @@ class _LoginScreenState extends State<LoginScreen> {
         
         if (userId != null) {
           await SessionService.setCurrentUserId(userId);
+  
+          AppRepository.instance.getHomeSummary(userId).catchError((_) => {});
+
           if (!context.mounted) return;
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const MainScaffold()),
@@ -88,8 +94,11 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      SessionService.setCurrentUserId(user!.id!);
+      await SessionService.setCurrentUserId(user!.id!);     
 
+      AppRepository.instance.getHomeSummary(user.id!).catchError((_) => {});
+
+      if (!context.mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MainScaffold()),
         (route) => false,
@@ -106,6 +115,9 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!context.mounted) return;
       await AppDialog.error(context, title: 'Đăng nhập thất bại', message: '$e');
+    }
+    finally {
+      if (mounted) setState(() => _isLoginLoading = false);
     }
   }
 
@@ -197,6 +209,8 @@ Future<void> _handleSocial(
     if (!AppConfig.isFull) {
       return;
     }
+    if (_isSocialLoading || _isLoginLoading) return;
+    setState(() => _isSocialLoading = true);
     try {
       final res = await signIn();
       final data = (res['data'] as Map?) ?? res;
@@ -212,7 +226,11 @@ Future<void> _handleSocial(
       
       if (userId != null) {
         await SessionService.setCurrentUserId(userId);
+        
+
+        AppRepository.instance.getHomeSummary(userId).catchError((_) => {});
       }
+      
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MainScaffold()),
@@ -220,7 +238,11 @@ Future<void> _handleSocial(
       );
     } catch (e) {
       if (!mounted) return;
-      await AppDialog.error(context, title: 'Đăng nhập thất bại', message: '$e');
+      if (!e.toString().contains('Đã hủy') && !e.toString().contains('canceled')) {
+         await AppDialog.error(context, title: 'Đăng nhập thất bại', message: '$e');
+      }
+    } finally {
+      if (mounted) setState(() => _isSocialLoading = false);
     }
   }
 
@@ -238,7 +260,7 @@ Future<void> _handleSocial(
               Center(child: _logoPlaceholder()),
               const SizedBox(height: 16),
               const Text(
-                'Donut Finance App',
+                'Ledgermind App',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: AppTheme.primary,
@@ -308,8 +330,8 @@ Future<void> _handleSocial(
               ),
               const SizedBox(height: 24),
               PrimaryButton(
-                text: 'Đăng nhập',
-                onPressed: () {
+                text: _isLoginLoading ? 'Đang xử lý...' : 'Đăng nhập',
+                onPressed: (_isLoginLoading || _isSocialLoading) ? null : () {
                   _handleLogin(
                     context,
                     email: _emailController.text,
@@ -440,9 +462,9 @@ Future<void> _handleSocial(
     );
   }
 
-  Widget _socialBtn(IconData icon, Color color, VoidCallback onTap) {
+Widget _socialBtn(IconData icon, Color color, VoidCallback onTap) {
     return InkWell(
-      onTap: onTap,
+      onTap: _isSocialLoading ? null : onTap,
       borderRadius: BorderRadius.circular(30),
       child: Container(
         width: 56,
@@ -452,7 +474,7 @@ Future<void> _handleSocial(
           shape: BoxShape.circle,
           boxShadow: AppTheme.softShadow,
         ),
-        child: Icon(icon, color: color, size: 30),
+        child: Icon(icon, color: color, size: 30), 
       ),
     );
   }

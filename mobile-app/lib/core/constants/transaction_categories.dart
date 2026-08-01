@@ -8,7 +8,7 @@ class TransactionCategories {
   static List<String> incomeSelectable = [];
   static List<String> selectable = [];
 
-  // Hàm nạp danh mục từ Java Backend
+
   static Future<void> loadFromApi() async {
     try {
       final cats = await RemoteApiHelper.instance.fetchCategories();
@@ -52,7 +52,7 @@ class TransactionCategories {
     
     if (c == 'tất cả') return Icons.filter_list_rounded;
     
-    // Nhóm Thiết Yếu & Tùy Ý (Chi Tiêu)
+
     if (c.contains('ăn') || c.contains('uống') || c.contains('phê') || c.contains('vặt')) return Icons.fastfood_rounded;
     if (c.contains('đi') || c.contains('xe') || c.contains('xăng')) return Icons.local_gas_station_rounded;
     if (c.contains('hóa đơn') || c.contains('điện') || c.contains('nước') || c.contains('internet')) return Icons.receipt_rounded;
@@ -64,7 +64,7 @@ class TransactionCategories {
     if (c.contains('du lịch')) return Icons.flight_takeoff_rounded;
     if (c.contains('làm đẹp')) return Icons.face_retouching_natural_rounded;
     
-    // Nhóm Thu Nhập
+
     if (c.contains('lương') || c.contains('thu nhập')) return Icons.monetization_on_rounded;
     if (c.contains('thưởng')) return Icons.card_giftcard_rounded;
 
