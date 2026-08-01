@@ -1,76 +1,75 @@
-#  LedgerMind - Intelligent Personal Finance Management
+# LedgerMind - Personal Finance Management System
 
-##  1. Project Pitch
-**LedgerMind** is a comprehensive, automated personal finance management system designed to eliminate the friction of manual expense tracking. By seamlessly integrating a robust Java backend, an intuitive Flutter mobile application, and Python-driven Data Mining capabilities, LedgerMind empowers users to digitize their financial data, gain actionable insights, and master their cash flow with AI-assisted automation.
+## 1. Project Overview
+**LedgerMind** is a personal finance management system built to automate 
+expense tracking. It combines a Java Spring Boot backend, a Flutter 
+mobile app, and a Python-based OCR service to extract and categorize 
+expense data from receipts automatically.
 
-##  2. Tech Stack & Infrastructure
+## 2. Tech Stack & Infrastructure
+This project uses a **Monorepo** structure, with the backend, mobile 
+app, and AI service developed and deployed as separate components.
 
-This project adopts a **Monorepo** architecture, housing multiple independent services engineered for high performance and scalability.
-
-###  Core Backend
+### Core Backend
 - **Framework:** Spring Boot 3.x (Spring Web, Spring Security, Spring Data JPA)
 - **Language:** Java 21 (JDK 21)
-- **Authentication:** OAuth2 (Google & Facebook Meta Login Integration)
-- **Database:** Relational Database with Hibernate ORM
-- **Optimization:** JVM memory tuning (`-XX:MaxRAMPercentage=75.0`), custom Spring profiles (`prod`).
+- **Authentication:** OAuth2 login via Google (Facebook OAuth in progress), JWT-based session handling
+- **Database:** PostgreSQL (hosted on Neon), accessed via Hibernate ORM
+- **Optimization:** JVM memory tuning (`-XX:MaxRAMPercentage=75.0`), dedicated `prod` Spring profile
 
-###  AI & Data Mining Service 
-- **Purpose:** Automated receipt processing and financial data categorization.
-- **Ecosystem:** Python (Integrated Data Mining models).
+### AI Service
+- **Purpose:** Automated Vietnamese receipt OCR and data extraction
+- **Model:** Fine-tuned Donut (Document Understanding Transformer) model, 
+  trained on 1,500 labeled receipts (1,300 from OCR2021 + 200 self-collected)
+- **Pipeline:** Python/FastAPI service exposing the model via API; 
+  extracted text is cleaned and normalized with regex-based post-processing 
+  before being sent to the backend
 
-###  Mobile App (Frontend)
-- **Framework:** Flutter (Dart).
-- **Features:** Cross-platform fluid UI, secure token storage, real-time API communication via HTTPS.
+### Mobile App (Frontend)
+- **Framework:** Flutter (Dart)
+- **Features:** Secure token storage, real-time API communication over HTTPS
+- **Distribution:** APK released via GitHub Releases
 
-###  DevOps & Deployment
-- **Containerization:** Docker & Docker Compose.
-- **Image Optimization:** Multi-stage builds (reducing core image footprint), utilizing `eclipse-temurin:21-jre-jammy` & `alpine`.
-- **Process Management:** `tini` as PID 1 for graceful shutdowns and zombie process reaping.
-- **Security & Ops:** Non-root user execution (`spring:spring`), Actuator Healthchecks, timezone synchronization (`Asia/Ho_Chi_Minh`).
-- **Infrastructure:** Azure VPS, Nginx Reverse Proxy (SSL/TLS configuration).
+### DevOps & Deployment
+- **Containerization:** Docker & Docker Compose, multi-stage builds using `eclipse-temurin:21-jre-jammy` and `alpine` base images
+- **Process Management:** `tini` as PID 1 for proper signal handling in containers
+- **Security & Ops:** Non-root user execution (`spring:spring`), Spring Boot Actuator healthcheck endpoint, timezone synchronization (`Asia/Ho_Chi_Minh`)
+- **Infrastructure:** Deployed on an Azure VPS behind an Nginx reverse proxy (SSL/TLS), served at `https://ledgermind.dev`
 
-##  3. Key Features
-- **Enterprise-Grade Security:** Secure third-party authentication flow using Google and Facebook OAuth2, fully validated at the Java Backend layer.
-- **AI-Powered Automation:** Leverages Data Mining to intelligently process and categorize expenses, drastically reducing manual data entry time.
-- **Production-Ready Operations:** Containerized with security best practices, automated health checks, and optimized resource allocation to prevent OOM errors.
-- **Unified Domain Routing:** Seamless traffic management via Nginx over HTTPS (`https://ledgermind.dev`).
+## 3. Key Features
+- **OAuth2 + JWT Authentication:** Google login integrated at the backend, with JWT used for session/API security
+- **Automated Receipt Processing:** Fine-tuned OCR model extracts and structures expense data from receipt images, reducing manual entry
+- **Containerized Deployment:** Backend, AI service, and database run as separate Dockerized services, deployed behind Nginx with HTTPS
+- **Resource-Aware Backend:** JVM memory limits and healthcheck endpoints configured to run reliably on a constrained VPS
 
-##  4. System Architecture
-
+## 4. System Architecture
 **Data Flow:**
-1. **Client Layer:** Flutter App requests authentication or submits financial data.
-2. **Proxy Layer:** Nginx intercepts the HTTPS request and routes it to the appropriate service.
-3. **Core Layer:** Java Backend processes business logic, validates OAuth2 tokens, and interacts with the database.
-4. **AI Layer:** Complex data mining tasks are securely delegated to the Python service for processing and returned to the core system.
+1. **Client Layer:** Flutter app sends authentication and financial data requests.
+2. **Proxy Layer:** Nginx receives HTTPS traffic and forwards it to the backend.
+3. **Core Layer:** Java Spring Boot backend handles business logic, validates OAuth2/JWT, and manages the PostgreSQL database.
+4. **AI Layer:** Receipt images are forwarded to the Python OCR service; results are post-processed and returned to the backend for storage.
 
-##  5. Getting Started
+## 5. Getting Started
 
 ### Prerequisites
-To run this project locally, ensure you have the following installed:
 - [Docker](https://www.docker.com/get-started) & Docker Compose
-- Java JDK 21 (For local core-backend development)
-- Flutter SDK (For local mobile-app development)
+- Java JDK 21 (for local backend development)
+- Flutter SDK (for local mobile development)
 
 ### Quick Start
-
 1. **Clone the repository:**
-   ```bash
+```bash
    git clone https://github.com/TriPhan15/donutpay-monorepo.git
    cd donutpay-monorepo
-
-2. **Configure Environment Variables:**
-
-     Create a .env file in the root directory.
-     Add your necessary configuration keys (Google Web Client ID, Facebook App ID, Database credentials).
-   
-4. **Deploy the Infrastructure:**
-
-      Spin up the entire architecture (Backend, AI Service, Database) using Docker Compose:
-    ```bash
-    docker-compose up -d --build
-
-5. **Verify Deployment:**
-
-      Check the health status of the backend:
-    ```bash
-    curl -f http://localhost:8080/actuator/health
+```
+2. **Configure environment variables:**
+   Create a `.env` file in the root directory with your Google OAuth 
+   client ID, database credentials, and other required config.
+3. **Deploy the stack:**
+```bash
+   docker-compose up -d --build
+```
+4. **Verify deployment:**
+```bash
+   curl -f http://localhost:8080/actuator/health
+```
