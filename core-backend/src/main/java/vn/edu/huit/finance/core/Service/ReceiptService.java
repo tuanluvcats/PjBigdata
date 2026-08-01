@@ -29,7 +29,7 @@ public class ReceiptService {
     private FileStorageService fileStorageService;
     @Autowired
     private ReceiptRepository receiptRepository;
-    private final String PYTHON_AI_URL = "http://localhost:8000/api/extract";
+    private final String PYTHON_AI_URL = "http://data-mining-api:8000/api/extract";
 
     @Transactional(rollbackFor = Exception.class)
     public ReceiptDto processReceipt(MultipartFile file) throws IOException {

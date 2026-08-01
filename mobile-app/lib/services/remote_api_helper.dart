@@ -23,7 +23,7 @@ void init() {
     _initialized = true;
 
     _dio = Dio(BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl + AppConfig.apiVersion,
+      baseUrl: AppConfig.apiBaseUrl,
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 30),
       headers: {'Content-Type': 'application/json'},

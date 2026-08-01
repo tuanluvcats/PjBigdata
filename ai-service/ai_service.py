@@ -4,38 +4,18 @@ from typing import List, Optional
 from datetime import datetime
 import uvicorn
 import torch
-from PIL import Image
+from PIL import Image, ImageOps
 from transformers import DonutProcessor, VisionEncoderDecoderModel, AutoTokenizer
 import re
 import io
 import os
-import json
+import traceback
 
 from wcm_spade import WCMSpade
 import budget_advisor
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BANK_JSON_PATH = os.path.join(BASE_DIR, "Version3", "transactions_bank_clean.json")
 app = FastAPI()
-
-GLOBAL_TRENDS = []
-
-def _init_global_trends():
-    global GLOBAL_TRENDS
-    try:
-        if os.path.exists(BANK_JSON_PATH):
-            print("Đang nạp và khai phá 4.604 giao dịch Ngân hàng...")
-            with open(BANK_JSON_PATH, 'r', encoding='utf-8') as f:
-                bank_txs = json.load(f)
-            dummy_res = budget_advisor.advise(bank_txs, target=0, monthly_income=1)
-            GLOBAL_TRENDS = dummy_res.get("trends", [])
-            print(f"Đã nạp thành công {len(GLOBAL_TRENDS)} Luật thói quen chung!")
-        else:
-            print("Không tìm thấy file transactions_bank_clean.json")
-    except Exception as e:
-        print(f"Lỗi nạp Bank Data: {e}")
-
-_init_global_trends()
 
 MODEL_PATH = os.path.join(BASE_DIR, "Version3", "donut_result")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -97,8 +77,19 @@ async def extract_receipt_info(image: UploadFile = File(...)):
     print(f"\nĐã nhận hóa đơn từ App: {image.filename}")
     try:
         contents = await image.read()
-        pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
+        if not contents or len(contents) == 0:
+            print("LỖI: File ảnh rỗng (0 bytes)!")
+            raise HTTPException(status_code=400, detail="File ảnh nhận được bị rỗng (0 bytes)")
+            
+        pil_img = Image.open(io.BytesIO(contents))
+        # Khắc phục lỗi xoay ảnh EXIF từ Camera Android & convert sang RGB chuẩn
+        pil_img = ImageOps.exif_transpose(pil_img).convert("RGB")
+        print(f"Đã mở ảnh thành công! Kích thước: {pil_img.size}")
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"Lỗi đọc/convert file ảnh chi tiết: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=400, detail=f"Lỗi đọc file ảnh: {str(e)}")
 
     pixel_values = processor(
@@ -203,22 +194,10 @@ def analyze_patterns(req: SpadeRequest):
             exp.append((d, t.category, max(t.amount, 0.0)))
     exp.sort(key=lambda x: x[0])
     
-    if len(exp) < 3 and GLOBAL_TRENDS:
-        print("User mới -> Trả về Luật Global")
-        patterns = []
-        for p in GLOBAL_TRENDS[:req.top_n]:
-            patterns.append({
-                "pattern": p["pattern"],
-                "count": p["count"],
-                "weight": p["wsupport"],
-                "wsupport": "Dữ liệu chung",
-            })
+    if len(exp) < 3:
         return {
-            "patterns": patterns,
-            "effectiveMinSup": "Auto",
-            "meanW": "Auto",
-            "nSequences": 4604, 
-            "message": "Dữ liệu cá nhân ít, đang hiển thị Luật từ CSDL Ngân hàng."
+            "patterns": [],
+            "message": "Chưa đủ dữ liệu chuỗi (cần ít nhất 3 giao dịch hợp lệ)"
         }
 
     sequences, item_prices = _build_user_sequences(exp)
@@ -258,11 +237,11 @@ def recommend_budget(req: RecommendRequest):
     ]
     if not txs:
         return {
-            "trends": GLOBAL_TRENDS[:5],
+            "trends": [],
             "tagStats": [],
             "goal": {"neededMonthly": 0, "monthlyIncome": req.monthly_income or 0, "monthlyExpense": 0, "surplus": 0, "gap": 0},
             "recommendations": [],
-            "summary": "Bạn chưa có giao dịch. Hãy nhập chi tiêu để AI tính toán nhé! (Bên dưới là các thói quen chung tham khảo)"
+            "summary": "Bạn chưa có giao dịch. Hãy nhập chi tiêu để AI tính toán nhé!"
         }
 
     result = budget_advisor.advise(
@@ -276,10 +255,6 @@ def recommend_budget(req: RecommendRequest):
         min_sup_factor=req.min_sup_factor,
         max_cut_ratio=req.max_cut_ratio,
     )
-    if len(txs) < 10 and GLOBAL_TRENDS:
-        result["trends"] = GLOBAL_TRENDS[:5] 
-        summary_old = result.get("summary", "")
-        result["summary"] = f"(AI dùng Luật Khai Phá Chung) {summary_old}"
         
     print(f"BudgetAdvisor: {len(result.get('recommendations', []))} đề xuất")
     return result

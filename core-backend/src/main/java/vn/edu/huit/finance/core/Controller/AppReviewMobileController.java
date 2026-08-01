@@ -1,8 +1,10 @@
 package vn.edu.huit.finance.core.Controller;
 
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vn.edu.huit.finance.core.Dto.ReviewRequestDto;
 import vn.edu.huit.finance.core.Entity.AppReview;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.AppReviewRepository;
@@ -21,20 +23,16 @@ public class AppReviewMobileController {
     private UserRepository userRepository;
 
     @PostMapping
-    public ResponseEntity<?> submitReview(@RequestBody Map<String, Object> req) {
+    public ResponseEntity<?> submitReview(@Valid @RequestBody ReviewRequestDto req) {
         try {
-            Long userId = Long.valueOf(req.get("userId").toString());
-            int rating = Integer.parseInt(req.get("rating").toString());
-            String comment = req.get("comment").toString();
-
-            User user = userRepository.findById(userId)
+            User user = userRepository.findById(req.getUserId())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
 
             AppReview review = new AppReview();
             review.setUser(user);
             review.setUserEmail(user.getEmail());
-            review.setRating(rating);
-            review.setComment(comment);
+            review.setRating(req.getRating());
+            review.setComment(req.getComment());
             review.setStatus("PENDING");
 
             appReviewRepository.save(review);
