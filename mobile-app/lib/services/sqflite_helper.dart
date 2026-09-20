@@ -317,6 +317,22 @@ CREATE TABLE IF NOT EXISTS $budgetsTable (
     return db.insert(budgetsTable, budget.toMap());
   }
 
+  Future<int> updateBudget(BudgetModel budget) async {
+    final db = await database;
+    return db.update(budgetsTable, budget.toMap(), where: 'id = ?', whereArgs: [budget.id]);
+  }
+
+  Future<List<BudgetModel>> getBudgetsByUserId(int userId) async {
+    final db = await database;
+    final rows = await db.query(
+      budgetsTable,
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'year DESC, month DESC, id DESC',
+    );
+    return rows.map(BudgetModel.fromMap).toList();
+  }
+
   Future<List<BudgetModel>> getBudgetsByUserIdAndMonth(
     int userId,
     int month,

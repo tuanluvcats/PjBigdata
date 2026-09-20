@@ -71,7 +71,7 @@
                         <td th:text="${user.fullName}">Người dùng hệ thống</td>
                         <td th:text="${user.email}">user@example.com</td>
                         <td>
-                                <span th:classappend="${user.role != null && user.role.toString() == 'ADMIN'} ? 'bg-danger' : 'bg-info'"
+                                <span th:classappend="${user.role != null && user.role == 'ROLE_ADMIN'} ? 'bg-danger' : 'bg-info'"
                                       class="badge" th:text="${user.role}">USER</span>
                         </td>
                         <td>
@@ -79,10 +79,10 @@
                             <span th:unless="${user.active}" class="badge bg-secondary">Bị khóa</span>
                         </td>
                         <td class="text-center">
-                            <div th:if="${user.role != null && user.role.toString() == 'ADMIN'}">
+                            <div th:if="${user.role != null && user.role == 'ROLE_ADMIN'}">
                                 <span class="text-muted small italic"><i class="bi bi-shield-lock"></i> Hệ thống Bảo vệ</span>
                             </div>
-                            <div th:unless="${user.role != null && user.role.toString() == 'ADMIN'}">
+                            <div th:unless="${user.role != null && user.role == 'ROLE_ADMIN'}">
                                 <button th:if="${user.active}" class="btn btn-sm btn-outline-danger me-1"
                                         th:attr="onclick=|toggleUserStatus('${user.id}', true)|">
                                     <i class="bi bi-lock-fill"></i> Khóa

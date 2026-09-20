@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -5,12 +6,14 @@ import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/models/wallet_model.dart';
-import 'package:finance_ai_app/models/budget_model.dart';
+import 'package:finance_ai_app/models/budget_progress.dart';
 import 'package:finance_ai_app/services/session_service.dart';
-import 'package:finance_ai_app/services/sqflite_helper.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
+import 'package:finance_ai_app/screens/budget/budget_screen.dart';
 import 'package:finance_ai_app/screens/profile/savings_page.dart';
 import 'package:finance_ai_app/screens/linked/linked_services_page.dart';
+import 'package:finance_ai_app/widgets/budget/budget_alert_presenter.dart';
+import 'package:finance_ai_app/widgets/budget/budget_section.dart';
 import 'package:finance_ai_app/widgets/dialogs/dashboard_bottom_sheets.dart';
 import 'package:finance_ai_app/screens/ai/ai_tab_page.dart';
 class DashboardPage extends StatefulWidget {
@@ -20,6 +23,9 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => DashboardPageState();
 }
 class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveClientMixin {
+  /// How many budgets the home screen lists; the rest is one line saying how many more there are.
+  static const int _maxBudgetCards = 3;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -30,7 +36,8 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
   UserModel? _user;
   List<TransactionModel> _transactions = [];
   List<WalletModel> _wallets = [];
-  List<BudgetModel> _budgets = [];
+  List<BudgetProgress> _budgetProgress = [];
+  bool _budgetsFailed = false;
 
 
   double _totalAssets = 0;
@@ -38,8 +45,6 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
   double _monthlyExpense = 0;
   double _prevMonthlyIncome = 0;
   double _prevMonthlyExpense = 0;
-  double _totalBudgetLimit = 0;
-  bool _isBudgetExceeded = false;
   List<TransactionModel> _recentTransactions = [];
 
   @override
@@ -60,17 +65,17 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
     final prevMonth = DateTime(now.year, now.month - 1);
 
     try {
+      // Started together: the budgets do not depend on the summary, so the wait is that of the slower request.
+      final budgetsRequest = AppRepository.instance.tryGetBudgets(userId);
       final summary = await AppRepository.instance.getHomeSummary(userId);
-      final budgets = await SqfliteHelper.instance.getBudgetsByUserIdAndMonth(
-        userId, now.month, now.year,
-      );
+      final budgets = await budgetsRequest;
 
       if (!mounted) return;
 
       final List<TransactionModel> txs = summary['transactions'];
       
 
-      double assets = 0, mInc = 0, mExp = 0, pInc = 0, pExp = 0, tBudget = 0;
+      double assets = 0, mInc = 0, mExp = 0, pInc = 0, pExp = 0;
       
       for (var tx in txs) {
         if (tx.isExpense) {
@@ -84,15 +89,17 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
         }
       }
 
-      for (var b in budgets) {
-        tBudget += b.limitAmount;
-      }
+      // The budgets whose week or month contains today, the most used first.
+      final budgetProgress = budgets == null
+          ? <BudgetProgress>[]
+          : (BudgetProgress.activeOn(now, budgets, txs)..sort((a, b) => b.percent.compareTo(a.percent)));
 
       setState(() {
         _user = summary['user'];
         _transactions = txs;
         _wallets = summary['wallets'];
-        _budgets = budgets;
+        _budgetProgress = budgetProgress;
+        _budgetsFailed = budgets == null;
 
 
         _totalAssets = assets;
@@ -100,13 +107,14 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
         _monthlyExpense = mExp;
         _prevMonthlyIncome = pInc;
         _prevMonthlyExpense = pExp;
-        _totalBudgetLimit = tBudget;
-        _isBudgetExceeded = budgets.isNotEmpty && mExp > tBudget;
         _recentTransactions = txs.take(5).toList();
 
         _isLoading = false;
       });
+      // Not awaited: a dialog waiting for the user must not keep the pull-to-refresh spinner turning.
+      unawaited(BudgetAlertPresenter.showNew(context, userId: userId, progresses: budgetProgress));
     } catch (e) {
+      debugPrint('Lỗi tải trang chủ: $e');
       if (!mounted) return;
       setState(() => _isLoading = false);
     }
@@ -136,7 +144,17 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
                       _buildHeader(),
-                      if (_isBudgetExceeded) _buildBudgetWarning(),
+                      if (_budgetProgress.isNotEmpty || _budgetsFailed)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                          child: BudgetSection(
+                            progresses: _budgetProgress,
+                            loadFailed: _budgetsFailed,
+                            maxItems: _maxBudgetCards,
+                            titleSize: 18,
+                            onManage: _openBudgetScreen,
+                          ),
+                        ),
                       const SizedBox(height: 24),
                       _buildUtilityGrid(),
                       const SizedBox(height: 24),
@@ -388,35 +406,10 @@ Widget _buildLoadingScreen() {
     );
   }
 
-  Widget _buildBudgetWarning() {
-    final over = _monthlyExpense - _totalBudgetLimit;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppTheme.dangerColor.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.dangerColor.withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: AppTheme.dangerColor, size: 24),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Ngân sách tháng này đã vượt!', style: TextStyle(color: AppTheme.dangerColor, fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 2),
-                  Text('Bạn đã chi vượt ${_formatCurrency(over)} so với ngân sách', style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _openBudgetScreen() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const BudgetScreen())).then((_) {
+      if (mounted) _load();
+    });
   }
 
 Widget _buildUtilityGrid() {

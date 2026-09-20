@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/services/session_service.dart';
+import 'package:finance_ai_app/models/budget_model.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'dart:convert'; 
 import 'package:http/http.dart' as http; 
@@ -19,7 +20,8 @@ class RemoteApiHelper {
 
   bool _initialized = false;
   final ValueNotifier<int> dataChangedNotifier = ValueNotifier(0);
-  void init() {
+  /// [httpClientAdapter] replaces the real network layer; only tests pass it, the app calls init() with no arguments.
+  void init({HttpClientAdapter? httpClientAdapter}) {
     if (_initialized) return;
     _initialized = true;
 
@@ -29,6 +31,7 @@ class RemoteApiHelper {
       receiveTimeout: const Duration(seconds: 30),
       headers: {'Content-Type': 'application/json'},
     ));
+    if (httpClientAdapter != null) _dio.httpClientAdapter = httpClientAdapter;
     
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
@@ -361,12 +364,26 @@ Future<List<Map<String, dynamic>>> fetchCategories() async {
     await _dio.post('/api/auth/forgot-password', queryParameters: {'email': email});
   }
 
+  /// Completes the reset started by [forgotPassword]. The OTP and the new password travel in the JSON body, never in
+  /// the query string, so they cannot end up in server or proxy access logs.
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    await _dio.post('/api/auth/reset-password', data: {
+      'email': email,
+      'otp': otp,
+      'newPassword': newPassword,
+    });
+  }
+
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
     await _dio.put('/api/auth/change-password', data: {
-      'currentPassword': currentPassword,
+      'oldPassword': currentPassword,
       'newPassword': newPassword,
     });
   }
@@ -382,31 +399,30 @@ Future<List<Map<String, dynamic>>> fetchCategories() async {
     await _dio.put('/api/notifications/read-all', data: {'userId': userId});
   }
 
-  Future<List<Map<String, dynamic>>> getBudgets({
-    required int month,
-    required int year,
-  }) async {
-    final userId = SessionService.currentUserId;
-    final res = await _dio.get('/api/budgets?userId=$userId&month=$month&year=$year');
-    return List<Map<String, dynamic>>.from(res.data['data'] ?? []);
+  /// All budgets of the logged-in user, newest first. The owner comes from the login token, so nothing identifying
+  /// the user is sent.
+  Future<List<BudgetModel>> getBudgets() async {
+    final res = await _dio.get('/api/budgets');
+    final items = (res.data['data'] as List?) ?? [];
+    return items
+        .map((item) => BudgetModel.fromJson(Map<String, dynamic>.from(item as Map)))
+        .toList();
   }
 
-  Future<void> createBudget({
-    required String categoryName,
-    required double limitAmount,
-    required int month,
-    required int year,
-  }) async {
-    final userId = SessionService.currentUserId;
-    await _dio.post('/api/budgets', data: {
-      'userId': userId,
-      'categoryName': categoryName,
-      'limitAmount': limitAmount,
-      'month': month,
-      'year': year,
-    });
+  Future<BudgetModel> createBudget(BudgetModel budget) async {
+    final res = await _dio.post('/api/budgets', data: budget.toJson());
+    return BudgetModel.fromJson(Map<String, dynamic>.from(res.data['data'] as Map));
   }
-  
+
+  Future<BudgetModel> updateBudget(BudgetModel budget) async {
+    final res = await _dio.put('/api/budgets/${budget.id}', data: budget.toJson());
+    return BudgetModel.fromJson(Map<String, dynamic>.from(res.data['data'] as Map));
+  }
+
+  Future<void> deleteBudget(int budgetId) async {
+    await _dio.delete('/api/budgets/$budgetId');
+  }
+
   Future<bool> submitAppReview(int rating, String comment) async {
     try {
       final userId = SessionService.currentUserId;

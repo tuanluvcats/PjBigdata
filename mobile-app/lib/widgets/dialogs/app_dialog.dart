@@ -33,6 +33,21 @@ class AppDialog {
         confirmText: buttonText,
       ).then((_) {});
 
+  static Future<void> warning(
+    BuildContext context, {
+    required String title,
+    String? message,
+    String buttonText = 'Đã hiểu',
+  }) =>
+      _show(
+        context,
+        icon: Icons.warning_amber_rounded,
+        accent: AppTheme.warningColor,
+        title: title,
+        message: message,
+        confirmText: buttonText,
+      ).then((_) {});
+
   static Future<void> info(
     BuildContext context, {
     required String title,

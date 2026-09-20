@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/core/utils/password_policy.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/services/sqflite_helper.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
@@ -168,9 +169,10 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
       );
       return;
     }
-    if (newPassword.length < 6) {
+    final policyError = PasswordPolicy.validate(newPassword);
+    if (policyError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mật khẩu mới phải có ít nhất 6 ký tự.')),
+        SnackBar(content: Text(policyError)),
       );
       return;
     }

@@ -19,6 +19,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.filter.OncePerRequestFilter;
 import vn.edu.huit.finance.core.Repository.UserRepository;
+import vn.edu.huit.finance.core.Security.AuthPaths;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 
@@ -102,6 +103,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(AuthPaths.CHANGE_PASSWORD_URL).authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/payment/webhook").permitAll()
                         .requestMatchers("/api/categories").permitAll()

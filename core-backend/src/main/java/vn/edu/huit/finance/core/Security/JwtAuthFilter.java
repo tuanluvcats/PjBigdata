@@ -33,7 +33,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String requestPath = request.getServletPath();
-        if (requestPath.startsWith("/api/auth/")) {
+        // Public auth endpoints skip JWT parsing; change-password needs it to identify the caller.
+        if (requestPath.startsWith("/api/auth/") && !AuthPaths.CHANGE_PASSWORD_URL.equals(requestPath)) {
             filterChain.doFilter(request, response);
             return; 
         }

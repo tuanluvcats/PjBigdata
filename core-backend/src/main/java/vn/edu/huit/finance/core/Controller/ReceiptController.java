@@ -1,43 +1,32 @@
 package vn.edu.huit.finance.core.Controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vn.edu.huit.finance.core.Dto.ApiResponse;
-import vn.edu.huit.finance.core.Entity.Receipt;
-import vn.edu.huit.finance.core.Repository.ReceiptRepository;
+import vn.edu.huit.finance.core.Service.ReceiptProcessingService;
 
 import java.math.BigDecimal;
 
+/**
+ * The signed-in user's own receipts. No endpoint here reads a user id from the request: the caller is resolved from the
+ * SecurityContext inside ReceiptProcessingService, which answers 403 for a receipt that belongs to somebody else.
+ */
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/receipts")
 public class ReceiptController {
 
+    private static final String MSG_FEEDBACK_SENT = "Đã gửi báo cáo cho Admin duyệt lại hóa đơn!";
+
     @Autowired
-    private ReceiptRepository receiptRepository;
+    private ReceiptProcessingService receiptProcessingService;
 
-    @PostMapping("/receipts/feedback/{receiptId}")
-    public ResponseEntity<ApiResponse<String>> submitReceiptFeedback(
+    @PostMapping("/feedback/{receiptId}")
+    public ResponseEntity<ApiResponse<Void>> submitReceiptFeedback(
             @PathVariable Long receiptId,
-            @RequestParam BigDecimal manualAmount,
-            @RequestParam(defaultValue = "1") Long userId) {
-
-        Receipt receipt = receiptRepository.findById(receiptId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hóa đơn"));
-
-        if (!"FAILED".equalsIgnoreCase(receipt.getStatus())) {
-            throw new RuntimeException("Chỉ có thể gửi yêu cầu xem xét cho các hóa đơn bị lỗi (FAILED)");
-        }
-
-        receipt.setExtractedTotal(manualAmount);
-        receipt.setStatus("WAITING_FOR_REVIEW");
-
-        receiptRepository.save(receipt);
-
-        ApiResponse<String> response = ApiResponse.<String>builder()
-                .code(200)
-                .message("Đã gửi báo cáo cho Admin duyệt lại hóa đơn!")
-                .build();
-        return ResponseEntity.ok(response);
+            @RequestParam BigDecimal manualAmount) {
+        receiptProcessingService.submitFeedback(receiptId, manualAmount);
+        return ApiResponses.respond(HttpStatus.OK, MSG_FEEDBACK_SENT, null);
     }
 }

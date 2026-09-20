@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/core/utils/password_policy.dart';
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/screens/profile/set_user_info.dart';
@@ -42,7 +43,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _checkPassword(String password) {
     setState(() {
-      _hasMinLength = password.length >= 6;
+      _hasMinLength = PasswordPolicy.hasMinLength(password);
       _hasUppercase = password.contains(RegExp(r'[A-Z]'));
       _hasLowercase = password.contains(RegExp(r'[a-z]'));
       _hasNumber = password.contains(RegExp(r'[0-9]'));
@@ -70,10 +71,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (!_isPasswordValid()) {
+    final policyError = PasswordPolicy.validate(password);
+    if (!_isPasswordValid() || policyError != null) {
       await AppDialog.error(context,
           title: 'Mật khẩu yếu',
-          message: 'Mật khẩu chưa đạt yêu cầu.');
+          message: policyError ?? 'Mật khẩu chưa đạt yêu cầu.');
       return;
     }
 
@@ -320,7 +322,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               style: TextStyle(
                   color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          _conditionRow('Ít nhất 6 ký tự', _hasMinLength),
+          _conditionRow('Ít nhất ${PasswordPolicy.minLength} ký tự', _hasMinLength),
           _conditionRow('Chữ viết hoa (A-Z)', _hasUppercase),
           _conditionRow('Chữ viết thường (a-z)', _hasLowercase),
           _conditionRow('Chữ số (0-9)', _hasNumber),

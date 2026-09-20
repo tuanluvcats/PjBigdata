@@ -5,6 +5,7 @@ import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/models/wallet_model.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
+import 'package:finance_ai_app/screens/budget/budget_screen.dart';
 import 'package:finance_ai_app/screens/profile/account_info_screen.dart';
 import 'package:finance_ai_app/screens/profile/savings_page.dart';
 import 'package:finance_ai_app/screens/linked/linked_services_page.dart';
@@ -110,6 +111,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         _SectionItem(icon: Icons.account_balance_rounded, label: 'Nguồn tiền', onTap: () => ProfileBottomSheets.showBankSources(context, _wallets)),
                         _SectionItem(icon: Icons.link_rounded, label: 'Dịch vụ liên kết', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LinkedServicesPage()))),
                         _SectionItem(icon: Icons.savings_rounded, label: 'Sổ tiết kiệm', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavingsPage()))),
+                        _SectionItem(icon: Icons.pie_chart_rounded, label: 'Ngân sách', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BudgetScreen()))),
                       ],
                     ),
                     const SizedBox(height: 12),

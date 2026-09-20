@@ -77,7 +77,7 @@ public class UserController {
         if (!current.getId().equals(id)) {
             throw new RuntimeException("Lỗi: Bạn không có quyền chỉnh sửa tài khoản của người khác!");
         }
-        User updatedUser = userService.updateUser(id, dto);
+        User updatedUser = userService.updateOwnProfile(id, dto);
         try {
             auditLogService.logAction(updatedUser.getEmail(), "UPDATE_PROFILE", "Người dùng tự cập nhật thông tin cá nhân trên App");
         } catch (Exception e) {

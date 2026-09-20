@@ -30,6 +30,7 @@ class AppTheme {
   static const Color textSecondary = Color(0xFF9A9AA0);
 
   static const Color dangerColor = Color(0xFFE0457B);
+  static const Color warningColor = Colors.orange;
   static const Color positive = Color(0xFF3DBE8B);
   static const Color negative = Color(0xFFE0457B);
 

@@ -9,10 +9,18 @@ import vn.edu.huit.finance.core.Entity.Transaction;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
+    /** One transaction with its owner, category and receipt in a single query, so mapping it to a DTO adds no queries. */
+    @Query("SELECT t FROM Transaction t " +
+           "JOIN FETCH t.user " +
+           "JOIN FETCH t.category " +
+           "LEFT JOIN FETCH t.receipt " +
+           "WHERE t.id = :id")
+    Optional<Transaction> findDetailedById(@Param("id") Long id);
 
     @Query("SELECT t FROM Transaction t " +
            "JOIN FETCH t.user " +

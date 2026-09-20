@@ -4,14 +4,17 @@ import 'package:intl/intl.dart';
 import 'package:excel/excel.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/models/budget_model.dart';
+import 'package:finance_ai_app/models/budget_progress.dart';
 import 'package:finance_ai_app/services/session_service.dart';
-import 'package:finance_ai_app/services/sqflite_helper.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
+import 'package:finance_ai_app/widgets/budget/budget_alert_presenter.dart';
+import 'package:finance_ai_app/widgets/budget/budget_section.dart';
 
 import 'add_transaction_page.dart';
 
@@ -28,6 +31,8 @@ class LedgerPageState extends State<LedgerPage> {
   bool _isLoading = true;
   List<TransactionModel> _transactions = [];
   List<BudgetModel> _budgets = [];
+  bool _budgetsFailed = false;
+  List<BudgetProgress> _budgetProgress = [];
 
   DateTime _selectedDate = DateTime.now();
   LedgerPeriod _period = LedgerPeriod.month;
@@ -68,22 +73,42 @@ class LedgerPageState extends State<LedgerPage> {
       return;
     }
 
+    // Started together: the budgets do not depend on the transactions, so the wait is that of the slower request.
+    final budgetsRequest = AppRepository.instance.tryGetBudgets(userId);
     final txs = await AppRepository.instance.getTransactions(userId);
-    final budgets = await SqfliteHelper.instance.getBudgetsByUserIdAndMonth(
-      userId,
-      _selectedDate.month,
-      _selectedDate.year,
-    );
+    final budgets = await budgetsRequest;
 
     if (!mounted) return;
     setState(() {
       _isLoading = false;
       _transactions = txs;
-      _budgets = budgets;
+      _budgets = budgets ?? [];
+      _budgetsFailed = budgets == null;
+      _refreshBudgetProgress();
     });
+    if (budgets != null) {
+      // Not awaited, so a dialog waiting for the user does not hold up the pull-to-refresh.
+      unawaited(BudgetAlertPresenter.showNew(
+        context,
+        userId: userId,
+        progresses: BudgetProgress.activeOn(DateTime.now(), budgets, txs),
+      ));
+    }
   }
 
   void reload() => _load();
+
+  /// The budgets that overlap the period on screen, each measured over its own dates. It is kept in state because a
+  /// keystroke in the search box rebuilds the page, and that must not recompute it.
+  void _refreshBudgetProgress() {
+    final from = _period == LedgerPeriod.week
+        ? _weekStart
+        : DateTime(_selectedDate.year, _selectedDate.month, 1);
+    final to = _period == LedgerPeriod.week
+        ? _weekEnd.subtract(const Duration(days: 1))
+        : DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
+    _budgetProgress = BudgetProgress.overlapping(from, to, _budgets, _transactions);
+  }
 
   DateTime get _weekStart {
     final d = _selectedDate;
@@ -147,6 +172,7 @@ List<TransactionModel> get _periodTransactions {
         _selectedDate =
             DateTime(_selectedDate.year, _selectedDate.month + dir, 1);
       }
+      _refreshBudgetProgress();
     });
   }
 
@@ -297,7 +323,10 @@ List<TransactionModel> get _periodTransactions {
     if (picked == null) return;
     final monthChanged = picked.month != _selectedDate.month ||
         picked.year != _selectedDate.year;
-    setState(() => _selectedDate = picked);
+    setState(() {
+      _selectedDate = picked;
+      _refreshBudgetProgress();
+    });
     if (monthChanged) _load();
   }
 
@@ -358,7 +387,12 @@ List<TransactionModel> get _periodTransactions {
                     value: LedgerPeriod.month, child: Text('Tháng')),
               ],
               onChanged: (v) {
-                if (v != null) setState(() => _period = v);
+                if (v != null) {
+                  setState(() {
+                    _period = v;
+                    _refreshBudgetProgress();
+                  });
+                }
               },
             ),
           ),
@@ -648,96 +682,10 @@ List<TransactionModel> get _periodTransactions {
 
   Widget _buildSummaryBlock() {
     final balance = _periodIncome - _periodExpense;
-    final monthTxs = _transactions
-        .where((tx) =>
-            tx.date.year == _selectedDate.year &&
-            tx.date.month == _selectedDate.month)
-        .toList();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Ngân sách',
-            style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 16)),
-        const SizedBox(height: 12),
-        if (_budgets.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: AppTheme.card,
-            child: const Text('Chưa có ngân sách cho tháng này.',
-                style: TextStyle(color: AppTheme.textGray)),
-          )
-        else
-          ..._budgets.map((budget) {
-            final spent = monthTxs
-                .where((tx) =>
-                    tx.isExpense && tx.category == budget.categoryName)
-                .fold(0.0, (sum, tx) => sum + tx.amount);
-            final remaining = budget.limitAmount - spent;
-            final progress = budget.limitAmount > 0
-                ? (spent / budget.limitAmount).clamp(0.0, 1.0)
-                : 0.0;
-
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: AppTheme.card,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(budget.categoryName,
-                          style: const TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontWeight: FontWeight.bold)),
-                      Text(
-                        '${_fmtCur.format(spent)} / ${_fmtCur.format(budget.limitAmount)}',
-                        style: const TextStyle(
-                            color: AppTheme.textGray, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor:
-                          AppTheme.textGray.withValues(alpha: 0.2),
-                      valueColor: AlwaysStoppedAnimation(
-                        progress > 0.9
-                            ? AppTheme.dangerColor
-                            : progress > 0.7
-                                ? Colors.orange
-                                : AppTheme.primary,
-                      ),
-                      minHeight: 8,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Còn lại: ${_fmtCur.format(remaining)}',
-                          style: TextStyle(
-                              color: remaining >= 0
-                                  ? AppTheme.positive
-                                  : AppTheme.dangerColor,
-                              fontSize: 12)),
-                      Text('${(progress * 100).toStringAsFixed(0)}%',
-                          style: const TextStyle(
-                              color: AppTheme.textGray, fontSize: 12)),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
+        BudgetSection(progresses: _budgetProgress, loadFailed: _budgetsFailed),
         const SizedBox(height: 24),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1122,17 +1070,14 @@ List<TransactionModel> get _periodTransactions {
       TextCellValue('Còn lại'),
     ]);
 
-    for (var budget in _budgets) {
-      final spent = monthTxs
-          .where((tx) => tx.isExpense && tx.category == budget.categoryName)
-          .fold(0.0, (sum, tx) => sum + tx.amount);
-      final remaining = budget.limitAmount - spent;
-
+    final monthStart = DateTime(_selectedDate.year, _selectedDate.month, 1);
+    final monthEnd = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
+    for (final progress in BudgetProgress.overlapping(monthStart, monthEnd, _budgets, _transactions)) {
       sheet.appendRow([
-        TextCellValue(budget.categoryName),
-        DoubleCellValue(budget.limitAmount),
-        DoubleCellValue(spent),
-        DoubleCellValue(remaining),
+        TextCellValue(progress.budget.categoryName ?? BudgetModel.allCategoriesLabel),
+        DoubleCellValue(progress.limit),
+        DoubleCellValue(progress.spent),
+        DoubleCellValue(progress.remaining),
       ]);
     }
 

@@ -1,14 +1,20 @@
 package vn.edu.huit.finance.core.Controller;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import vn.edu.huit.finance.core.Dto.ApiResponse;
+import vn.edu.huit.finance.core.Dto.ChangePasswordRequestDto;
+import vn.edu.huit.finance.core.Dto.RegisterRequestDto;
+import vn.edu.huit.finance.core.Dto.ResetPasswordRequestDto;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.UserRepository;
+import vn.edu.huit.finance.core.Security.AuthPaths;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
@@ -17,8 +23,10 @@ import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import java.time.LocalDateTime;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping(AuthPaths.BASE)
 public class AuthController {
+    private static final String CHANGE_PASSWORD_SUCCESS_MESSAGE = "Đổi mật khẩu thành công!";
+
     @Autowired  private org.springframework.security.authentication.AuthenticationManager authenticationManager;
     @Autowired  private UserRepository userRepository;
     @Autowired  private PasswordEncoder passwordEncoder;
@@ -29,7 +37,12 @@ public class AuthController {
     @Autowired  private vn.edu.huit.finance.core.Service.SocialAuthService socialAuthService;
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody User user) {
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDto request) {
+        // Built from the DTO on purpose: the client must not be able to set the wallet balance, role or any other User field.
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setEmail(request.getEmail());
+        user.setPhone(request.getPhone());
 
         if (user.getEmail() != null && userRepository.findByEmail(user.getEmail()).isPresent()) {
             return ResponseEntity.status(400).body(java.util.Map.of(
@@ -42,7 +55,7 @@ public class AuthController {
 
         user.setRole("ROLE_USER");
 
-        String hashedPassword = passwordEncoder.encode(user.getPassword());
+        String hashedPassword = passwordEncoder.encode(request.getPassword());
         user.setPassword(hashedPassword);
 
         try {
@@ -170,19 +183,26 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+    // JSON body, not query parameters: the OTP and the new password must not end up in access logs.
     @PostMapping("/reset-password")
-    public ResponseEntity<ApiResponse<String>> resetPassword(
-            @RequestParam String email,
-            @RequestParam String otp,
-            @RequestParam String newPassword) {
-
-        authService.verifyOtpAndResetPassword(email, otp, newPassword);
+    public ResponseEntity<ApiResponse<String>> resetPassword(@Valid @RequestBody ResetPasswordRequestDto request) {
+        authService.verifyOtpAndResetPassword(request.getEmail(), request.getOtp(), request.getNewPassword());
 
         ApiResponse<String> response = ApiResponse.<String>builder()
                 .code(200)
                 .message("Đổi mật khẩu thành công! Vui lòng đăng nhập lại.")
                 .build();
         return ResponseEntity.ok(response);
+    }
+
+    @PutMapping(AuthPaths.CHANGE_PASSWORD)
+    public ResponseEntity<ApiResponse<Void>> changePassword(@Valid @RequestBody ChangePasswordRequestDto request) {
+        authService.changePassword(request);
+
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .code(HttpStatus.OK.value())
+                .message(CHANGE_PASSWORD_SUCCESS_MESSAGE)
+                .build());
     }
 
     private String clientIp(HttpServletRequest request) {
