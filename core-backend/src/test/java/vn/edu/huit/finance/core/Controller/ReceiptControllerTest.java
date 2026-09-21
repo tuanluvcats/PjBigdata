@@ -25,6 +25,7 @@ import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
+import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 import vn.edu.huit.finance.core.Service.ReceiptProcessingService;
 
 import java.lang.reflect.Method;
@@ -63,6 +64,7 @@ class ReceiptControllerTest {
     @MockBean private CustomUserDetailsService userDetailsService;
     @MockBean private UserRepository userRepository;
     @MockBean private LoginAttemptService loginAttemptService;
+    @MockBean private TokenBlacklistService tokenBlacklistService;
 
     @BeforeEach
     void stubJwtForAlice() {

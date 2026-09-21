@@ -7,6 +7,7 @@ import vn.edu.huit.finance.core.Entity.Budget;
 import vn.edu.huit.finance.core.Entity.BudgetPeriodType;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,6 +22,13 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
     // Ownership is part of the query: another user's budget is simply "not found".
     @Query("select b from Budget b left join fetch b.category where b.id = :id and b.user.id = :userId")
     Optional<Budget> findWithCategoryByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+
+    // The budgets in force on a day for the given category keys (Budget.categoryKey: 0 is "every category"). The category
+    // is fetched with them because the budget alert names it, so reading it afterwards cannot cost a query per budget.
+    @Query("select b from Budget b left join fetch b.category where b.user.id = :userId "
+            + "and b.startDate <= :coveredOn and b.endDate >= :coveredOn and b.categoryKey in (:categoryKeys)")
+    List<Budget> findCoveringDate(@Param("userId") Long userId, @Param("coveredOn") LocalDate coveredOn,
+                                  @Param("categoryKeys") Collection<Long> categoryKeys);
 
     @Query("select count(b) > 0 from Budget b where b.user.id = :userId and b.categoryKey = :categoryKey "
             + "and b.periodType = :periodType and b.startDate = :startDate")

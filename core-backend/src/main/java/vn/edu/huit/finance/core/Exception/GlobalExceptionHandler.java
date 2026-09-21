@@ -49,6 +49,12 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
     }
 
+    // 401: no usable token where one is required. A revoked token never gets this far, JwtAuthFilter answers it first.
+    @ExceptionHandler(InvalidTokenException.class)
+    public Object handleInvalidToken(InvalidTokenException ex, HttpServletRequest request) {
+        return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(BudgetNotFoundException.class)
     public Object handleBudgetNotFound(BudgetNotFoundException ex, HttpServletRequest request) {
         return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);

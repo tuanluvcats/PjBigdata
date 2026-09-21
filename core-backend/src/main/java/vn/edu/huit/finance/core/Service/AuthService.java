@@ -28,6 +28,8 @@ public class AuthService {
 
     private static final String AUDIT_ACTION_CHANGE_PASSWORD = "CHANGE_PASSWORD";
     private static final String AUDIT_DESC_CHANGE_PASSWORD = "Người dùng đổi mật khẩu thành công";
+    private static final String AUDIT_ACTION_LOGOUT = "LOGOUT";
+    private static final String AUDIT_DESC_LOGOUT = "Người dùng đăng xuất";
     private static final String MSG_OLD_PASSWORD_INCORRECT = "Mật khẩu cũ không chính xác";
     private static final String MSG_NEW_PASSWORD_SAME_AS_OLD = "Mật khẩu mới phải khác mật khẩu cũ";
 
@@ -59,6 +61,9 @@ public class AuthService {
 
     @Autowired
     private AuditLogService auditLogService;
+
+    @Autowired
+    private TokenBlacklistService tokenBlacklistService;
 
     /** The pending OTP of one email. Immutable: a wrong attempt swaps it for a copy with one more failed attempt. */
     private record OtpRecord(String code, LocalDateTime expiryTime, int attempts) {
@@ -142,9 +147,13 @@ public class AuthService {
         }
     }
 
-    /** Changes the password of the authenticated caller; the user comes from the SecurityContext, never from the request. */
+    /**
+     * Changes the password of the authenticated caller; the user comes from the SecurityContext, never from the request.
+     * The access token that authorised the call is revoked in the same transaction, so the session that knew the old
+     * password cannot outlive it and the client has to sign in again.
+     */
     @Transactional
-    public void changePassword(ChangePasswordRequestDto request) {
+    public void changePassword(ChangePasswordRequestDto request, String accessToken) {
         User user = currentUserProvider.getCurrentUser();
 
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
@@ -158,8 +167,26 @@ public class AuthService {
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+        tokenBlacklistService.revoke(accessToken);
 
         auditLogService.logAction(user.getEmail(), AUDIT_ACTION_CHANGE_PASSWORD, AUDIT_DESC_CHANGE_PASSWORD);
         log.info("Password changed, userId={}", user.getId());
+    }
+
+    /**
+     * Ends the session of the authenticated caller: the access token that authorised the call is revoked and, when the
+     * client sends it, so is the refresh token (otherwise the app could simply sign in again with it). All or nothing.
+     */
+    @Transactional
+    public void logout(String accessToken, String refreshToken) {
+        User user = currentUserProvider.getCurrentUser();
+
+        tokenBlacklistService.revoke(accessToken);
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            tokenBlacklistService.revokeIfValid(refreshToken);
+        }
+
+        auditLogService.logAction(user.getEmail(), AUDIT_ACTION_LOGOUT, AUDIT_DESC_LOGOUT);
+        log.info("User logged out, userId={}", user.getId());
     }
 }

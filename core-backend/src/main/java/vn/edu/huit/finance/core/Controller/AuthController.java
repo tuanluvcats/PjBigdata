@@ -3,6 +3,7 @@ package vn.edu.huit.finance.core.Controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.LockedException;
@@ -10,15 +11,19 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import vn.edu.huit.finance.core.Dto.ApiResponse;
 import vn.edu.huit.finance.core.Dto.ChangePasswordRequestDto;
+import vn.edu.huit.finance.core.Dto.LogoutRequestDto;
 import vn.edu.huit.finance.core.Dto.RegisterRequestDto;
 import vn.edu.huit.finance.core.Dto.ResetPasswordRequestDto;
 import vn.edu.huit.finance.core.Entity.User;
+import vn.edu.huit.finance.core.Exception.InvalidTokenException;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.AuthPaths;
+import vn.edu.huit.finance.core.Security.BearerToken;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
+import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 
 import java.time.LocalDateTime;
 
@@ -26,6 +31,8 @@ import java.time.LocalDateTime;
 @RequestMapping(AuthPaths.BASE)
 public class AuthController {
     private static final String CHANGE_PASSWORD_SUCCESS_MESSAGE = "Đổi mật khẩu thành công!";
+    private static final String LOGOUT_SUCCESS_MESSAGE = "Đăng xuất thành công!";
+    private static final String MSG_TOKEN_MISSING = "Thiếu token xác thực";
 
     @Autowired  private org.springframework.security.authentication.AuthenticationManager authenticationManager;
     @Autowired  private UserRepository userRepository;
@@ -35,6 +42,7 @@ public class AuthController {
     @Autowired  private AuditLogService auditLogService;
     @Autowired  private AuthService authService;
     @Autowired  private vn.edu.huit.finance.core.Service.SocialAuthService socialAuthService;
+    @Autowired  private TokenBlacklistService tokenBlacklistService;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDto request) {
@@ -195,14 +203,34 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+    // The token of this very request is handed over to be revoked; the client signs in again with the new password.
     @PutMapping(AuthPaths.CHANGE_PASSWORD)
-    public ResponseEntity<ApiResponse<Void>> changePassword(@Valid @RequestBody ChangePasswordRequestDto request) {
-        authService.changePassword(request);
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @Valid @RequestBody ChangePasswordRequestDto request,
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
+        authService.changePassword(request, bearerTokenOf(authorization));
 
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .code(HttpStatus.OK.value())
                 .message(CHANGE_PASSWORD_SUCCESS_MESSAGE)
                 .build());
+    }
+
+    // The body is optional: a client that sends its refresh token gets that one revoked too.
+    @PostMapping(AuthPaths.LOGOUT)
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @Valid @RequestBody(required = false) LogoutRequestDto request) {
+        authService.logout(bearerTokenOf(authorization), request == null ? null : request.getRefreshToken());
+
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .code(HttpStatus.OK.value())
+                .message(LOGOUT_SUCCESS_MESSAGE)
+                .build());
+    }
+
+    private String bearerTokenOf(String authorizationHeader) {
+        return BearerToken.extract(authorizationHeader).orElseThrow(() -> new InvalidTokenException(MSG_TOKEN_MISSING));
     }
 
     private String clientIp(HttpServletRequest request) {
@@ -216,7 +244,8 @@ public class AuthController {
     public ResponseEntity<?> refreshToken(@RequestBody java.util.Map<String, String> request) {
         String refreshToken = request.get("refreshToken");
         
-        if (refreshToken != null && jwtUtil.validateToken(refreshToken)) {
+        // A refresh token that was revoked at logout must not mint new tokens.
+        if (refreshToken != null && jwtUtil.validateToken(refreshToken) && !tokenBlacklistService.isRevoked(refreshToken)) {
             String email = jwtUtil.extractUsername(refreshToken);
             String newToken = jwtUtil.generateToken(email);
             String newRefreshToken = jwtUtil.generateRefreshToken(email);

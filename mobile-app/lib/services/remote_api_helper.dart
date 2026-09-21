@@ -20,7 +20,8 @@ class RemoteApiHelper {
 
   bool _initialized = false;
   final ValueNotifier<int> dataChangedNotifier = ValueNotifier(0);
-  /// [httpClientAdapter] replaces the real network layer; only tests pass it, the app calls init() with no arguments.
+  /// [httpClientAdapter] replaces the real network layer of the core API and of the AI service; only tests pass it, the app
+  /// calls init() with no arguments.
   void init({HttpClientAdapter? httpClientAdapter}) {
     if (_initialized) return;
     _initialized = true;
@@ -97,6 +98,7 @@ class RemoteApiHelper {
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 90),
     ));
+    if (httpClientAdapter != null) _mlDio.httpClientAdapter = httpClientAdapter;
   }
 
   Future<Map<String, dynamic>> login(String email, String password) async {
@@ -239,19 +241,9 @@ Future<List<Map<String, dynamic>>> fetchCategories() async {
   Future<List<TransactionModel>> fetchTransactions() async {
     final res = await _dio.get('/api/transactions/mine');
     final list = (res.data['data'] as List?) ?? [];
-    return list.map((e) {
-      final m = Map<String, dynamic>.from(e as Map);
-      return TransactionModel(
-        id: m['id']?.toString(),
-        title: (m['title'] ?? m['category'] ?? '').toString(),
-        amount: (m['amount'] as num?)?.toDouble() ?? 0.0,
-        date: DateTime.tryParse(m['date']?.toString() ?? '') ?? DateTime.now(),
-        category: (m['category'] ?? 'Khác').toString(),
-        isExpense: m['isExpense'] == true,
-        iconName: (m['category'] ?? 'default').toString(),
-        imageUrl: m['imageUrl']?.toString(),
-      );
-    }).toList();
+    return list
+        .map((e) => TransactionModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   Future<Map<String, dynamic>> fetchMe() async {
@@ -271,6 +263,13 @@ Future<List<Map<String, dynamic>>> fetchCategories() async {
       }
     }
     await _dio.post('/api/transactions/checkout', data: data);
+    dataChangedNotifier.value++;
+  }
+
+  /// PUT /api/transactions/{id}: only the fields in [data] change (amount, categoryName, note ...) and the server keeps
+  /// the wallet in step. The owner comes from the login token. A refusal reaches the caller as a DioException.
+  Future<void> updateTransaction(String id, Map<String, dynamic> data) async {
+    await _dio.put('/api/transactions/$id', data: data);
     dataChangedNotifier.value++;
   }
 

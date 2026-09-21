@@ -3,6 +3,7 @@ package vn.edu.huit.finance.core.Dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
+import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Entity.Transaction;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -18,12 +19,16 @@ public class TransactionResponseDto {
     @JsonProperty("isExpense") 
     private boolean isExpense;   
     private String imageUrl;
+    /** The name of the attached receipt's {@code ReceiptStatus} (as stored in {@code Receipt.status}); null without a receipt. */
+    private String receiptStatus;
 
     /** The title is the note when there is one, otherwise the name of the category. */
     public static TransactionResponseDto from(Transaction transaction) {
         String note = transaction.getNote();
         String title = (note != null && !note.isBlank()) ? note : transaction.getCategoryName();
-        String imageUrl = (transaction.getReceipt() != null) ? transaction.getReceipt().getImageUrl() : null;
+        Receipt receipt = transaction.getReceipt();
+        String imageUrl = (receipt != null) ? receipt.getImageUrl() : null;
+        String receiptStatus = (receipt != null) ? receipt.getStatus() : null;
 
         return TransactionResponseDto.builder()
                 .id(transaction.getId())
@@ -33,6 +38,7 @@ public class TransactionResponseDto {
                 .category(transaction.getCategoryName())
                 .isExpense(transaction.isExpense())
                 .imageUrl(imageUrl)
+                .receiptStatus(receiptStatus)
                 .build();
     }
 }

@@ -7,14 +7,17 @@ import 'package:share_plus/share_plus.dart';
 import 'dart:async';
 import 'dart:io';
 
+import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/models/budget_model.dart';
 import 'package:finance_ai_app/models/budget_progress.dart';
 import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
+import 'package:finance_ai_app/screens/ledger/edit_transaction_page.dart';
 import 'package:finance_ai_app/widgets/budget/budget_alert_presenter.dart';
 import 'package:finance_ai_app/widgets/budget/budget_section.dart';
+import 'package:finance_ai_app/widgets/receipt/receipt_status_badge.dart';
 
 import 'add_transaction_page.dart';
 
@@ -661,6 +664,10 @@ List<TransactionModel> get _periodTransactions {
                               style: const TextStyle(
                                   color: AppTheme.textGray, fontSize: 12),
                             ),
+                            if (tx.receiptStatus != null) ...[
+                              const SizedBox(height: 4),
+                              ReceiptStatusBadge(status: tx.receiptStatus!),
+                            ],
                           ],
                         ),
                       ),
@@ -878,6 +885,24 @@ List<TransactionModel> get _periodTransactions {
                 _buildDetailRow('Số tiền:', '${tx.isExpense ? "-" : "+"}${_fmtCur.format(tx.amount)}', tx.isExpense ? AppTheme.dangerColor : AppTheme.positive),
                 const SizedBox(height: 12),
                 _buildDetailRow('Thời gian:', DateFormat('dd/MM/yyyy - HH:mm').format(tx.date), AppTheme.textWhite),
+                if (tx.receiptStatus != null) ...[
+                  const SizedBox(height: 12),
+                  // A Wrap, not a Row: on a narrow screen or with a large font the badge drops to its own line instead of
+                  // overflowing. The full-width box keeps the label left and the badge right while both fit on one line.
+                  SizedBox(
+                    width: double.infinity,
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        const Text('Trạng thái hóa đơn:', style: TextStyle(color: AppTheme.textGray, fontSize: 15)),
+                        ReceiptStatusBadge(status: tx.receiptStatus!),
+                      ],
+                    ),
+                  ),
+                ],
                 if (tx.imageUrl != null && tx.imageUrl!.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   const Text('Ảnh hóa đơn gốc:', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
@@ -915,6 +940,27 @@ List<TransactionModel> get _periodTransactions {
                 ],
                 
                 const SizedBox(height: 24),
+                // Editing goes through the server; offline there is no edit form, so the button is not offered.
+                if (AppConfig.isFull && tx.id != null) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.mintAccent,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                      ),
+                      icon: const Icon(Icons.edit_rounded),
+                      label: const Text('Sửa giao dịch', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _editTransactionAction(tx);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 SizedBox(
                   width: double.infinity,
                   height: 50,
@@ -949,6 +995,16 @@ List<TransactionModel> get _periodTransactions {
         Text(value, style: TextStyle(color: valColor, fontSize: 16, fontWeight: FontWeight.bold)),
       ],
     );
+  }
+
+  Future<void> _editTransactionAction(TransactionModel tx) async {
+    if (!mounted) return;
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => EditTransactionPage(transaction: tx)),
+    );
+    if (saved != true || !mounted) return;
+    await _load();
   }
 
   Future<void> _deleteTransactionAction(String id) async {

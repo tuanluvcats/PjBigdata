@@ -31,6 +31,7 @@ import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.SocialAuthService;
+import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -88,6 +89,7 @@ class AuthControllerPasswordTest {
     @MockBean private LoginAttemptService loginAttemptService;
     @MockBean private AuditLogService auditLogService;
     @MockBean private SocialAuthService socialAuthService;
+    @MockBean private TokenBlacklistService tokenBlacklistService;
 
     @BeforeEach
     void stubJwtForAlice() {
@@ -155,7 +157,7 @@ class AuthControllerPasswordTest {
         doAnswer(invocation -> {
             callerSeenByService.set(SecurityContextHolder.getContext().getAuthentication().getName());
             return null;
-        }).when(authService).changePassword(any());
+        }).when(authService).changePassword(any(), any());
 
         mockMvc.perform(authorizedPut(BODY))
                 .andExpect(status().isOk())
@@ -163,6 +165,8 @@ class AuthControllerPasswordTest {
                 .andExpect(jsonPath("$.message").value("Đổi mật khẩu thành công!"));
 
         assertEquals(USERNAME, callerSeenByService.get());
+        // The service gets the bare token of this very request (no "Bearer "), which is the one it has to revoke.
+        verify(authService).changePassword(any(), eq(TOKEN));
     }
 
     @Test
@@ -220,7 +224,7 @@ class AuthControllerPasswordTest {
 
     @Test
     void mapsInvalidPasswordException_to400() throws Exception {
-        doThrow(new InvalidPasswordException("Mật khẩu cũ không chính xác")).when(authService).changePassword(any());
+        doThrow(new InvalidPasswordException("Mật khẩu cũ không chính xác")).when(authService).changePassword(any(), any());
 
         mockMvc.perform(authorizedPut(BODY))
                 .andExpect(status().isBadRequest())
@@ -230,7 +234,7 @@ class AuthControllerPasswordTest {
 
     @Test
     void mapsUserNotFoundException_to404() throws Exception {
-        doThrow(new UserNotFoundException("Không tìm thấy người dùng đang đăng nhập")).when(authService).changePassword(any());
+        doThrow(new UserNotFoundException("Không tìm thấy người dùng đang đăng nhập")).when(authService).changePassword(any(), any());
 
         mockMvc.perform(authorizedPut(BODY))
                 .andExpect(status().isNotFound())

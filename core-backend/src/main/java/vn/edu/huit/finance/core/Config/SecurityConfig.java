@@ -103,7 +103,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(AuthPaths.CHANGE_PASSWORD_URL).authenticated()
+                        .requestMatchers(AuthPaths.CHANGE_PASSWORD_URL, AuthPaths.LOGOUT_URL).authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/payment/webhook").permitAll()
                         .requestMatchers("/api/categories").permitAll()

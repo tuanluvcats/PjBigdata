@@ -226,4 +226,65 @@ class BudgetRepositoryTest {
         budget.setCategory(transport);
         assertEquals(transport.getId(), budget.getCategoryKey());
     }
+
+    // ------------------------------------------------------------------------------------ budgets in force on a day
+
+    private static List<Long> categoryKeysOf(Category category) {
+        return List.of(Budget.ALL_CATEGORIES_KEY, category.getId());
+    }
+
+    private List<Long> idsFound(User owner, LocalDate day, Category category) {
+        return budgetRepository.findCoveringDate(owner.getId(), day, categoryKeysOf(category)).stream()
+                .map(Budget::getId)
+                .sorted()
+                .toList();
+    }
+
+    @Test
+    void findCoveringDate_returnsTheBudgetsOfTheCategoryAndOfEveryCategory_notThoseOfOtherCategories() {
+        Budget forFood = persistBudget(alice, food, BudgetPeriodType.WEEK, SEPTEMBER);
+        Budget forEverything = persistBudget(alice, null, BudgetPeriodType.WEEK, SEPTEMBER);
+        persistBudget(alice, transport, BudgetPeriodType.WEEK, SEPTEMBER);
+        forgetLoadedEntities();
+
+        assertEquals(List.of(forFood.getId(), forEverything.getId()), idsFound(alice, SEPTEMBER.plusDays(2), food));
+    }
+
+    @Test
+    void findCoveringDate_includesBothEndDaysAndNothingOutsideThePeriod() {
+        Budget week = persistBudget(alice, food, BudgetPeriodType.WEEK, SEPTEMBER); // September 1 to September 7
+        forgetLoadedEntities();
+
+        assertEquals(List.of(week.getId()), idsFound(alice, SEPTEMBER, food));
+        assertEquals(List.of(week.getId()), idsFound(alice, SEPTEMBER.plusDays(6), food));
+        assertTrue(idsFound(alice, SEPTEMBER.minusDays(1), food).isEmpty());
+        assertTrue(idsFound(alice, SEPTEMBER.plusDays(7), food).isEmpty());
+    }
+
+    @Test
+    void findCoveringDate_neverReturnsTheBudgetOfAnotherUser() {
+        persistBudget(bob, food, BudgetPeriodType.WEEK, SEPTEMBER);
+        persistBudget(bob, null, BudgetPeriodType.WEEK, SEPTEMBER);
+        forgetLoadedEntities();
+
+        assertTrue(idsFound(alice, SEPTEMBER, food).isEmpty());
+    }
+
+    @Test
+    void findCoveringDate_loadsTheCategoriesInTheSameQuery() {
+        persistBudget(alice, food, BudgetPeriodType.WEEK, SEPTEMBER);
+        persistBudget(alice, null, BudgetPeriodType.WEEK, SEPTEMBER);
+        forgetLoadedEntities();
+
+        List<Budget> found = budgetRepository.findCoveringDate(alice.getId(), SEPTEMBER, categoryKeysOf(food));
+        // What the alert message does: read the category name of every budget.
+        found.forEach(b -> {
+            if (b.getCategory() != null) {
+                b.getCategory().getName();
+            }
+        });
+
+        assertEquals(2, found.size());
+        assertEquals(1, statistics().getPrepareStatementCount(), "reading the categories must not cost a query per budget");
+    }
 }

@@ -22,6 +22,7 @@ import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
+import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 import vn.edu.huit.finance.core.Service.UserService;
 
 import java.time.LocalDateTime;
@@ -54,6 +55,7 @@ class UserControllerRoleTest {
     @MockBean private JwtUtil jwtUtil;
     @MockBean private CustomUserDetailsService userDetailsService;
     @MockBean private LoginAttemptService loginAttemptService;
+    @MockBean private TokenBlacklistService tokenBlacklistService;
 
     private User alice;
 

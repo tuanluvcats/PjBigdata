@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:finance_ai_app/models/receipt_status.dart';
+
 class TransactionModel {
   final String? id;
   final String title;
@@ -10,6 +12,10 @@ class TransactionModel {
   final String iconName;
   final int? walletId;
   final String? imageUrl;
+
+  /// The state of the receipt attached to the transaction. Null without a receipt, and always null offline: the local
+  /// SQLite rows do not store it.
+  final ReceiptStatus? receiptStatus;
   TransactionModel({
     this.id,
     required this.title,
@@ -20,6 +26,7 @@ class TransactionModel {
     this.iconName = 'default',
     this.walletId,
     this.imageUrl,
+    this.receiptStatus,
   });
 
   factory TransactionModel.draft({
@@ -64,6 +71,22 @@ class TransactionModel {
       category: map['category'] ?? 'Khác',
       isExpense: map['isExpense'] ?? true,
       iconName: map['icon_name'] ?? 'default',
+    );
+  }
+
+  /// A transaction as core-backend sends it (TransactionResponseDto). Its title is already the note, or the category
+  /// when there is no note.
+  factory TransactionModel.fromJson(Map<String, dynamic> json) {
+    return TransactionModel(
+      id: json['id']?.toString(),
+      title: (json['title'] ?? json['category'] ?? '').toString(),
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      date: DateTime.tryParse(json['date']?.toString() ?? '') ?? DateTime.now(),
+      category: (json['category'] ?? 'Khác').toString(),
+      isExpense: json['isExpense'] == true,
+      iconName: (json['category'] ?? 'default').toString(),
+      imageUrl: json['imageUrl']?.toString(),
+      receiptStatus: ReceiptStatus.fromServer(json['receiptStatus']),
     );
   }
 

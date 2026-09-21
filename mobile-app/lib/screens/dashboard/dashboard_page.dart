@@ -14,6 +14,7 @@ import 'package:finance_ai_app/screens/profile/savings_page.dart';
 import 'package:finance_ai_app/screens/linked/linked_services_page.dart';
 import 'package:finance_ai_app/widgets/budget/budget_alert_presenter.dart';
 import 'package:finance_ai_app/widgets/budget/budget_section.dart';
+import 'package:finance_ai_app/widgets/receipt/receipt_status_badge.dart';
 import 'package:finance_ai_app/widgets/dialogs/dashboard_bottom_sheets.dart';
 import 'package:finance_ai_app/screens/ai/ai_tab_page.dart';
 class DashboardPage extends StatefulWidget {
@@ -505,6 +506,10 @@ Widget _buildUtilityGrid() {
                 Text(tx.title, style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
                 Text(_formatTime(tx.date), style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+                if (tx.receiptStatus != null) ...[
+                  const SizedBox(height: 6),
+                  ReceiptStatusBadge(status: tx.receiptStatus!),
+                ],
               ],
             ),
           ),

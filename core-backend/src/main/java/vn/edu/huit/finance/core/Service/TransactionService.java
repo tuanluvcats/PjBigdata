@@ -39,7 +39,8 @@ import java.util.Map;
 
 /**
  * Transactions and the wallet they move. Every method that changes a transaction changes User.walletBalance in the same
- * database transaction, so a failure anywhere leaves both untouched. Methods without a user id take the owner from the
+ * database transaction, so a failure anywhere leaves both untouched; the budget notifications that a new or edited expense
+ * raises (BudgetAlertService) are written in that same transaction. Methods without a user id take the owner from the
  * SecurityContext (through CurrentUserProvider) and scope every lookup to that owner; the ones that do take an id
  * (createTransaction for the payment webhook, the *Of methods for administrators) trust their caller to have checked it.
  */
@@ -77,6 +78,8 @@ public class TransactionService {
     private CurrentUserProvider currentUserProvider;
     @Autowired
     private ReceiptProcessingService receiptProcessingService;
+    @Autowired
+    private BudgetAlertService budgetAlertService;
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -127,6 +130,7 @@ public class TransactionService {
         }
 
         transactionRepo.save(transaction);
+        budgetAlertService.notifyAfterCreate(transaction);
 
         try {
             if (request.getRawReceiptData() != null && !request.getRawReceiptData().isEmpty()) {
@@ -167,6 +171,8 @@ public class TransactionService {
     public TransactionResponseDto updateTransaction(Long transactionId, TransactionUpdateRequestDto request) {
         User caller = currentUserProvider.getCurrentUser();
         Transaction transaction = findOwnedTransaction(transactionId, caller.getId());
+        // Taken before anything changes: the budget alert needs to know what this transaction counted for until now.
+        BudgetAlertService.SpendingSnapshot spendingBefore = BudgetAlertService.SpendingSnapshot.of(transaction);
 
         BigDecimal newAmount = request.getAmount() != null ? request.getAmount() : transaction.getAmount();
         boolean newExpense = request.getExpense() != null ? request.getExpense() : transaction.isExpense();
@@ -199,6 +205,7 @@ public class TransactionService {
             transaction.setPaymentMethod(request.getPaymentMethod().trim());
         }
         Transaction saved = transactionRepo.save(transaction);
+        budgetAlertService.notifyAfterUpdate(saved, spendingBefore);
 
         log.info("Transaction updated, userId={}, transactionId={}, walletChange={}", caller.getId(), transactionId, walletChange);
         return TransactionResponseDto.from(saved);

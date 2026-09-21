@@ -24,7 +24,8 @@ class AiComponents {
   }
 
 
-  static Widget buildSpadeSection(List<Map<String, dynamic>> spadePatterns, bool isLoading) {
+  /// [hasError] is true when the last analysis failed; it replaces the "not enough data" message, which would be wrong then.
+  static Widget buildSpadeSection(List<Map<String, dynamic>> spadePatterns, bool isLoading, {bool hasError = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -48,18 +49,10 @@ class AiComponents {
         const SizedBox(height: 16),
         if (isLoading)
           const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+        else if (hasError)
+          _buildSpadeMessageCard(icon: Icons.cloud_off_rounded, title: 'Không tải được phân tích', message: 'Kiểm tra kết nối rồi làm mới để thử lại.')
         else if (spadePatterns.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(20)),
-            child: Row(
-              children: [
-                Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.auto_graph_rounded, color: AppTheme.primary, size: 28)),
-                const SizedBox(width: 16),
-                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Chưa đủ dữ liệu', style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 16)), SizedBox(height: 4), Text('Thêm ít nhất 3 giao dịch để xem mẫu chi tiêu tuần tự.', style: TextStyle(color: AppTheme.textGray, fontSize: 13))])),
-              ],
-            ),
-          )
+          _buildSpadeMessageCard(icon: Icons.auto_graph_rounded, title: 'Chưa đủ dữ liệu', message: 'Thêm ít nhất 3 giao dịch để xem mẫu chi tiêu tuần tự.')
         else
           ...List.generate(spadePatterns.length, (i) {
             final p = spadePatterns[i];
@@ -92,6 +85,21 @@ class AiComponents {
             );
           }),
       ],
+    );
+  }
+
+
+  static Widget _buildSpadeMessageCard({required IconData icon, required String title, required String message}) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        children: [
+          Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: AppTheme.primary, size: 28)),
+          const SizedBox(width: 16),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text(message, style: const TextStyle(color: AppTheme.textGray, fontSize: 13))])),
+        ],
+      ),
     );
   }
 

@@ -1,16 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:dio/dio.dart';
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/models/spending_range.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
+import 'package:finance_ai_app/widgets/ai/spending_range_filter.dart';
+import 'package:finance_ai_app/widgets/dialogs/app_dialog.dart';
 import 'package:finance_ai_app/widgets/dialogs/ai_components.dart'; 
 
+/// Asks the user for the days of a custom report range, starting from [initial]; null when the user gives up.
+typedef PickDateRange = Future<DateTimeRange?> Function(BuildContext context, DateTimeRange initial);
+
+/// The date picker offers the same years as the Ledger's.
+const int _pickerFirstYear = 2020;
+const int _pickerLastYear = 2100;
+const int _httpServerError = 500;
+
+Future<DateTimeRange?> _showDateRangePicker(BuildContext context, DateTimeRange initial) {
+  return showDateRangePicker(
+    context: context,
+    firstDate: DateTime(_pickerFirstYear),
+    lastDate: DateTime(_pickerLastYear),
+    initialDateRange: initial,
+    helpText: 'Chọn khoảng thời gian',
+    cancelText: 'Hủy',
+    confirmText: 'Áp dụng',
+    saveText: 'Áp dụng',
+  );
+}
+
 class AITabPage extends StatefulWidget {
-  const AITabPage({super.key});
+  /// [pickDateRange] opens the date range picker; only tests pass another one.
+  const AITabPage({super.key, this.pickDateRange = _showDateRangePicker});
+
+  final PickDateRange pickDateRange;
 
   @override
   State<AITabPage> createState() => _AITabPageState();
@@ -23,6 +51,11 @@ class _AITabPageState extends State<AITabPage> {
   List<Map<String, dynamic>> _savingsGoals = [];
   
   bool _spadeLoading = false;
+  bool _spadeFailed = false;
+  /// Numbers each analysis; an answer that is not the latest one belongs to a filter the user has left.
+  int _spadeRequestId = 0;
+  SpendingPeriod _period = SpendingPeriod.month;
+  SpendingRange? _customRange;
   Map<String, dynamic>? _budgetAdvice;
   bool _adviceLoading = false;
 
@@ -32,6 +65,9 @@ class _AITabPageState extends State<AITabPage> {
   }
   double get _monthIncome => _monthTxs.where((t) => !t.isExpense).fold(0, (s, t) => s + t.amount);
   double get _monthExpense => _monthTxs.where((t) => t.isExpense).fold(0, (s, t) => s + t.amount);
+
+  /// Worked out from the clock each time, so "this week" and "this month" never go stale while the tab stays open.
+  SpendingRange get _range => SpendingRange.of(_period, DateTime.now(), custom: _customRange);
 
   @override
   void initState() {
@@ -53,7 +89,7 @@ class _AITabPageState extends State<AITabPage> {
       SessionService.needRefreshAI.value = false; 
     }
   }
-  Future<void> _load() async {
+  Future<void> _load({bool reportErrors = false}) async {
     final userId = SessionService.currentUserId;
     if (userId == null) {
       if (mounted) setState(() => _isLoading = false);
@@ -76,7 +112,7 @@ class _AITabPageState extends State<AITabPage> {
       _isLoading = false;
     });
     
-    _loadSpadePatterns(txs);
+    _loadSpadePatterns(reportErrors: reportErrors);
     _loadBudgetAdvice(txs);
   }
 
@@ -121,19 +157,77 @@ class _AITabPageState extends State<AITabPage> {
     }
   }
 
-  Future<void> _loadSpadePatterns(List<TransactionModel> txs) async {
-    setState(() => _spadeLoading = true);
+  void _onPeriodSelected(SpendingPeriod period) {
+    if (period == SpendingPeriod.custom) {
+      _pickCustomRange();
+      return;
+    }
+    if (period == _period) return;
+    setState(() => _period = period);
+    _loadSpadePatterns(reportErrors: true);
+  }
+
+  Future<void> _pickCustomRange() async {
+    final current = _range;
+    final picked = await widget.pickDateRange(context, DateTimeRange(start: current.start, end: current.end));
+    if (!mounted || picked == null) return;
+    setState(() {
+      _period = SpendingPeriod.custom;
+      _customRange = SpendingRange.custom(picked.start, picked.end);
+    });
+    _loadSpadePatterns(reportErrors: true);
+  }
+
+  static String _messageOf(Object error) {
+    if (error is! DioException) return 'Đã xảy ra lỗi. Vui lòng thử lại.';
+    final status = error.response?.statusCode;
+    if (status == null) return 'Không kết nối được tới máy chủ phân tích. Vui lòng kiểm tra mạng và thử lại.';
+    if (status >= _httpServerError) return 'Máy chủ phân tích đang gặp sự cố. Vui lòng thử lại sau.';
+    return 'Máy chủ phân tích chưa xử lý được yêu cầu. Vui lòng thử lại sau.';
+  }
+
+  Future<List<Map<String, dynamic>>> _analyze(List<TransactionModel> txs) async {
+    if (!AppConfig.isFull) return _computeLocalPatterns(txs);
+    // Nothing to mine in an empty range, so the AI service is not called for it.
+    if (txs.isEmpty) return const [];
+    final data = txs.map((t) => {'category': t.category, 'amount': t.amount, 'date': t.date.toIso8601String(), 'isExpense': t.isExpense}).toList();
+    return RemoteApiHelper.instance.analyzePatterns(data);
+  }
+
+  /// Mines the spending patterns of the days on screen. Only a call the user asked for ([reportErrors]: a filter change, the
+  /// refresh button, a pull to refresh) opens an error dialog. The tab is built at start-up behind the others, so a failure
+  /// of a background load is logged and shown on the card only.
+  Future<void> _loadSpadePatterns({bool reportErrors = false}) async {
+    final requestId = ++_spadeRequestId;
+    final range = _range;
+    final rangeTxs = _transactions.where((t) => range.contains(t.date)).toList();
+    setState(() {
+      _spadeLoading = true;
+      _spadeFailed = false;
+    });
+
+    List<Map<String, dynamic>>? patterns;
+    Object? failure;
     try {
-      if (AppConfig.isFull) {
-        final data = txs.map((t) => {'category': t.category, 'amount': t.amount, 'date': t.date.toIso8601String(), 'isExpense': t.isExpense}).toList();
-        final patterns = await RemoteApiHelper.instance.analyzePatterns(data);
-        if (mounted) setState(() => _spadePatterns = patterns);
-      } else {
-        if (mounted) setState(() => _spadePatterns = _computeLocalPatterns(txs));
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _spadeLoading = false);
+      patterns = await _analyze(rangeTxs);
+    } catch (e) {
+      failure = e;
+    }
+    // The page is gone, or a newer request has taken over because the filter changed meanwhile: drop this answer.
+    if (!mounted || requestId != _spadeRequestId) return;
+
+    final loaded = patterns;
+    final error = failure;
+    setState(() {
+      if (loaded != null) _spadePatterns = loaded;
+      _spadeFailed = error != null;
+      _spadeLoading = false;
+    });
+    if (error == null) return;
+
+    debugPrint('Lỗi phân tích thói quen chi tiêu: $error');
+    if (reportErrors) {
+      await AppDialog.error(context, title: 'Không phân tích được thói quen chi tiêu', message: _messageOf(error));
     }
   }
 
@@ -164,7 +258,7 @@ class _AITabPageState extends State<AITabPage> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppTheme.mintAccent))
-          : RefreshIndicator(onRefresh: _load, color: AppTheme.mintAccent, backgroundColor: AppTheme.navyLight, child: _buildContent()),
+          : RefreshIndicator(onRefresh: () => _load(reportErrors: true), color: AppTheme.mintAccent, backgroundColor: AppTheme.navyLight, child: _buildContent()),
     );
   }
 
@@ -187,6 +281,7 @@ class _AITabPageState extends State<AITabPage> {
       );
     }
     
+    final range = _range;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -195,8 +290,10 @@ class _AITabPageState extends State<AITabPage> {
         _buildInsightCard(icon: Icons.category_rounded, iconColor: Colors.orange, title: 'Chi nhiều nhất', subtitle: _getTopCategory()), const SizedBox(height: 16),
         _buildInsightCard(icon: Icons.savings_rounded, iconColor: Colors.amber, title: 'Mẹo tiết kiệm', subtitle: _getSavingTip()), const SizedBox(height: 16),
         _buildInsightCard(icon: Icons.water_drop_rounded, iconColor: Colors.blue, title: 'So sánh tuần', subtitle: _getWeeklyComparison()), const SizedBox(height: 24),
-        const Text('Biểu đồ thu chi tuần', style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 16),
-        _buildWeeklyChart(), const SizedBox(height: 24), 
+        const Text('Biểu đồ thu chi tuần', style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 12),
+        SpendingRangeFilter(range: range, isRefreshing: _spadeLoading, onPeriodSelected: _onPeriodSelected, onRefresh: () => _loadSpadePatterns(reportErrors: true)), const SizedBox(height: 16),
+        _buildWeeklyChart(range), const SizedBox(height: 24),
+        AiComponents.buildSpadeSection(_spadePatterns, _spadeLoading, hasError: _spadeFailed), const SizedBox(height: 24), 
         
         AiComponents.build503020Card(_monthTxs, _monthIncome, _monthExpense), 
         const SizedBox(height: 24),
@@ -206,17 +303,14 @@ class _AITabPageState extends State<AITabPage> {
     );
   }
 
-  List<double> _getWeeklyExpenses() {
-    final expenses = List.filled(4, 0.0);
-    for (final tx in _monthTxs.where((t) => t.isExpense)) {
-      int day = tx.date.day;
-      if (day <= 7) expenses[0] += tx.amount;
-      else if (day <= 14) expenses[1] += tx.amount;
-      else if (day <= 21) expenses[2] += tx.amount;
-      else expenses[3] += tx.amount;
-    }
-    return expenses;
-  }
+  /// What was spent in each bar of the chart; income does not count.
+  List<double> _expensesPerBucket(List<SpendingBucket> buckets) => [
+        for (final bucket in buckets)
+          _transactions.where((t) => t.isExpense && bucket.contains(t.date)).fold(0.0, (s, t) => s + t.amount),
+      ];
+
+  /// The four weeks of the current month, whatever period the chart shows.
+  List<double> _getWeeklyExpenses() => _expensesPerBucket(SpendingRange.month(DateTime.now()).buckets);
 
   String _getWeeklyComparison() {
     final amounts = _getWeeklyExpenses();
@@ -227,12 +321,13 @@ class _AITabPageState extends State<AITabPage> {
     return 'Tuần ${maxIdx + 1} có chi tiêu cao nhất: ${_fmt(amounts[maxIdx])}.';
   }
 
-  Widget _buildWeeklyChart() {
-    final weekExpenses = _getWeeklyExpenses();
+  Widget _buildWeeklyChart(SpendingRange range) {
+    final buckets = range.buckets;
+    final weekExpenses = _expensesPerBucket(buckets);
     final maxY = (weekExpenses.reduce((a, b) => a > b ? a : b) * 1.2).clamp(100.0, double.infinity);
 
     return Container(
-      height: 200, padding: const EdgeInsets.all(20),
+      key: ValueKey(range), height: 200, padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(24)),
       child: BarChart(
         BarChartData(
@@ -240,9 +335,9 @@ class _AITabPageState extends State<AITabPage> {
           gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: maxY / 4, getDrawingHorizontalLine: (v) => FlLine(color: AppTheme.textGray.withValues(alpha: 0.1), strokeWidth: 1)),
           titlesData: FlTitlesData(
             leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Padding(padding: const EdgeInsets.only(top: 8), child: Text('W${v.toInt() + 1}', style: const TextStyle(color: AppTheme.textGray, fontSize: 12))))),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Padding(padding: const EdgeInsets.only(top: 8), child: Text(buckets[v.toInt()].label, style: const TextStyle(color: AppTheme.textGray, fontSize: 12))))),
           ),
-          barGroups: List.generate(4, (i) => BarChartGroupData(
+          barGroups: List.generate(buckets.length, (i) => BarChartGroupData(
             x: i, barRods: [BarChartRodData(toY: weekExpenses[i], color: AppTheme.mintAccent, width: 20, borderRadius: BorderRadius.circular(6), backDrawRodData: BackgroundBarChartRodData(show: true, toY: maxY, color: AppTheme.navyDark))],
           )),
         ),

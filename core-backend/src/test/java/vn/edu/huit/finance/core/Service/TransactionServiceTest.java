@@ -26,6 +26,7 @@ import vn.edu.huit.finance.core.Dto.TransactionResponseDto;
 import vn.edu.huit.finance.core.Dto.TransactionUpdateRequestDto;
 import vn.edu.huit.finance.core.Entity.Category;
 import vn.edu.huit.finance.core.Entity.Receipt;
+import vn.edu.huit.finance.core.Entity.ReceiptStatus;
 import vn.edu.huit.finance.core.Entity.Transaction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.InsufficientBalanceException;
@@ -76,6 +77,7 @@ class TransactionServiceTest {
     @Mock private AuditLogService auditLogService;
     @Mock private CurrentUserProvider currentUserProvider;
     @Mock private ReceiptProcessingService receiptProcessingService;
+    @Mock private BudgetAlertService budgetAlertService;
     @Mock private EntityManager entityManager;
     @InjectMocks private TransactionService service;
 
@@ -465,6 +467,18 @@ class TransactionServiceTest {
     }
 
     @Test
+    void theEditedTransactionAnswersWithTheStatusOfItsReceipt() {
+        Transaction transaction = aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
+        transaction.setReceipt(receipt(ReceiptStatus.SUCCESS.name(), transaction));
+        TransactionUpdateRequestDto request = update();
+        request.setNote("Bún chả");
+
+        TransactionResponseDto response = service.updateTransaction(TX_ID, request);
+
+        assertEquals(ReceiptStatus.SUCCESS.name(), response.getReceiptStatus());
+    }
+
+    @Test
     void theResponseDescribesTheTransactionAfterTheChange() {
         aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
         TransactionUpdateRequestDto request = updateAmount("150000");
@@ -756,6 +770,20 @@ class TransactionServiceTest {
     }
 
     @Test
+    void myTransactionsCarryTheStatusOfTheirReceiptAndNoneWhenThereIsNoReceipt() {
+        signedInAsAlice();
+        Transaction scanned = transaction(alice, HUNDRED_THOUSAND, true);
+        scanned.setReceipt(receipt(ReceiptStatus.FAILED.name(), scanned));
+        Transaction typedIn = transaction(alice, HUNDRED_THOUSAND, true);
+        when(transactionRepo.findByUserIdOrderByTransactionDateDesc(ALICE_ID)).thenReturn(List.of(scanned, typedIn));
+
+        List<TransactionResponseDto> mine = service.getMyTransactions();
+
+        assertEquals(ReceiptStatus.FAILED.name(), mine.get(0).getReceiptStatus());
+        assertNull(mine.get(1).getReceiptStatus());
+    }
+
+    @Test
     void theFilterSearchesTheCallersTransactionsAndSortsByTheGivenFieldOnly() {
         signedInAsAlice();
         when(transactionRepo.filterTransactions(eq(ALICE_ID), any(), any(), any(), any(), any(Sort.class)))
@@ -845,6 +873,25 @@ class TransactionServiceTest {
         assertEquals(0, page.getValue().getPageNumber());
         assertEquals(5, page.getValue().getPageSize());
         assertEquals(Sort.by("transactionDate").descending(), page.getValue().getSort());
+    }
+
+    @Test
+    void everyTransactionOfTheDashboardCarriesTheStatusOfItsReceipt() {
+        signedInAsAlice();
+        Transaction recent = transaction(alice, HUNDRED_THOUSAND, true);
+        recent.setReceipt(receipt(ReceiptStatus.PENDING.name(), recent));
+        Transaction biggest = transaction(alice, new BigDecimal("900000"), false);
+        biggest.setReceipt(receipt(ReceiptStatus.SUCCESS.name(), biggest));
+        Transaction sale = transaction(alice, new BigDecimal("5000"), true);
+        when(transactionRepo.findByUserId(eq(ALICE_ID), any(Pageable.class))).thenReturn(List.of(recent));
+        when(transactionRepo.findTopByUserIdOrderByAmountDesc(ALICE_ID)).thenReturn(biggest);
+        when(transactionRepo.findByUserIdAndVoucherCodeNotNull(ALICE_ID)).thenReturn(List.of(sale));
+
+        AppDashboardResponseDto dashboard = service.getMyDashboard();
+
+        assertEquals(ReceiptStatus.PENDING.name(), dashboard.getRecentTransactions().get(0).getReceiptStatus());
+        assertEquals(ReceiptStatus.SUCCESS.name(), dashboard.getBiggestTransaction().getReceiptStatus());
+        assertNull(dashboard.getSaleTransactions().get(0).getReceiptStatus());
     }
 
     @Test
@@ -1000,6 +1047,78 @@ class TransactionServiceTest {
         assertEquals("Thiếu danh mục (categoryId hoặc categoryName)",
                 assertThrows(RuntimeException.class, () -> service.createMyTransaction(checkout(true, "10000"))).getMessage());
         assertMoney("1000000", alice.getWalletBalance());
+    }
+
+    // ------------------------------------------------------------------------------------------- budget notifications
+
+    @Test
+    void aNewTransactionIsHandedToTheBudgetAlertRightAfterItIsSaved() {
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+        TransactionRequestDto request = checkout(true, "150000");
+        request.setCategoryId(FOOD_ID);
+
+        service.createMyTransaction(request);
+
+        ArgumentCaptor<Transaction> saved = ArgumentCaptor.forClass(Transaction.class);
+        InOrder inOrder = inOrder(transactionRepo, budgetAlertService);
+        inOrder.verify(transactionRepo).save(saved.capture());
+        inOrder.verify(budgetAlertService).notifyAfterCreate(saved.getValue());
+    }
+
+    @Test
+    void aCheckoutTheWalletCannotCarryRaisesNoBudgetAlert() {
+        alice.setWalletBalance(new BigDecimal("50000"));
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+        TransactionRequestDto request = checkout(true, "50000.01");
+        request.setCategoryId(FOOD_ID);
+
+        assertThrows(RuntimeException.class, () -> service.createMyTransaction(request));
+
+        verifyNoInteractions(budgetAlertService);
+    }
+
+    @Test
+    void anEditedTransactionIsHandedToTheBudgetAlertWithWhatItCountedForBeforeTheEdit() {
+        Transaction transaction = aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
+        LocalDateTime dateBefore = transaction.getTransactionDate();
+        Category transport = category(20L, "Di chuyển", "EXPENSE");
+        when(categoryRepo.findById(20L)).thenReturn(Optional.of(transport));
+        TransactionUpdateRequestDto request = updateAmount("250000");
+        request.setCategoryId(20L);
+        request.setTransactionDate(LocalDateTime.of(2026, 9, 5, 8, 0));
+
+        service.updateTransaction(TX_ID, request);
+
+        ArgumentCaptor<BudgetAlertService.SpendingSnapshot> before = ArgumentCaptor.forClass(BudgetAlertService.SpendingSnapshot.class);
+        verify(budgetAlertService).notifyAfterUpdate(same(transaction), before.capture());
+        // What the transaction counted for until this edit (100,000 on food), not what it counts for now.
+        assertEquals(new BudgetAlertService.SpendingSnapshot(HUNDRED_THOUSAND, true, dateBefore.toLocalDate(), FOOD_ID),
+                before.getValue());
+        assertMoney("250000", transaction.getAmount());
+        assertSame(transport, transaction.getCategory());
+    }
+
+    @Test
+    void theBudgetAlertOfAnEditRunsAfterTheTransactionIsSaved() {
+        Transaction transaction = aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
+
+        service.updateTransaction(TX_ID, updateAmount("150000"));
+
+        InOrder inOrder = inOrder(transactionRepo, budgetAlertService);
+        inOrder.verify(transactionRepo).save(transaction);
+        inOrder.verify(budgetAlertService).notifyAfterUpdate(same(transaction), any());
+    }
+
+    @Test
+    void anEditTheWalletCannotAffordRaisesNoBudgetAlert() {
+        alice.setWalletBalance(new BigDecimal("99999.99"));
+        aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
+
+        assertThrows(InsufficientBalanceException.class, () -> service.updateTransaction(TX_ID, updateAmount("200000")));
+
+        verifyNoInteractions(budgetAlertService);
     }
 
     // ------------------------------------------------------------------------------------------------ structural guards

@@ -118,4 +118,78 @@ class TransactionRepositoryTest {
 
         assertTrue(statistics().getPrepareStatementCount() > 1, "lazy associations cost one statement each");
     }
+
+    // ------------------------------------------------------------------------------------ what a user spent in a period
+
+    private static final LocalDateTime SEPTEMBER_START = LocalDateTime.of(2026, 9, 1, 0, 0);
+    private static final LocalDateTime OCTOBER_START = LocalDateTime.of(2026, 10, 1, 0, 0);
+
+    private Transaction persistTransaction(User owner, Category category, String amount, boolean expense, LocalDateTime date) {
+        Transaction transaction = newTransaction(owner, category);
+        transaction.setAmount(new BigDecimal(amount));
+        transaction.setExpense(expense);
+        transaction.setTransactionDate(date);
+        return entityManager.persistAndFlush(transaction);
+    }
+
+    private Category persistCategory(String name) {
+        Category category = new Category();
+        category.setName(name);
+        category.setType("EXPENSE");
+        return entityManager.persistAndFlush(category);
+    }
+
+    private static void assertMoney(String expected, BigDecimal actual) {
+        assertNotNull(actual, "expected " + expected + " but there was no sum");
+        assertEquals(0, new BigDecimal(expected).compareTo(actual), "expected " + expected + " but was " + actual);
+    }
+
+    /** The two expenses of the fixture (100,000 each, September 1) plus what one test adds around the edges of September. */
+    private void persistNoiseAroundSeptember(User alice, Category food, Category transport) {
+        User bob = new User();
+        bob.setUsername("bob");
+        bob.setPassword("hash");
+        bob.setEmail("bob@example.com");
+        bob.setPhone("0900000002");
+        entityManager.persistAndFlush(bob);
+
+        persistTransaction(alice, transport, "50000", true, OCTOBER_START.minusSeconds(1));   // last second: counted
+        persistTransaction(alice, food, "70000", false, SEPTEMBER_START.plusDays(1));         // income: never counted
+        persistTransaction(alice, food, "30000", true, OCTOBER_START);                        // the end is exclusive
+        persistTransaction(alice, food, "20000", true, SEPTEMBER_START.minusSeconds(1));      // before the start
+        persistTransaction(bob, food, "999999", true, SEPTEMBER_START.plusDays(1));           // somebody else's
+    }
+
+    @Test
+    void sumExpensesBetween_addsUpOnlyTheExpensesOfThatUserInsideTheRange() {
+        User alice = withReceipt.getUser();
+        persistNoiseAroundSeptember(alice, withReceipt.getCategory(), persistCategory("Di chuyển"));
+
+        BigDecimal spent = transactionRepository.sumExpensesBetween(alice.getId(), SEPTEMBER_START, OCTOBER_START);
+
+        assertMoney("250000", spent); // 2 x 100,000 of the fixture + 50,000 on the last second of September
+    }
+
+    @Test
+    void sumExpensesInCategoryBetween_isRestrictedToOneCategory() {
+        User alice = withReceipt.getUser();
+        Category food = withReceipt.getCategory();
+        Category transport = persistCategory("Di chuyển");
+        persistNoiseAroundSeptember(alice, food, transport);
+
+        assertMoney("200000", transactionRepository.sumExpensesInCategoryBetween(
+                alice.getId(), food.getId(), SEPTEMBER_START, OCTOBER_START));
+        assertMoney("50000", transactionRepository.sumExpensesInCategoryBetween(
+                alice.getId(), transport.getId(), SEPTEMBER_START, OCTOBER_START));
+    }
+
+    @Test
+    void theSums_areNullWhenNothingMatches_soTheCallerHasToTreatNullAsZero() {
+        User alice = withReceipt.getUser();
+        Category food = withReceipt.getCategory();
+
+        assertNull(transactionRepository.sumExpensesBetween(alice.getId(), OCTOBER_START, OCTOBER_START.plusDays(31)));
+        assertNull(transactionRepository.sumExpensesInCategoryBetween(
+                alice.getId(), food.getId(), OCTOBER_START, OCTOBER_START.plusDays(31)));
+    }
 }

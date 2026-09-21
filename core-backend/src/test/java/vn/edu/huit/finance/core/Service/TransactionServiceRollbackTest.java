@@ -76,6 +76,8 @@ class TransactionServiceRollbackTest {
     @SpyBean private ReceiptRepository receiptRepository;
     @MockBean private CurrentUserProvider currentUserProvider;
     @MockBean private AuditLogService auditLogService;
+    // The alert has its own end-to-end test on H2 (BudgetAlertRollbackTest); here it would only add statements.
+    @MockBean private BudgetAlertService budgetAlertService;
 
     private Long aliceId;
     private Category food;

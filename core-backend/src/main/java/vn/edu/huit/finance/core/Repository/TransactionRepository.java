@@ -92,4 +92,19 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     @Query("SELECT t.user.username, SUM(t.amount) as totalSpent FROM Transaction t WHERE t.isExpense = true GROUP BY t.user.id, t.user.username ORDER BY totalSpent DESC")
     List<Object[]> findTopSpenders(org.springframework.data.domain.Pageable pageable);
+
+    /** What a user spent (expenses only) from rangeStart, inclusive, to rangeEnd, exclusive; null when there is nothing. */
+    @Query("SELECT SUM(t.amount) FROM Transaction t WHERE t.user.id = :userId AND t.isExpense = true " +
+           "AND t.transactionDate >= :rangeStart AND t.transactionDate < :rangeEnd")
+    BigDecimal sumExpensesBetween(@Param("userId") Long userId,
+                                  @Param("rangeStart") java.time.LocalDateTime rangeStart,
+                                  @Param("rangeEnd") java.time.LocalDateTime rangeEnd);
+
+    /** Same as {@link #sumExpensesBetween}, restricted to one category. */
+    @Query("SELECT SUM(t.amount) FROM Transaction t WHERE t.user.id = :userId AND t.isExpense = true " +
+           "AND t.category.id = :categoryId AND t.transactionDate >= :rangeStart AND t.transactionDate < :rangeEnd")
+    BigDecimal sumExpensesInCategoryBetween(@Param("userId") Long userId,
+                                            @Param("categoryId") Long categoryId,
+                                            @Param("rangeStart") java.time.LocalDateTime rangeStart,
+                                            @Param("rangeEnd") java.time.LocalDateTime rangeEnd);
 }

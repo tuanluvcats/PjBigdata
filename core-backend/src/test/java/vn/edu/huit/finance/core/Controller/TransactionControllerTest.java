@@ -39,6 +39,7 @@ import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
+import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 import vn.edu.huit.finance.core.Service.TransactionService;
 
 import java.lang.reflect.Method;
@@ -77,6 +78,8 @@ class TransactionControllerTest {
     private static final String BAD_TOKEN = "invalid.jwt.token";
     private static final String USERNAME = "alice";
     private static final String VALIDATION_PREFIX = "Dữ liệu không hợp lệ";
+    /** The name as it goes over the wire; the mobile app reads it from the {@code receiptStatus} key. */
+    private static final String RECEIPT_STATUS = "SUCCESS";
 
     @Autowired private MockMvc mockMvc;
 
@@ -85,6 +88,7 @@ class TransactionControllerTest {
     @MockBean private CustomUserDetailsService userDetailsService;
     @MockBean private UserRepository userRepository;
     @MockBean private LoginAttemptService loginAttemptService;
+    @MockBean private TokenBlacklistService tokenBlacklistService;
 
     @BeforeEach
     void stubJwtForAlice() {
@@ -115,7 +119,7 @@ class TransactionControllerTest {
     private static TransactionResponseDto sample() {
         return TransactionResponseDto.builder()
                 .id(100L).title("Bún bò").amount(new BigDecimal("150000")).date(LocalDateTime.of(2026, 9, 1, 12, 0))
-                .category("Ăn uống").isExpense(true).build();
+                .category("Ăn uống").isExpense(true).receiptStatus(RECEIPT_STATUS).build();
     }
 
     // ------------------------------------------------------------------------------------------------ authentication
@@ -165,7 +169,8 @@ class TransactionControllerTest {
                 .andExpect(jsonPath("$.data.id").value(100))
                 .andExpect(jsonPath("$.data.amount").value(150000))
                 .andExpect(jsonPath("$.data.category").value("Ăn uống"))
-                .andExpect(jsonPath("$.data.isExpense").value(true));
+                .andExpect(jsonPath("$.data.isExpense").value(true))
+                .andExpect(jsonPath("$.data.receiptStatus").value(RECEIPT_STATUS));
 
         ArgumentCaptor<TransactionUpdateRequestDto> sent = ArgumentCaptor.forClass(TransactionUpdateRequestDto.class);
         verify(transactionService).updateTransaction(eq(100L), sent.capture());
@@ -346,7 +351,8 @@ class TransactionControllerTest {
 
         mockMvc.perform(signedIn(request(HttpMethod.GET, URL + "/mine?userId=999")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].id").value(100));
+                .andExpect(jsonPath("$.data[0].id").value(100))
+                .andExpect(jsonPath("$.data[0].receiptStatus").value(RECEIPT_STATUS));
 
         verify(transactionService).getMyTransactions();
         verifyNoMoreInteractions(transactionService);
@@ -454,6 +460,7 @@ class TransactionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Load trang chủ App thành công"))
                 .andExpect(jsonPath("$.data.recentTransactions[0].id").value(100))
+                .andExpect(jsonPath("$.data.recentTransactions[0].receiptStatus").value(RECEIPT_STATUS))
                 .andExpect(jsonPath("$.data.biggestTransaction.id").value(100))
                 .andExpect(jsonPath("$.data.saleTransactions").isEmpty());
 

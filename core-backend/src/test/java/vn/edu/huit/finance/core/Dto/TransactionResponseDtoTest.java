@@ -2,9 +2,11 @@ package vn.edu.huit.finance.core.Dto;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import vn.edu.huit.finance.core.Entity.Receipt;
+import vn.edu.huit.finance.core.Entity.ReceiptStatus;
 import vn.edu.huit.finance.core.Entity.Transaction;
 
 import java.math.BigDecimal;
@@ -65,5 +67,21 @@ class TransactionResponseDtoTest {
 
         assertEquals("https://img.example.com/1.jpg", TransactionResponseDto.from(withReceipt).getImageUrl());
         assertNull(TransactionResponseDto.from(transaction("Bún bò")).getImageUrl());
+    }
+
+    @ParameterizedTest
+    @EnumSource(ReceiptStatus.class)
+    void theReceiptStatusIsTheNameOfTheStatusOfTheReceipt(ReceiptStatus status) {
+        Transaction withReceipt = transaction("Bún bò");
+        Receipt receipt = new Receipt();
+        receipt.setStatus(status.name());
+        withReceipt.setReceipt(receipt);
+
+        assertEquals(status.name(), TransactionResponseDto.from(withReceipt).getReceiptStatus());
+    }
+
+    @Test
+    void withoutAReceiptThereIsNoReceiptStatus() {
+        assertNull(TransactionResponseDto.from(transaction("Bún bò")).getReceiptStatus());
     }
 }

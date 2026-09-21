@@ -32,6 +32,7 @@ import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Security.Roles;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
+import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 import vn.edu.huit.finance.core.Service.TransactionService;
 
 import java.lang.reflect.Method;
@@ -66,6 +67,7 @@ class AdminTransactionControllerTest {
     @MockBean private CustomUserDetailsService userDetailsService;
     @MockBean private UserRepository userRepository;
     @MockBean private LoginAttemptService loginAttemptService;
+    @MockBean private TokenBlacklistService tokenBlacklistService;
 
     @BeforeEach
     void stubTokens() {

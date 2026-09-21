@@ -4,7 +4,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
@@ -14,13 +16,17 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.UserRepository;
+import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
+@Slf4j
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
+
+    private static final String MSG_TOKEN_REVOKED = "Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.";
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -28,23 +34,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private CustomUserDetailsService userDetailsService;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private TokenBlacklistService tokenBlacklistService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String requestPath = request.getServletPath();
-        // Public auth endpoints skip JWT parsing; change-password needs it to identify the caller.
-        if (requestPath.startsWith("/api/auth/") && !AuthPaths.CHANGE_PASSWORD_URL.equals(requestPath)) {
+        // Public auth endpoints skip JWT parsing; change-password and logout need it to identify the caller.
+        if (AuthPaths.isPublic(requestPath)) {
             filterChain.doFilter(request, response);
-            return; 
+            return;
         }
-        
-        String authHeader = request.getHeader("Authorization");
-        String token = null;
+
+        String token = BearerToken.extract(request.getHeader(HttpHeaders.AUTHORIZATION)).orElse(null);
         String username = null;
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            token = authHeader.substring(7);
+        if (token != null) {
             try {
                 username = jwtUtil.extractUsername(token);
             } catch (Exception e) {
@@ -54,6 +60,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             if (jwtUtil.validateToken(token)) {
+                // Signed and not expired, but revoked by a logout or a password change: 401, not the 403 of an unknown token.
+                if (tokenBlacklistService.isRevoked(token)) {
+                    log.warn("Rejected a revoked token, username={}", username);
+                    response.sendError(HttpStatus.UNAUTHORIZED.value(), MSG_TOKEN_REVOKED);
+                    return;
+                }
                 try {
                     User user = userDetailsService.loadApplicationUser(username);
                     if (!user.isActive() || "ROLE_LOCKED".equals(user.getRole())) {

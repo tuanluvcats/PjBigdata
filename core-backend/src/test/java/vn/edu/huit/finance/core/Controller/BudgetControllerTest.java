@@ -32,6 +32,7 @@ import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Service.BudgetService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
+import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -83,6 +84,7 @@ class BudgetControllerTest {
     @MockBean private CustomUserDetailsService userDetailsService;
     @MockBean private UserRepository userRepository;
     @MockBean private LoginAttemptService loginAttemptService;
+    @MockBean private TokenBlacklistService tokenBlacklistService;
 
     private static String json(String... fields) {
         return "{" + String.join(",", fields) + "}";
