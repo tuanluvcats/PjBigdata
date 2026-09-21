@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/models/spending_range.dart';
+import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/screens/ai/ai_tab_page.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/services/session_service.dart';
@@ -17,6 +18,7 @@ import 'package:finance_ai_app/widgets/ai/spending_range_filter.dart';
 
 import '../../helpers/captured_logs.dart';
 import '../../helpers/fake_backend.dart';
+import '../../helpers/fake_local_store.dart';
 
 const String _weekLabel = 'Tuần này';
 const String _monthLabel = 'Tháng này';
@@ -140,6 +142,8 @@ void main() {
   setUpAll(() async {
     await initializeDateFormatting('vi_VN');
     RemoteApiHelper.instance.init(httpClientAdapter: backend);
+    // The list of transactions also reads the ones waiting to be sent; the fake keeps the test away from a real database.
+    AppRepository.instance.localStore = FakeLocalStore();
   });
 
   setUp(() async {

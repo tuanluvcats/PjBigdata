@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:finance_ai_app/models/user_model.dart';
+import 'package:finance_ai_app/models/sync_status.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/models/category_model.dart';
 import 'package:finance_ai_app/models/wallet_model.dart';
@@ -14,13 +15,18 @@ class SqfliteHelper {
   static final SqfliteHelper instance = SqfliteHelper._();
 
   static const String _dbName = 'finance_ai_app.db';
-  static const int _dbVersion = 5;
+  static const int _dbVersion = 6;
 
   static const String usersTable = 'users';
   static const String transactionsTable = 'transactions';
   static const String categoriesTable = 'categories';
   static const String walletsTable = 'wallets';
   static const String budgetsTable = 'budgets';
+
+  /// Column definitions of the sync state of a transaction (version 6). Rows that already exist count as synced.
+  static const String _clientIdColumnDef = '${TransactionModel.columnClientId} TEXT';
+  static final String _syncStatusColumnDef =
+      "${TransactionModel.columnSyncStatus} TEXT NOT NULL DEFAULT '${SyncStatus.synced.dbValue}'";
 
   Database? _database;
 
@@ -67,7 +73,9 @@ CREATE TABLE $transactionsTable (
   date TEXT NOT NULL,
   is_expense INTEGER NOT NULL,
   icon_name TEXT NOT NULL DEFAULT 'default',
-  wallet_id INTEGER
+  wallet_id INTEGER,
+  $_clientIdColumnDef,
+  $_syncStatusColumnDef
 )
 ''');
 
@@ -153,6 +161,23 @@ CREATE TABLE IF NOT EXISTS $budgetsTable (
           if (!hasAddress) {
             await db.execute(
               'ALTER TABLE $usersTable ADD COLUMN address TEXT',
+            );
+          }
+        }
+
+        if (oldVersion < 6) {
+          final columns = await db.rawQuery(
+            'PRAGMA table_info($transactionsTable)',
+          );
+          bool hasColumn(String name) => columns.any((c) => c['name'] == name);
+          if (!hasColumn(TransactionModel.columnClientId)) {
+            await db.execute(
+              'ALTER TABLE $transactionsTable ADD COLUMN $_clientIdColumnDef',
+            );
+          }
+          if (!hasColumn(TransactionModel.columnSyncStatus)) {
+            await db.execute(
+              'ALTER TABLE $transactionsTable ADD COLUMN $_syncStatusColumnDef',
             );
           }
         }
@@ -260,6 +285,42 @@ CREATE TABLE IF NOT EXISTS $budgetsTable (
       orderBy: 'date DESC',
     );
     return rows.map(TransactionModel.fromDbMap).toList();
+  }
+
+  /// The transactions of the user that the server has not confirmed (waiting to be sent, or failed), newest first.
+  Future<List<TransactionModel>> getUnsyncedTransactions(int userId) async {
+    final db = await database;
+    final rows = await db.query(
+      transactionsTable,
+      where: 'user_id = ? AND ${TransactionModel.columnSyncStatus} != ?',
+      whereArgs: [userId, SyncStatus.synced.dbValue],
+      orderBy: 'date DESC',
+    );
+    return rows.map(TransactionModel.fromDbMap).toList();
+  }
+
+  /// Moves the transaction of the user with this clientId to [status]. Returns how many rows changed.
+  Future<int> updateTransactionSyncStatus(
+    int userId,
+    String clientId,
+    SyncStatus status,
+  ) async {
+    final db = await database;
+    return db.update(
+      transactionsTable,
+      {TransactionModel.columnSyncStatus: status.dbValue},
+      where: 'user_id = ? AND ${TransactionModel.columnClientId} = ?',
+      whereArgs: [userId, clientId],
+    );
+  }
+
+  Future<int> deleteTransactionByClientId(int userId, String clientId) async {
+    final db = await database;
+    return db.delete(
+      transactionsTable,
+      where: 'user_id = ? AND ${TransactionModel.columnClientId} = ?',
+      whereArgs: [userId, clientId],
+    );
   }
 
   Future<int> insertCategory(CategoryModel category) async {

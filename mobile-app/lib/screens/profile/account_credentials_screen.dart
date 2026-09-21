@@ -1,12 +1,18 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/core/utils/password_policy.dart';
 import 'package:finance_ai_app/models/user_model.dart';
+import 'package:finance_ai_app/services/remote_api_helper.dart';
+import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/services/sqflite_helper.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/widgets/common/custom_text_field.dart';
 import 'package:finance_ai_app/widgets/common/primary_button.dart';
+import 'package:finance_ai_app/widgets/dialogs/app_dialog.dart';
 
 enum _EditingField { email, password }
 
@@ -21,6 +27,13 @@ class AccountCredentialsScreen extends StatefulWidget {
 }
 
 class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
+  /// Shown instead of the real password in full mode: the server never sends it.
+  static const String _serverPasswordMask = '********';
+  static const String _changePasswordFailedTitle = 'Đổi mật khẩu thất bại';
+  static const String _sessionExpiredMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+  static const String _noConnectionMessage = 'Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.';
+  static const String _genericFailureMessage = 'Đã xảy ra lỗi. Vui lòng thử lại.';
+
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
@@ -77,6 +90,7 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
   }
 
   String _maskPassword(String password) {
+    if (AppConfig.isFull) return _serverPasswordMask;
     if (password.isEmpty) return '';
     final clampedLength = password.length > 12 ? 12 : password.length;
     return List.filled(clampedLength, '*').join();
@@ -163,7 +177,8 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
       );
       return;
     }
-    if (currentPassword != current.password) {
+    // In full mode the server never sends the password, so only the server can tell that the old one is wrong.
+    if (!AppConfig.isFull && currentPassword != current.password) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Mật khẩu cũ không đúng.')),
       );
@@ -184,8 +199,9 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
     }
 
     if (AppConfig.isFull) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đổi mật khẩu chưa hỗ trợ trên server (chỉ ở bản demo).')),
+      await _changePasswordOnServer(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
       );
       return;
     }
@@ -206,6 +222,60 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
         SnackBar(content: Text('Đổi mật khẩu thất bại: $e')),
       );
     }
+  }
+
+  /// Full mode: PUT /api/auth/change-password. The server checks the old password; on failure the form stays open with
+  /// what the user typed, on success it closes. The token that made the call is revoked by the server, the next request
+  /// renews it silently (see the 401 interceptor of RemoteApiHelper).
+  Future<void> _changePasswordOnServer({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    if (SessionService.currentUserId == null) {
+      await AppDialog.error(
+        context,
+        title: _changePasswordFailedTitle,
+        message: _sessionExpiredMessage,
+      );
+      return;
+    }
+
+    try {
+      await RemoteApiHelper.instance.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+    } catch (e) {
+      debugPrint('Đổi mật khẩu thất bại: $e');
+      if (!mounted) return;
+      await AppDialog.error(
+        context,
+        title: _changePasswordFailedTitle,
+        message: _messageOf(e),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _editingField = null);
+    await AppDialog.success(
+      context,
+      title: 'Đổi mật khẩu thành công',
+      message: 'Mật khẩu mới đã được áp dụng cho tài khoản của bạn.',
+    );
+  }
+
+  static String _messageOf(Object error) {
+    if (error is! DioException) return _genericFailureMessage;
+
+    final status = error.response?.statusCode;
+    if (status == HttpStatus.unauthorized || status == HttpStatus.forbidden) {
+      return _sessionExpiredMessage;
+    }
+    final data = error.response?.data;
+    final serverMessage = (data is Map ? data['message'] : null)?.toString().trim();
+    if (serverMessage != null && serverMessage.isNotEmpty) return serverMessage;
+    return error.response == null ? _noConnectionMessage : _genericFailureMessage;
   }
 
   Widget _buildEditableInfoRow({

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:finance_ai_app/config/app_config.dart';
@@ -20,8 +21,8 @@ class RemoteApiHelper {
 
   bool _initialized = false;
   final ValueNotifier<int> dataChangedNotifier = ValueNotifier(0);
-  /// [httpClientAdapter] replaces the real network layer of the core API and of the AI service; only tests pass it, the app
-  /// calls init() with no arguments.
+  /// [httpClientAdapter] replaces the real network layer of the core API, of the AI service and of the token refresh; only
+  /// tests pass it, the app calls init() with no arguments.
   void init({HttpClientAdapter? httpClientAdapter}) {
     if (_initialized) return;
     _initialized = true;
@@ -48,10 +49,12 @@ class RemoteApiHelper {
           
           if (refreshToken != null) {
            try {
+              // Same base as _dio: the paths below already start with /api, so adding apiVersion here would call /api/api/...
               final refreshDio = Dio(BaseOptions(
-                baseUrl: AppConfig.apiBaseUrl + AppConfig.apiVersion,
+                baseUrl: AppConfig.apiBaseUrl,
                 headers: {'Content-Type': 'application/json'},
               )); 
+              if (httpClientAdapter != null) refreshDio.httpClientAdapter = httpClientAdapter;
               final res = await refreshDio.post(
                 '/api/auth/refresh',
                 data: {'refreshToken': refreshToken},
@@ -377,6 +380,9 @@ Future<List<Map<String, dynamic>>> fetchCategories() async {
     });
   }
 
+  /// Changes the password of the logged-in user (the owner comes from the login token). The server answers 400 with a
+  /// readable message when [currentPassword] is wrong or [newPassword] breaks the policy, and revokes the access token
+  /// that made the call: the next request gets a 401 and the interceptor renews the token with the stored refresh token.
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -385,6 +391,26 @@ Future<List<Map<String, dynamic>>> fetchCategories() async {
       'oldPassword': currentPassword,
       'newPassword': newPassword,
     });
+  }
+
+  /// Longest the app waits for the server to revoke the tokens: signing out must not hang on a bad network.
+  static const Duration _logoutTimeout = Duration(seconds: 5);
+
+  /// Asks the server to revoke the stored access token and refresh token (POST /api/auth/logout). Best effort: a network
+  /// error, a timeout, a 401 or a 5xx is only logged and never thrown, so the caller can always clear the local session
+  /// and go to the login screen. Call it BEFORE SessionService.clearSession(), the request needs the stored tokens.
+  Future<void> logout() async {
+    if (SessionService.currentToken == null) return;
+    final refreshToken = SessionService.currentRefreshToken;
+    try {
+      await _dio
+          .post('/api/auth/logout', data: {'refreshToken': ?refreshToken})
+          .timeout(_logoutTimeout);
+    } on DioException catch (e) {
+      debugPrint('Logout: the server did not revoke the tokens (${e.response?.statusCode ?? e.type.name}).');
+    } on TimeoutException {
+      debugPrint('Logout: no answer from the server within ${_logoutTimeout.inSeconds}s.');
+    }
   }
 
   Future<List<Map<String, dynamic>>> getNotifications() async {

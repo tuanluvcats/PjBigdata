@@ -10,12 +10,18 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 @Audited
 @Entity
-@Table(name = "transactions")
+@Table(name = "transactions", uniqueConstraints = @UniqueConstraint(
+        name = "uk_transactions_user_client_id",
+        columnNames = {"user_id", "client_id"}))
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class Transaction extends BaseEntity {
+
+    /** Widest client id the column holds; the checkout request refuses a longer one. */
+    public static final int CLIENT_ID_MAX_LENGTH = 64;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -62,5 +68,13 @@ public class Transaction extends BaseEntity {
     private Receipt receipt;
     @Column(name = "raw_receipt_data", columnDefinition = "TEXT")
     private String rawReceiptData;
+
+    /**
+     * Idempotency key the client made up for one attempt to save this transaction, unique per user. Null when the
+     * transaction was created without one (every older row, the payment webhook's transactions); a null is never a
+     * duplicate of another null.
+     */
+    @Column(name = "client_id", length = CLIENT_ID_MAX_LENGTH)
+    private String clientId;
 
 }

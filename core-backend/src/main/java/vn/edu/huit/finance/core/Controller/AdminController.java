@@ -23,7 +23,7 @@ import vn.edu.huit.finance.core.Repository.*;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.BackupService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
-import vn.edu.huit.finance.core.Service.ReceiptProcessingService;
+import vn.edu.huit.finance.core.Service.TransactionService;
 import vn.edu.huit.finance.core.Service.UserService;
 
 import java.math.BigDecimal;
@@ -47,7 +47,7 @@ public class AdminController {
     @Autowired private ReceiptRepository receiptRepo;
     @Autowired private BackupService backupService;
     @Autowired private UserService userService;
-    @Autowired private ReceiptProcessingService receiptProcessingService;
+    @Autowired private TransactionService transactionService;
     @Autowired private EntityManager entityManager;
     @Autowired private SubscriptionPlanRepository subscriptionPlanRepository;
     @Autowired private ActionLogRepository actionLogRepository;
@@ -163,7 +163,7 @@ public class AdminController {
 
     @PostMapping("/receipts/approve/{id}")
     public String approveReceipt(@PathVariable Long id) {
-        receiptProcessingService.approveReceipt(id);
+        transactionService.approveReceipt(id);
         return "redirect:/admin/receipts";
     }
 

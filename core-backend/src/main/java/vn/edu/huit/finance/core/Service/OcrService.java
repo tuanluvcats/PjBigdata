@@ -217,8 +217,11 @@ public class OcrService {
         }
     }
 
-    /** Positive, plausible and rounded to two decimals; null otherwise (a zero total means "the AI read nothing"). */
-    private static BigDecimal validTotal(BigDecimal value) {
+    /**
+     * Positive, plausible and rounded to two decimals; null otherwise (a zero total means "the AI read nothing").
+     * TransactionService applies the same rule to the total of a receipt it is about to approve.
+     */
+    static BigDecimal validTotal(BigDecimal value) {
         if (value == null || value.signum() <= 0 || value.compareTo(MAX_TOTAL) > 0) {
             return null;
         }

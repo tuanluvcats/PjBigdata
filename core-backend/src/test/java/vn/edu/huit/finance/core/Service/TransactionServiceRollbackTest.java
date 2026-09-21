@@ -14,6 +14,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,8 @@ import vn.edu.huit.finance.core.Security.CurrentUserProvider;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,8 +47,11 @@ import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -392,13 +398,111 @@ class TransactionServiceRollbackTest {
         assertNull(stored.getExtractedTotal());
     }
 
-    @Test
-    void aReceiptOfATransactionIsVerified() {
+    private Long transactionIdOf(Long receiptId) {
+        return receiptRepository.findDetailedById(receiptId).orElseThrow().getTransaction().getId();
+    }
+
+    /** The whole road of a receipt the AI could not read: FAILED, the owner sends 150,000 for a checkout of 90,000, WAITING_FOR_REVIEW. */
+    private Long receiptOfAliceWaitingForReview() {
         Long receiptId = failedReceiptOfAlice();
+        receiptService.submitFeedback(receiptId, new BigDecimal("150000"));
+        return receiptId;
+    }
 
-        receiptService.approveReceipt(receiptId);
+    @Test
+    void approvingAScannedReceiptWritesWhatTheAiReadIntoTheTransactionAndTheWalletFollows() {
+        Long transactionId = checkoutScan(FULL_SCAN, "200000"); // the user typed 200,000, the AI read 245,000
+        Long receiptId = transactionInDatabase(transactionId).getReceipt().getId();
+        assertMoney("800000", walletInDatabase());
 
+        service.approveReceipt(receiptId);
+
+        assertMoney("245000", transactionInDatabase(transactionId).getAmount());
+        assertMoney("755000", walletInDatabase());
         assertEquals("SUCCESS", receiptRepository.findById(receiptId).orElseThrow().getStatus());
+    }
+
+    @Test
+    void theAmountTheOwnerCorrectedIsWhatTheApprovalWritesIntoTheTransactionAndTheWallet() {
+        Long receiptId = receiptOfAliceWaitingForReview();
+        Long transactionId = transactionIdOf(receiptId);
+        assertMoney("90000", transactionInDatabase(transactionId).getAmount());
+        assertMoney("910000", walletInDatabase());
+
+        service.approveReceipt(receiptId);
+
+        assertMoney("150000", transactionInDatabase(transactionId).getAmount());
+        assertMoney("850000", walletInDatabase());
+        assertEquals("SUCCESS", receiptRepository.findById(receiptId).orElseThrow().getStatus());
+    }
+
+    @Test
+    void approvingTheSameReceiptTwiceMovesTheWalletOnce() {
+        Long receiptId = receiptOfAliceWaitingForReview();
+
+        service.approveReceipt(receiptId);
+        service.approveReceipt(receiptId);
+
+        assertMoney("850000", walletInDatabase());
+        assertMoney("150000", transactionInDatabase(transactionIdOf(receiptId)).getAmount());
+    }
+
+    @Test
+    void aWalletThatCannotAffordTheApprovedTotalKeepsTheAmountTheWalletAndTheStatusAsTheyWere() {
+        Long receiptId = receiptOfAliceWaitingForReview();
+        Long transactionId = transactionIdOf(receiptId);
+        User alice = userRepository.findById(aliceId).orElseThrow();
+        alice.setWalletBalance(new BigDecimal("20000.00")); // 60,000 more are due
+        userRepository.saveAndFlush(alice);
+
+        assertThrows(InsufficientBalanceException.class, () -> service.approveReceipt(receiptId));
+
+        assertMoney("20000", walletInDatabase());
+        assertMoney("90000", transactionInDatabase(transactionId).getAmount());
+        assertEquals("WAITING_FOR_REVIEW", receiptRepository.findById(receiptId).orElseThrow().getStatus());
+    }
+
+    @Test
+    void whenSavingTheReceiptFailsTheWalletAndTheAmountThatWereAlreadyWrittenAreRolledBack() {
+        Long receiptId = receiptOfAliceWaitingForReview();
+        Long transactionId = transactionIdOf(receiptId);
+        doThrow(new IllegalStateException("database went away")).when(receiptRepository).save(any(Receipt.class));
+        statistics().clear();
+
+        assertThrows(IllegalStateException.class, () -> service.approveReceipt(receiptId));
+
+        assertTrue(walletRowsWritten() >= 1,
+                "the wallet row was really written before the failure, so it is the rollback that undoes it");
+        assertMoney("910000", walletInDatabase());
+        assertMoney("90000", transactionInDatabase(transactionId).getAmount());
+        assertEquals("WAITING_FOR_REVIEW", receiptRepository.findById(receiptId).orElseThrow().getStatus());
+    }
+
+    @Test
+    void whenSavingTheApprovedTransactionFailsTheWalletThatWasAlreadyWrittenIsRolledBack() {
+        Long receiptId = receiptOfAliceWaitingForReview();
+        Long transactionId = transactionIdOf(receiptId);
+        doThrow(new IllegalStateException("database went away")).when(transactionRepository).save(any(Transaction.class));
+        statistics().clear();
+
+        assertThrows(IllegalStateException.class, () -> service.approveReceipt(receiptId));
+
+        assertTrue(walletRowsWritten() >= 1, "the wallet row was really written before the failure");
+        assertMoney("910000", walletInDatabase());
+        assertMoney("90000", transactionInDatabase(transactionId).getAmount());
+        assertEquals("WAITING_FOR_REVIEW", receiptRepository.findById(receiptId).orElseThrow().getStatus());
+    }
+
+    @Test
+    void aReceiptNobodyGaveATotalCannotBeApprovedAndNothingChanges() {
+        Long receiptId = failedReceiptOfAlice(); // the AI read nothing and the owner has not answered
+        Long transactionId = transactionIdOf(receiptId);
+
+        assertThrows(IllegalStateException.class, () -> service.approveReceipt(receiptId));
+
+        assertEquals("FAILED", receiptRepository.findById(receiptId).orElseThrow().getStatus());
+        assertMoney("90000", transactionInDatabase(transactionId).getAmount());
+        assertMoney("910000", walletInDatabase());
     }
 
     @Test
@@ -407,12 +511,154 @@ class TransactionServiceRollbackTest {
         orphan.setStatus("WAITING_FOR_REVIEW");
         Long orphanId = receiptRepository.saveAndFlush(orphan).getId();
 
-        assertThrows(IllegalStateException.class, () -> receiptService.approveReceipt(orphanId));
+        assertThrows(IllegalStateException.class, () -> service.approveReceipt(orphanId));
 
         assertEquals("WAITING_FOR_REVIEW", receiptRepository.findById(orphanId).orElseThrow().getStatus());
     }
 
+    // ----------------------------------------------------------------------------- checkout with a client id (idempotency)
+
+    private static TransactionRequestDto checkoutWithClientId(String amount, String clientId) {
+        TransactionRequestDto request = new TransactionRequestDto();
+        request.setAmount(new BigDecimal(amount));
+        request.setLocation("Quán A");
+        request.setPaymentMethod("Ví chính");
+        request.setTransactionDate(CLIENT_DATE);
+        request.setCategoryName("Ăn uống");
+        request.setExpense(true);
+        request.setClientId(clientId);
+        return request;
+    }
+
+    private Long checkedOut(TransactionRequestDto request, Long userId) {
+        return (Long) service.createTransaction(request, userId).get("transactionId");
+    }
+
+    private void setWallet(String balance) {
+        User alice = userRepository.findById(aliceId).orElseThrow();
+        alice.setWalletBalance(new BigDecimal(balance));
+        userRepository.saveAndFlush(alice);
+    }
+
+    @Test
+    void sendingTheSameCheckoutTwiceCreatesOneTransactionAndMovesTheWalletOnce() {
+        Long first = checkedOut(checkoutWithClientId("150000", "attempt-1"), aliceId);
+        Map<String, Object> second = service.createTransaction(checkoutWithClientId("150000", "attempt-1"), aliceId);
+
+        assertEquals(first, second.get("transactionId"));
+        assertEquals(2, transactionRepository.count(), "the transaction of the fixture plus the one checkout");
+        assertMoney("850000", walletInDatabase());
+        assertMoney("850000", (BigDecimal) second.get("remainingBalance"));
+        assertEquals("attempt-1", transactionInDatabase(first).getClientId());
+        verify(budgetAlertService, times(1)).notifyAfterCreate(any());
+    }
+
+    @Test
+    void theSameClientIdSentByTwoUsersIsTwoDifferentCheckouts() {
+        Long bobId = persistBob().getId();
+
+        Long alices = checkedOut(checkoutWithClientId("150000", "shared-id"), aliceId);
+        Long bobs = checkedOut(checkoutWithClientId("150000", "shared-id"), bobId);
+
+        assertNotEquals(alices, bobs);
+        assertMoney("850000", walletInDatabase());
+        assertMoney("850000", userRepository.findById(bobId).orElseThrow().getWalletBalance());
+        assertEquals("shared-id", transactionInDatabase(bobs).getClientId());
+    }
+
+    @Test
+    void checkoutsWithoutAClientIdAreNeverTakenForRepeats() {
+        checkedOut(checkoutWithClientId("150000", null), aliceId);
+        checkedOut(checkoutWithClientId("150000", null), aliceId);
+        checkedOut(checkoutWithClientId("150000", "   "), aliceId);
+
+        assertEquals(4, transactionRepository.count(), "the transaction of the fixture plus three checkouts");
+        assertMoney("550000", walletInDatabase());
+    }
+
+    @Test
+    void aCheckoutThatFailedDoesNotUseUpItsClientId() {
+        setWallet("20000.00");
+
+        assertThrows(RuntimeException.class, () -> checkedOut(checkoutWithClientId("150000", "attempt-2"), aliceId));
+        assertEquals(1, transactionRepository.count(), "the failed checkout left nothing behind");
+
+        setWallet("1000000.00");
+        Long retried = checkedOut(checkoutWithClientId("150000", "attempt-2"), aliceId);
+
+        assertEquals("attempt-2", transactionInDatabase(retried).getClientId());
+        assertMoney("850000", walletInDatabase());
+    }
+
+    @Test
+    void aRepeatedScannedCheckoutKeepsOneReceiptAndMovesTheWalletOnce() {
+        TransactionRequestDto scanned = scan("200000", CLIENT_DATE, FULL_SCAN);
+        scanned.setClientId("scan-1");
+        TransactionRequestDto again = scan("200000", CLIENT_DATE, FULL_SCAN);
+        again.setClientId("scan-1");
+
+        Long first = checkedOut(scanned, aliceId);
+        Long second = checkedOut(again, aliceId);
+
+        assertEquals(first, second);
+        assertEquals(1, receiptRepository.count());
+        assertMoney("800000", walletInDatabase());
+    }
+
+    @Test
+    void ifTheLookupMissedTheUniqueKeyStillStopsTheDuplicateAndTheSecondChargeIsRolledBack() {
+        Long first = checkedOut(checkoutWithClientId("150000", "attempt-3"), aliceId);
+        doReturn(Optional.empty()).when(transactionRepository).findByUserIdAndClientId(any(), any());
+
+        assertThrows(DataIntegrityViolationException.class,
+                () -> service.createTransaction(checkoutWithClientId("150000", "attempt-3"), aliceId));
+
+        assertEquals(2, transactionRepository.count(), "the transaction of the fixture and the first checkout only");
+        assertMoney("850000", walletInDatabase());
+        assertEquals("attempt-3", transactionInDatabase(first).getClientId());
+    }
+
     // ------------------------------------------------------------------------------------------------------ concurrency
+
+    @Test
+    void twoCheckoutsWithTheSameClientIdThatArriveTogetherCreateOneTransaction() throws Exception {
+        CountDownLatch firstIsInside = new CountDownLatch(1);
+        CountDownLatch firstMayCommit = new CountDownLatch(1);
+        // The first checkout is held inside its transaction: wallet locked, transaction row written, nothing committed.
+        doAnswer(invocation -> {
+            firstIsInside.countDown();
+            awaitQuietly(firstMayCommit);
+            return null;
+        }).when(budgetAlertService).notifyAfterCreate(any());
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        Map<String, Object> first;
+        Map<String, Object> second;
+        try {
+            Future<Map<String, Object>> firstCall = pool.submit(
+                    () -> service.createTransaction(checkoutWithClientId("150000", "double-tap"), aliceId));
+            assertTrue(firstIsInside.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
+
+            // The double tap: the same checkout again while the first one has not committed.
+            Future<Map<String, Object>> secondCall = pool.submit(
+                    () -> service.createTransaction(checkoutWithClientId("150000", "double-tap"), aliceId));
+            assertThrows(TimeoutException.class, () -> secondCall.get(PROBE_MILLIS, TimeUnit.MILLISECONDS),
+                    "the second checkout has to wait for the wallet lock of the first");
+
+            firstMayCommit.countDown();
+            first = firstCall.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            second = secondCall.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } finally {
+            firstMayCommit.countDown();
+            pool.shutdownNow();
+        }
+
+        // Without the lock both would have passed the lookup, and the second would at best have failed on the unique key.
+        assertEquals(first.get("transactionId"), second.get("transactionId"));
+        assertEquals(2, transactionRepository.count(), "the transaction of the fixture plus one");
+        assertMoney("850000", walletInDatabase());
+        assertMoney("850000", (BigDecimal) second.get("remainingBalance"));
+        verify(budgetAlertService, times(1)).notifyAfterCreate(any());
+    }
 
     @Test
     void anEditWaitsForAnotherWriterOfTheWalletAndThenCountsWhatItCommitted() throws Exception {
@@ -445,6 +691,45 @@ class TransactionServiceRollbackTest {
         // 1,000,000 + 500,000 from the other writer - 50,000 from the edit. Without the lock the edit would have
         // written 950,000 and the 500,000 would have been lost.
         assertMoney("1450000", walletInDatabase());
+    }
+
+    @Test
+    void anApprovalThatWaitedForTheWalletLockCountsTheApprovalThatCommittedInTheMeantime() throws Exception {
+        Long receiptId = receiptOfAliceWaitingForReview(); // the transaction holds 90,000, the wallet 910,000
+        Long transactionId = transactionIdOf(receiptId);
+        CountDownLatch otherHoldsTheLock = new CountDownLatch(1);
+        CountDownLatch otherMayCommit = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            // Another approval of the same receipt has locked the wallet and changed everything, but has not committed yet.
+            Future<?> otherApproval = pool.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                User locked = entityManager.find(User.class, aliceId, LockModeType.PESSIMISTIC_WRITE);
+                locked.setWalletBalance(locked.getWalletBalance().subtract(new BigDecimal("60000")));
+                entityManager.find(Transaction.class, transactionId).setAmount(new BigDecimal("150000.00"));
+                entityManager.find(Receipt.class, receiptId).setStatus("SUCCESS");
+                otherHoldsTheLock.countDown();
+                awaitQuietly(otherMayCommit);
+            }));
+            assertTrue(otherHoldsTheLock.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
+
+            // This approval has read the transaction as 90,000 and the receipt as waiting by the time it asks for the lock.
+            Future<?> approval = pool.submit(() -> service.approveReceipt(receiptId));
+            assertThrows(TimeoutException.class, () -> approval.get(PROBE_MILLIS, TimeUnit.MILLISECONDS),
+                    "the approval has to wait for the wallet lock of the other one");
+
+            otherMayCommit.countDown();
+            otherApproval.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            approval.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } finally {
+            otherMayCommit.countDown();
+            pool.shutdownNow();
+        }
+
+        // 910,000 - 60,000, once. Working from what it had read before the wait, the second approval would have taken
+        // another 60,000 from the wallet without the transaction growing any further.
+        assertMoney("850000", walletInDatabase());
+        assertMoney("150000", transactionInDatabase(transactionId).getAmount());
+        assertEquals("SUCCESS", receiptRepository.findById(receiptId).orElseThrow().getStatus());
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

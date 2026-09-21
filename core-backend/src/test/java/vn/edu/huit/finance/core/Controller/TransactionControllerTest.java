@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -25,6 +26,7 @@ import vn.edu.huit.finance.core.Dto.TransactionFilterRequestDto;
 import vn.edu.huit.finance.core.Dto.TransactionRequestDto;
 import vn.edu.huit.finance.core.Dto.TransactionResponseDto;
 import vn.edu.huit.finance.core.Dto.TransactionUpdateRequestDto;
+import vn.edu.huit.finance.core.Entity.Transaction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.GlobalExceptionHandler;
 import vn.edu.huit.finance.core.Exception.InsufficientBalanceException;
@@ -341,6 +343,67 @@ class TransactionControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("GIAO DỊCH THẤT BẠI: Số dư ví không đủ!"));
+    }
+
+    // ------------------------------------------------------------------- POST /checkout: the optional client id
+
+    private static String checkoutBodyWith(String extraFields) {
+        return "{\"amount\":10000,\"location\":\"Quán A\",\"paymentMethod\":\"Ví chính\","
+                + "\"transactionDate\":\"2026-09-01T08:30:00\",\"categoryId\":10,\"isExpense\":true" + extraFields + "}";
+    }
+
+    private TransactionRequestDto checkoutSentToTheService() {
+        ArgumentCaptor<TransactionRequestDto> sent = ArgumentCaptor.forClass(TransactionRequestDto.class);
+        verify(transactionService).createMyTransaction(sent.capture());
+        return sent.getValue();
+    }
+
+    @Test
+    void checkoutPassesTheClientIdOnToTheService() throws Exception {
+        when(transactionService.createMyTransaction(any())).thenReturn(Map.of("transactionId", 5));
+        String clientId = "0b7e6f1c-5f0a-4a55-9d1f-2f6f6b1c9a11";
+
+        mockMvc.perform(signedIn(withBody(HttpMethod.POST, URL + "/checkout", checkoutBodyWith(",\"clientId\":\"" + clientId + "\""))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.transactionId").value(5));
+
+        assertEquals(clientId, checkoutSentToTheService().getClientId());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", ",\"clientId\":null", ",\"clientId\":\"\"", ",\"clientId\":\"   \""})
+    void checkoutWithoutAUsableClientIdIsStillAcceptedAndTheServiceDecides(String extraFields) throws Exception {
+        when(transactionService.createMyTransaction(any())).thenReturn(Map.of("transactionId", 5));
+
+        mockMvc.perform(signedIn(withBody(HttpMethod.POST, URL + "/checkout", checkoutBodyWith(extraFields))))
+                .andExpect(status().isOk());
+
+        TransactionRequestDto sent = checkoutSentToTheService();
+        assertTrue(sent.getClientId() == null || sent.getClientId().isBlank());
+    }
+
+    @Test
+    void aClientIdOfExactlyTheColumnWidthIsAccepted() throws Exception {
+        when(transactionService.createMyTransaction(any())).thenReturn(Map.of("transactionId", 5));
+        String widest = "x".repeat(Transaction.CLIENT_ID_MAX_LENGTH);
+
+        mockMvc.perform(signedIn(withBody(HttpMethod.POST, URL + "/checkout", checkoutBodyWith(",\"clientId\":\"" + widest + "\""))))
+                .andExpect(status().isOk());
+
+        assertEquals(widest, checkoutSentToTheService().getClientId());
+    }
+
+    @Test
+    void aClientIdLongerThanTheColumnIsRejectedWith400AndNeverReachesTheService() throws Exception {
+        String tooLong = "x".repeat(Transaction.CLIENT_ID_MAX_LENGTH + 1);
+
+        mockMvc.perform(signedIn(withBody(HttpMethod.POST, URL + "/checkout", checkoutBodyWith(",\"clientId\":\"" + tooLong + "\""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value(startsWith(VALIDATION_PREFIX)))
+                .andExpect(jsonPath("$.message").value(containsString("clientId")));
+
+        verifyNoInteractions(transactionService);
     }
 
     // ---------------------------------------------------------------------- the audited endpoints: no userId any more

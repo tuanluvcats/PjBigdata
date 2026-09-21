@@ -1,5 +1,6 @@
 package vn.edu.huit.finance.core.Repository;
 
+import jakarta.persistence.PersistenceException;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
@@ -191,5 +192,87 @@ class TransactionRepositoryTest {
         assertNull(transactionRepository.sumExpensesBetween(alice.getId(), OCTOBER_START, OCTOBER_START.plusDays(31)));
         assertNull(transactionRepository.sumExpensesInCategoryBetween(
                 alice.getId(), food.getId(), OCTOBER_START, OCTOBER_START.plusDays(31)));
+    }
+
+    // ------------------------------------------------------------------- the client id of a checkout (idempotency key)
+
+    private Transaction persistWithClientId(User owner, String clientId) {
+        Transaction transaction = newTransaction(owner, withReceipt.getCategory());
+        transaction.setClientId(clientId);
+        return entityManager.persistAndFlush(transaction);
+    }
+
+    private User persistBob() {
+        User bob = new User();
+        bob.setUsername("bob");
+        bob.setPassword("hash");
+        bob.setEmail("bob@example.com");
+        bob.setPhone("0900000002");
+        return entityManager.persistAndFlush(bob);
+    }
+
+    @Test
+    void findByUserIdAndClientId_findsTheTransactionTheUserCreatedWithThatId() {
+        User alice = withReceipt.getUser();
+        Transaction saved = persistWithClientId(alice, "attempt-1");
+        forgetLoadedEntities();
+
+        Transaction found = transactionRepository.findByUserIdAndClientId(alice.getId(), "attempt-1").orElseThrow();
+
+        assertEquals(saved.getId(), found.getId());
+        assertEquals("attempt-1", found.getClientId());
+        assertEquals(1, statistics().getPrepareStatementCount(), "answering a repeated checkout must not fetch anything else");
+    }
+
+    @Test
+    void findByUserIdAndClientId_neverReturnsTheTransactionOfAnotherUser() {
+        persistWithClientId(withReceipt.getUser(), "attempt-1");
+        User bob = persistBob();
+
+        assertTrue(transactionRepository.findByUserIdAndClientId(bob.getId(), "attempt-1").isEmpty());
+    }
+
+    @Test
+    void findByUserIdAndClientId_isEmptyForAnUnknownIdAndTheTransactionsThatHaveNone() {
+        User alice = withReceipt.getUser(); // the two transactions of the fixture carry no client id
+
+        assertTrue(transactionRepository.findByUserIdAndClientId(alice.getId(), "never-sent").isEmpty());
+    }
+
+    @Test
+    void theClientIdIsMatchedExactly() {
+        User alice = withReceipt.getUser();
+        persistWithClientId(alice, "Attempt-1");
+
+        assertTrue(transactionRepository.findByUserIdAndClientId(alice.getId(), "attempt-1").isEmpty());
+        assertTrue(transactionRepository.findByUserIdAndClientId(alice.getId(), "Attempt-1").isPresent());
+    }
+
+    @Test
+    void theDatabaseRefusesASecondTransactionOfTheSameUserWithTheSameClientId() {
+        User alice = withReceipt.getUser();
+        persistWithClientId(alice, "attempt-1");
+
+        assertThrows(PersistenceException.class, () -> persistWithClientId(alice, "attempt-1"));
+    }
+
+    @Test
+    void theSameClientIdOfTwoDifferentUsersIsAllowed() {
+        Transaction alices = persistWithClientId(withReceipt.getUser(), "shared-id");
+        Transaction bobs = persistWithClientId(persistBob(), "shared-id");
+
+        assertNotEquals(alices.getId(), bobs.getId());
+        Long foundForBob = transactionRepository.findByUserIdAndClientId(bobs.getUser().getId(), "shared-id").orElseThrow().getId();
+        assertEquals(bobs.getId(), foundForBob);
+    }
+
+    @Test
+    void transactionsWithoutAClientIdNeverCollideWithEachOther() {
+        User alice = withReceipt.getUser(); // already has two of them from the fixture
+
+        persistWithClientId(alice, null);
+        persistWithClientId(alice, null);
+
+        assertEquals(4, transactionRepository.findByUserIdOrderByTransactionDateDesc(alice.getId()).size());
     }
 }

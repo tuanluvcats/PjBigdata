@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
+import vn.edu.huit.finance.core.Entity.Transaction;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -39,4 +41,13 @@ public class TransactionRequestDto {
     private String rawReceiptData;
     private String imageUrl;
     private List<String> additionalImages;
+
+    /**
+     * Optional idempotency key, made up by the client for one attempt to save (a UUID will do) and sent again unchanged
+     * when that attempt is retried. A second request with a key the user has already used is answered with the first
+     * transaction instead of creating another one. Blank counts as absent.
+     */
+    @Size(max = Transaction.CLIENT_ID_MAX_LENGTH,
+            message = "Mã định danh yêu cầu (clientId) tối đa " + Transaction.CLIENT_ID_MAX_LENGTH + " ký tự")
+    private String clientId;
 }

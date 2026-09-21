@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 
@@ -8,10 +9,15 @@ class SocialAuthService {
   static final SocialAuthService instance = SocialAuthService._();
   SocialAuthService._();
 
-  final GoogleSignIn _google = GoogleSignIn(
+  /// Only tests replace it: a [GoogleSignIn] keeps the Futures of its earlier calls in fields, and inside the fake async
+  /// zone of another test they never wake up, so a second sign-out in the same test file would hang.
+  GoogleSignIn _google = GoogleSignIn(
     serverClientId: AppConfig.googleServerClientId,
     scopes: const ['email', 'profile'],
   );
+
+  @visibleForTesting
+  set googleSignIn(GoogleSignIn google) => _google = google;
 
   Future<Map<String, dynamic>> signInWithGoogle() async {
     GoogleSignInAccount? account = _google.currentUser;

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
-import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/constants/transaction_categories.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/models/sync_status.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
-import 'package:finance_ai_app/services/remote_api_helper.dart';
+import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/services/session_service.dart';
-import 'package:finance_ai_app/services/sqflite_helper.dart';
 import 'package:finance_ai_app/widgets/dialogs/app_dialog.dart';
+
+const String _saveFailedMessage = 'Không lưu được giao dịch. Vui lòng thử lại.';
+const String _notSentTitle = 'Chưa gửi được lên máy chủ';
+const String _notSentMessage = 'Giao dịch đã được lưu trên thiết bị nhưng chưa gửi được lên máy chủ. '
+    'Khi có mạng, mở Sổ sách, chọn giao dịch và bấm "Gửi lại". Gửi lại sẽ không tạo giao dịch trùng.';
 
 class AddTransactionPage extends StatefulWidget {
   const AddTransactionPage({super.key, this.initialDate});
@@ -22,8 +26,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   bool _isExpense = true;
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
-  String _selectedCategory = 'Khác'; 
+  String _selectedCategory = 'Khác';
   late DateTime _selectedDate;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -169,6 +174,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   }
 
   Future<void> _saveTransaction() async {
+    if (_isSaving) return;
     final userId = SessionService.currentUserId;
     if (userId == null) {
       if (!mounted) return;
@@ -193,29 +199,33 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       isExpense: _isExpense,
     );
 
+    setState(() => _isSaving = true);
+    SyncStatus? status;
+    String? failure;
     try {
-      if (AppConfig.isFull) {
-        await RemoteApiHelper.instance.addTransaction({
-          'amount': transaction.amount,
-          'note': transaction.title,
-          'location': transaction.title.isEmpty ? 'Trong ứng dụng' : transaction.title,
-          'paymentMethod': 'WALLET',
-          'transactionDate': transaction.date.toIso8601String(),
-          'categoryName': transaction.category,
-          'isExpense': transaction.isExpense,
-        });
-      } else {
-        await SqfliteHelper.instance.insertTransaction(transaction, userId);
-      }
-
-      if (!mounted) return;
-      await AppDialog.success(context, title: 'Thành công', message: 'Đã thêm giao dịch mới.');
-      if (!mounted) return;
-      Navigator.pop(context, true);
+      status = await AppRepository.instance.createTransaction(userId, transaction);
+    } on TransactionRefusedException catch (e) {
+      failure = e.message;
     } catch (e) {
-      if (!mounted) return;
-      await AppDialog.error(context, title: 'Lưu thất bại', message: '$e');
+      debugPrint('Lỗi lưu giao dịch: $e');
+      failure = _saveFailedMessage;
     }
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+
+    if (failure != null) {
+      await AppDialog.error(context, title: 'Lưu thất bại', message: failure);
+      return;
+    }
+    // The transaction is on the device in either case; when the server does not have it yet, the Ledger shows it flagged
+    // and offers to send it again, so the form closes instead of inviting a second, different save of the same thing.
+    if (status == SyncStatus.synced) {
+      await AppDialog.success(context, title: 'Thành công', message: 'Đã thêm giao dịch mới.');
+    } else {
+      await AppDialog.warning(context, title: _notSentTitle, message: _notSentMessage);
+    }
+    if (!mounted) return;
+    Navigator.pop(context, true);
   }
 
   @override
@@ -337,7 +347,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   foregroundColor: AppTheme.navyDark,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-                onPressed: _saveTransaction,
+                onPressed: _isSaving ? null : _saveTransaction,
                 child: const Text('Lưu giao dịch', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ),

@@ -22,6 +22,13 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
            "WHERE t.id = :id")
     Optional<Transaction> findDetailedById(@Param("id") Long id);
 
+    /**
+     * The transaction this user already created with this client id (the idempotency key of a checkout), if any. Only what
+     * the transaction row itself holds is needed to answer a repeated checkout, so nothing is fetched along with it.
+     */
+    @Query("SELECT t FROM Transaction t WHERE t.user.id = :userId AND t.clientId = :clientId")
+    Optional<Transaction> findByUserIdAndClientId(@Param("userId") Long userId, @Param("clientId") String clientId);
+
     @Query("SELECT t FROM Transaction t " +
            "JOIN FETCH t.user " +
            "JOIN FETCH t.category " +

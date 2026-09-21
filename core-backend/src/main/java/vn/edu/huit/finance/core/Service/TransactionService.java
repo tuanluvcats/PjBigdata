@@ -20,6 +20,7 @@ import vn.edu.huit.finance.core.Dto.TransactionResponseDto;
 import vn.edu.huit.finance.core.Dto.TransactionUpdateRequestDto;
 import vn.edu.huit.finance.core.Entity.Category;
 import vn.edu.huit.finance.core.Entity.Receipt;
+import vn.edu.huit.finance.core.Entity.ReceiptStatus;
 import vn.edu.huit.finance.core.Entity.Transaction;
 import vn.edu.huit.finance.core.Entity.TransactionSortField;
 import vn.edu.huit.finance.core.Entity.User;
@@ -36,13 +37,15 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Transactions and the wallet they move. Every method that changes a transaction changes User.walletBalance in the same
- * database transaction, so a failure anywhere leaves both untouched; the budget notifications that a new or edited expense
- * raises (BudgetAlertService) are written in that same transaction. Methods without a user id take the owner from the
- * SecurityContext (through CurrentUserProvider) and scope every lookup to that owner; the ones that do take an id
- * (createTransaction for the payment webhook, the *Of methods for administrators) trust their caller to have checked it.
+ * database transaction, so a failure anywhere leaves both untouched; the budget notifications that a new, edited or
+ * reconciled expense raises (BudgetAlertService) are written in that same transaction. Methods without a user id take the
+ * owner from the SecurityContext (through CurrentUserProvider) and scope every lookup to that owner; the ones that do take
+ * an id (createTransaction for the payment webhook, the *Of methods for administrators) trust their caller to have checked
+ * it, and so does approveReceipt, which is for administrators too.
  */
 @Slf4j
 @Service
@@ -53,7 +56,14 @@ public class TransactionService {
     private static final String RECEIPT_STATUS_PENDING = "PENDING";
     private static final String RECEIPT_STATUS_CANCELED = "CANCELED";
     private static final int DASHBOARD_RECENT_COUNT = 5;
+    private static final BigDecimal LOW_BALANCE_THRESHOLD = new BigDecimal("50000");
 
+    private static final String KEY_TRANSACTION_ID = "transactionId";
+    private static final String KEY_FINAL_AMOUNT = "finalAmount";
+    private static final String KEY_REMAINING_BALANCE = "remainingBalance";
+    private static final String KEY_WARNING = "warning";
+
+    private static final String MSG_LOW_BALANCE = "CẢNH BÁO: Số dư ví của bạn sắp cạn kiệt (Dưới 50,000 VNĐ)!";
     private static final String MSG_INSUFFICIENT_BALANCE = "GIAO DỊCH THẤT BẠI: Số dư ví không đủ!";
     private static final String MSG_CATEGORY_NOT_FOUND = "Không tìm thấy danh mục";
     private static final String MSG_CATEGORY_REQUIRED = "Thiếu danh mục (categoryId hoặc categoryName)";
@@ -62,6 +72,9 @@ public class TransactionService {
     private static final String MSG_RECEIPT_NOT_FOUND = "Không tìm thấy hóa đơn";
     private static final String MSG_RECEIPT_FORBIDDEN = "Bạn không có quyền hủy hóa đơn này";
     private static final String MSG_RECEIPT_NOT_PENDING = "Chỉ có thể hủy hóa đơn đang ở trạng thái Chờ xử lý";
+    private static final String MSG_RECEIPT_UNLINKED = "Hóa đơn chưa gắn với giao dịch nào nên không thể xác nhận";
+    private static final String MSG_RECEIPT_CANCELED = "Hóa đơn đã bị hủy nên không thể xác nhận";
+    private static final String MSG_RECEIPT_NO_TOTAL = "Hóa đơn chưa có tổng tiền hợp lệ nên không thể đối soát";
     private static final String MSG_USER_NOT_FOUND = "Không tìm thấy người dùng";
 
     @Autowired
@@ -83,10 +96,29 @@ public class TransactionService {
     @PersistenceContext
     private EntityManager entityManager;
 
+    /**
+     * Records one transaction and moves the owner's wallet by its amount, all or nothing. A request that carries a client
+     * id is idempotent: the first one with a given id (per user) creates the transaction, and every later one is answered
+     * with that same transaction, without the wallet, the budget alerts, the receipt or the audit log being touched again,
+     * whatever the rest of its body says. The wallet row is locked before the id is looked up, so two requests that arrive
+     * together (a double tap, a retry while the first attempt is still running) run one after the other and the second
+     * one finds what the first one committed; the unique key on user and client id backs that up in the database.
+     */
     @Transactional
     public Map<String, Object> createTransaction(TransactionRequestDto request, Long userId) {
         User user = userRepo.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy User"));
+
+        String clientId = normalizeClientId(request.getClientId());
+        if (clientId != null) {
+            user = lockWallet(user);
+            Optional<Transaction> original = transactionRepo.findByUserIdAndClientId(userId, clientId);
+            if (original.isPresent()) {
+                log.info("Duplicate checkout answered with the original transaction, userId={}, transactionId={}",
+                        userId, original.get().getId());
+                return checkoutResponse(original.get(), user);
+            }
+        }
 
         Category category = resolveCategory(request.getCategoryId(), request.getCategoryName(), request.isExpense());
 
@@ -111,6 +143,7 @@ public class TransactionService {
         transaction.setTransactionDate(request.getTransactionDate());
         transaction.setExpense(request.isExpense());
         transaction.setRawReceiptData(request.getRawReceiptData());
+        transaction.setClientId(clientId);
 
         transaction.setUser(user);
         transaction.setCategory(category);
@@ -141,18 +174,7 @@ public class TransactionService {
         } catch (Exception e) {
         }
 
-        String warningMessage = "";
-        if (user.getWalletBalance().compareTo(new BigDecimal("50000")) < 0) {
-            warningMessage = "CẢNH BÁO: Số dư ví của bạn sắp cạn kiệt (Dưới 50,000 VNĐ)!";
-        }
-
-        Map<String, Object> responseData = new HashMap<>();
-        responseData.put("transactionId", transaction.getId());
-        responseData.put("finalAmount", finalAmount);
-        responseData.put("remainingBalance", user.getWalletBalance());
-        responseData.put("warning", warningMessage);
-
-        return responseData;
+        return checkoutResponse(transaction, user);
     }
 
     /** Same as {@link #createTransaction} for the signed-in caller. Transactional itself, because it calls that method directly. */
@@ -248,6 +270,53 @@ public class TransactionService {
         log.info("Receipt canceled, userId={}, receiptId={}", userId, receiptId);
     }
 
+    /**
+     * For administrators only (the caller of this method has to check that): verifies a receipt and makes the transaction
+     * that carries it agree with it. The final total of the receipt (what the AI read, or what its owner sent through
+     * feedback) becomes the amount of the transaction and the owner's wallet moves by the difference, all or nothing: the
+     * wallet is locked and written first and the rows after it, so a failure of any write is undone together with the
+     * others. The transaction and the receipt are read again once the wallet is locked, so two requests that approve the
+     * same receipt at the same time move the wallet once, and approving a receipt again changes nothing.
+     */
+    @Transactional
+    public void approveReceipt(Long receiptId) {
+        Receipt receipt = receiptRepo.findDetailedById(receiptId).orElseThrow(() -> {
+            log.warn("Receipt not found for approval, receiptId={}", receiptId);
+            return new ReceiptNotFoundException(MSG_RECEIPT_NOT_FOUND);
+        });
+        Transaction transaction = receipt.getTransaction();
+        if (transaction == null) {
+            log.warn("Receipt approval refused, no transaction is linked, receiptId={}", receiptId);
+            throw new IllegalStateException(MSG_RECEIPT_UNLINKED);
+        }
+
+        User owner = lockWallet(transaction.getUser());
+        // What another request committed while this one waited for the lock (its own approval, a cancellation) counts:
+        // the refresh also reloads the receipt, which the transaction cascades to.
+        entityManager.refresh(transaction);
+        BigDecimal finalAmount = approvableTotal(receipt);
+
+        BigDecimal previousAmount = transaction.getAmount();
+        BudgetAlertService.SpendingSnapshot spendingBefore = BudgetAlertService.SpendingSnapshot.of(transaction);
+        BigDecimal walletChange = signedAmount(finalAmount, transaction.isExpense())
+                .subtract(signedAmount(previousAmount, transaction.isExpense()));
+
+        transaction.setUser(owner);
+        if (walletChange.signum() != 0) {
+            moveWallet(owner, walletChange);
+        }
+        transaction.setAmount(finalAmount);
+        receipt.setStatus(ReceiptStatus.SUCCESS.name());
+        Transaction saved = transactionRepo.save(transaction);
+        receiptRepo.save(receipt);
+        if (walletChange.signum() != 0) {
+            budgetAlertService.notifyAfterUpdate(saved, spendingBefore);
+        }
+
+        log.info("Receipt approved, receiptId={}, transactionId={}, userId={}, previousAmount={}, finalAmount={}, walletChange={}",
+                receiptId, saved.getId(), owner.getId(), previousAmount, finalAmount, walletChange);
+    }
+
     @Transactional(readOnly = true)
     public List<TransactionResponseDto> getMyTransactions() {
         Long userId = currentUserProvider.getCurrentUser().getId();
@@ -334,6 +403,41 @@ public class TransactionService {
             throw new TransactionAccessDeniedException(MSG_TRANSACTION_FORBIDDEN);
         }
         return transaction;
+    }
+
+    /** The total a receipt is approved with: the one it holds now, positive and plausible. A canceled receipt is not approved at all. */
+    private BigDecimal approvableTotal(Receipt receipt) {
+        if (ReceiptStatus.CANCELED.matches(receipt.getStatus())) {
+            log.warn("Receipt approval refused, the receipt is canceled, receiptId={}", receipt.getId());
+            throw new IllegalStateException(MSG_RECEIPT_CANCELED);
+        }
+        BigDecimal total = OcrService.validTotal(receipt.getExtractedTotal());
+        // A total that rounds to zero (0.004) passes the rule above but is no total either.
+        if (total == null || total.signum() <= 0) {
+            log.warn("Receipt approval refused, the receipt has no usable total, receiptId={}", receipt.getId());
+            throw new IllegalStateException(MSG_RECEIPT_NO_TOTAL);
+        }
+        return total;
+    }
+
+    /** What a checkout answers: the transaction, and the wallet as it is now. A repeated checkout gets the same shape. */
+    private static Map<String, Object> checkoutResponse(Transaction transaction, User owner) {
+        boolean lowBalance = owner.getWalletBalance().compareTo(LOW_BALANCE_THRESHOLD) < 0;
+
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put(KEY_TRANSACTION_ID, transaction.getId());
+        responseData.put(KEY_FINAL_AMOUNT, transaction.getAmount());
+        responseData.put(KEY_REMAINING_BALANCE, owner.getWalletBalance());
+        responseData.put(KEY_WARNING, lowBalance ? MSG_LOW_BALANCE : "");
+        return responseData;
+    }
+
+    /** The client id as it is stored and looked up: trimmed, and null when the request sent none or only blanks. */
+    private static String normalizeClientId(String clientId) {
+        if (clientId == null || clientId.isBlank()) {
+            return null;
+        }
+        return clientId.trim();
     }
 
     private static boolean hasCategory(TransactionUpdateRequestDto request) {

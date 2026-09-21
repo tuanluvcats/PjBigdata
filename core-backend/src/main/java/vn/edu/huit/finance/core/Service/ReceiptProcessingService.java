@@ -24,9 +24,10 @@ import java.math.RoundingMode;
  *   <li>{@link #attachReceipt} builds the receipt of a transaction that is being created; the receipt is persisted by
  *       the cascade of that transaction, in the same database transaction as the wallet, so all of them commit or
  *       none does;</li>
- *   <li>{@link #submitFeedback} lets the owner correct the amount of a receipt the AI failed on;</li>
- *   <li>{@link #approveReceipt} verifies a receipt, and only one that a transaction carries.</li>
+ *   <li>{@link #submitFeedback} lets the owner correct the amount of a receipt the AI failed on.</li>
  * </ul>
+ * Approving a receipt moves the wallet, so it lives next to the wallet lock, in {@code TransactionService.approveReceipt}
+ * (which this class cannot call: {@code TransactionService} already depends on it).
  */
 @Slf4j
 @Service
@@ -36,7 +37,6 @@ public class ReceiptProcessingService {
     private static final String MSG_RECEIPT_FORBIDDEN = "Bạn không có quyền thao tác trên hóa đơn này";
     private static final String MSG_FEEDBACK_NOT_FAILED = "Chỉ có thể gửi yêu cầu xem xét cho các hóa đơn bị lỗi (FAILED)";
     private static final String MSG_AMOUNT_INVALID = "Số tiền điều chỉnh phải lớn hơn 0";
-    private static final String MSG_RECEIPT_UNLINKED = "Hóa đơn chưa gắn với giao dịch nào nên không thể xác nhận";
     private static final int MONEY_SCALE = 2;
 
     @Autowired
@@ -97,23 +97,6 @@ public class ReceiptProcessingService {
         receipt.setStatus(ReceiptStatus.WAITING_FOR_REVIEW.name());
         receiptRepo.save(receipt);
         log.info("Receipt feedback received, userId={}, receiptId={}", caller.getId(), receiptId);
-    }
-
-    /** For administrators only (their controller has to check that): a receipt is verified only when a transaction carries it. */
-    @Transactional
-    public void approveReceipt(Long receiptId) {
-        Receipt receipt = receiptRepo.findDetailedById(receiptId).orElseThrow(() -> {
-            log.warn("Receipt not found for approval, receiptId={}", receiptId);
-            return new ReceiptNotFoundException(MSG_RECEIPT_NOT_FOUND);
-        });
-        if (receipt.getTransaction() == null) {
-            log.warn("Receipt approval refused, no transaction is linked, receiptId={}", receiptId);
-            throw new IllegalStateException(MSG_RECEIPT_UNLINKED);
-        }
-
-        receipt.setStatus(ReceiptStatus.SUCCESS.name());
-        receiptRepo.save(receipt);
-        log.info("Receipt approved, receiptId={}, transactionId={}", receiptId, receipt.getTransaction().getId());
     }
 
     /** A receipt that does not exist is a 404, one that exists but is somebody else's (or nobody's) a 403. */

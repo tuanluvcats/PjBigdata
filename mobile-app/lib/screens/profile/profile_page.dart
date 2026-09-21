@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/models/wallet_model.dart';
@@ -10,6 +11,7 @@ import 'package:finance_ai_app/screens/profile/account_info_screen.dart';
 import 'package:finance_ai_app/screens/profile/savings_page.dart';
 import 'package:finance_ai_app/screens/linked/linked_services_page.dart';
 import 'package:finance_ai_app/screens/auth/login_page.dart';
+import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/services/social_auth_service.dart'; 
 import 'package:finance_ai_app/repositories/app_repository.dart';
@@ -64,6 +66,27 @@ class _ProfilePageState extends State<ProfilePage> {
     final first = parts.first.isNotEmpty ? parts.first[0] : '';
     final last = parts.length > 1 && parts.last.isNotEmpty ? parts.last[0] : '';
     return (first + last).toUpperCase();
+  }
+
+  /// Signs out. In full mode the server is asked to revoke the tokens first (they are needed for that request), then the
+  /// local session is ALWAYS cleared and the user goes back to the login screen, even when the server call fails: a
+  /// network error must never leave the user signed in.
+  Future<void> _logout() async {
+    final confirmed = await AppDialog.confirm(context, title: 'Đăng xuất?', message: 'Bạn có chắc chắn muốn thoát?', confirmText: 'Đăng xuất', danger: true);
+    if (!confirmed || !mounted) return;
+
+    try {
+      if (AppConfig.isFull) await RemoteApiHelper.instance.logout();
+      await SocialAuthService.instance.signOut();
+    } catch (e) {
+      // Both steps are best effort: whatever fails, the local sign-out below must still happen.
+      debugPrint('Đăng xuất: bước phía server/mạng xã hội thất bại: $e');
+    }
+    await SessionService.clearSession();
+
+    // Only the navigation needs the context: the session is already cleared even when this page is gone.
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
   }
 
 @override
@@ -145,14 +168,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           icon: Icons.logout_rounded,
                           label: 'Đăng xuất',
                           color: AppTheme.dangerColor,
-                          onTap: () async {
-                            final ok = await AppDialog.confirm(context, title: 'Đăng xuất?', message: 'Bạn có chắc chắn muốn thoát?', confirmText: 'Đăng xuất', danger: true);
-                            if (!ok) return;
-                            await SocialAuthService.instance.signOut(); 
-                            await SessionService.clearSession();
-                            if (!context.mounted) return;
-                            Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
-                          },
+                          onTap: _logout,
                         ),
                       ],
                     ),
@@ -205,8 +221,12 @@ class _ProfilePageState extends State<ProfilePage> {
           padding: const EdgeInsets.only(bottom: 8, left: 4),
           child: Row(children: [Icon(icon, color: AppTheme.mintAccent, size: 17), const SizedBox(width: 6), Text(title, style: const TextStyle(color: AppTheme.textWhite, fontSize: 14, fontWeight: FontWeight.bold))]),
         ),
-        Container(
-          decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(16)),
+        // A Material, not a coloured Container: ListTile paints its background and ink splashes on the nearest Material,
+        // so a coloured DecoratedBox in between would hide them (Flutter asserts on it).
+        Material(
+          color: AppTheme.navyLight,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             children: items.asMap().entries.map((e) {
               final item = e.value;

@@ -1,7 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_ai_app/models/receipt_status.dart';
+import 'package:finance_ai_app/models/sync_status.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
+
+final RegExp _uuidV4 = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+
+TransactionModel _draft({String title = 'Cà phê'}) => TransactionModel.draft(
+      title: title,
+      category: 'Ăn uống',
+      amount: 45000,
+      date: DateTime(2026, 9, 20, 8, 30),
+      isExpense: true,
+    );
 
 void main() {
   group('ReceiptStatus.fromServer', () {
@@ -104,7 +115,10 @@ void main() {
 
       expect(
         tx.toDbMap(1).keys,
-        unorderedEquals(['user_id', 'title', 'amount', 'date', 'category', 'is_expense', 'icon_name', 'wallet_id']),
+        unorderedEquals([
+          'user_id', 'title', 'amount', 'date', 'category', 'is_expense', 'icon_name', 'wallet_id',
+          'client_id', 'sync_status', // the sync state (Task A8)
+        ]),
       );
       expect(
         tx.toMap().keys,
@@ -126,6 +140,123 @@ void main() {
 
       expect(tx.receiptStatus, isNull);
       expect(tx.isExpense, isTrue);
+    });
+  });
+
+  group('client id', () {
+    test('a new transaction gets a UUID v4, and every new transaction gets its own', () {
+      final ids = {for (var i = 0; i < 50; i++) _draft().clientId};
+
+      expect(ids, hasLength(50));
+      for (final id in ids) {
+        expect(id, matches(_uuidV4));
+      }
+    });
+
+    test('a transaction read from the server has none, because the server does not send it back', () {
+      final tx = TransactionModel.fromJson({'id': 1, 'amount': 1, 'category': 'Khác'});
+
+      expect(tx.clientId, isNull);
+    });
+
+    test('the body of the checkout carries what the add form always sent, plus the client id', () {
+      final tx = _draft();
+
+      expect(tx.toCheckoutJson(), {
+        'amount': 45000.0,
+        'note': 'Cà phê',
+        'location': 'Cà phê',
+        'paymentMethod': 'WALLET',
+        'transactionDate': DateTime(2026, 9, 20, 8, 30).toIso8601String(),
+        'categoryName': 'Ăn uống',
+        'isExpense': true,
+        'clientId': tx.clientId,
+      });
+    });
+
+    test('a transaction without a title is sent with the default location, and one without an id sends no clientId', () {
+      final draft = _draft(title: '');
+      expect(draft.toCheckoutJson()['location'], 'Trong ứng dụng');
+
+      final withoutId = TransactionModel(
+        title: 'Lương',
+        amount: 1,
+        date: DateTime(2026, 9, 1),
+        category: 'Thu nhập',
+        isExpense: false,
+      );
+      expect(withoutId.toCheckoutJson().containsKey('clientId'), isFalse);
+    });
+  });
+
+  group('sync state', () {
+    test('everything that is not created on the device counts as synced', () {
+      expect(TransactionModel.fromJson({'id': 1, 'amount': 1}).syncStatus, SyncStatus.synced);
+      expect(_draft().syncStatus, SyncStatus.synced, reason: 'the repository marks it pending when it stores it');
+      expect(_draft().isUnsynced, isFalse);
+    });
+
+    test('pending and error are the two states in which the server has not confirmed the transaction', () {
+      expect(_draft().withSyncStatus(SyncStatus.pending).isUnsynced, isTrue);
+      expect(_draft().withSyncStatus(SyncStatus.error).isUnsynced, isTrue);
+      expect(_draft().withSyncStatus(SyncStatus.synced).isUnsynced, isFalse);
+    });
+
+    test('withSyncStatus changes the state and nothing else, so a resend sends the same transaction', () {
+      final original = _draft();
+      final moved = original.withSyncStatus(SyncStatus.error);
+
+      expect(moved.syncStatus, SyncStatus.error);
+      expect(moved.clientId, original.clientId);
+      expect(moved.toCheckoutJson(), original.toCheckoutJson());
+    });
+
+    test('the client id and the state survive a trip through SQLite', () {
+      final draft = _draft().withSyncStatus(SyncStatus.error);
+
+      final row = {...draft.toDbMap(7), 'id': 42};
+      final read = TransactionModel.fromDbMap(row);
+
+      expect(row['client_id'], draft.clientId);
+      expect(row['sync_status'], 'error');
+      expect(read.clientId, draft.clientId);
+      expect(read.syncStatus, SyncStatus.error);
+      expect(read.toCheckoutJson(), draft.toCheckoutJson(), reason: 'a resend sends exactly what the first send did');
+    });
+
+    test('a row that is not synced has no server id, so its row number cannot pass for one', () {
+      for (final status in [SyncStatus.pending, SyncStatus.error]) {
+        final read = TransactionModel.fromDbMap({..._draft().withSyncStatus(status).toDbMap(7), 'id': 42});
+        expect(read.id, isNull, reason: '$status');
+      }
+      final synced = TransactionModel.fromDbMap({..._draft().toDbMap(7), 'id': 42});
+      expect(synced.id, '42', reason: 'local mode keeps addressing its rows by their id');
+    });
+
+    test('a row from before the columns existed reads as synced, and so does an unknown value', () {
+      final old = {..._draft().toDbMap(7), 'id': 3}
+        ..remove('client_id')
+        ..remove('sync_status');
+      expect(TransactionModel.fromDbMap(old).syncStatus, SyncStatus.synced);
+      expect(TransactionModel.fromDbMap(old).clientId, isNull);
+      expect(TransactionModel.fromDbMap(old).id, '3');
+
+      expect(SyncStatus.fromDb('something-new'), SyncStatus.synced);
+      expect(SyncStatus.fromDb(null), SyncStatus.synced);
+    });
+
+    test('the stored values are stable, and the badge texts are the ones of the task', () {
+      expect({for (final s in SyncStatus.values) s: s.dbValue}, {
+        SyncStatus.pending: 'pending',
+        SyncStatus.synced: 'synced',
+        SyncStatus.error: 'error',
+      });
+      for (final status in SyncStatus.values) {
+        expect(SyncStatus.fromDb(status.dbValue), status);
+      }
+      expect(SyncStatus.pending.label, 'Chờ gửi');
+      expect(SyncStatus.error.label, 'Gửi lỗi');
+      expect(SyncStatus.synced.label, 'Đã đồng bộ');
     });
   });
 }

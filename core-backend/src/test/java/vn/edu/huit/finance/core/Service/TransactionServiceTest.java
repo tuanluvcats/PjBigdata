@@ -8,6 +8,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -67,6 +68,7 @@ class TransactionServiceTest {
     private static final Long BOB_ID = 2L;
     private static final Long TX_ID = 100L;
     private static final Long FOOD_ID = 10L;
+    private static final Long RECEIPT_ID = 7L;
     private static final BigDecimal WALLET = new BigDecimal("1000000");
     private static final BigDecimal HUNDRED_THOUSAND = new BigDecimal("100000");
 
@@ -700,6 +702,224 @@ class TransactionServiceTest {
         assertThrows(ReceiptNotFoundException.class, () -> service.cancelMyReceipt(7L));
     }
 
+    // ------------------------------------------------------------------------------- approve a receipt: amount and wallet
+
+    /**
+     * A receipt of a transaction of Alice's for 100,000 (the wallet already reflects it) that the repository finds and that
+     * holds {@code total} as its final total ({@code null}: none). Nothing is stubbed for the signed-in user: an
+     * administrator approves, and the owner of the receipt is found through the transaction that carries it.
+     */
+    private Receipt receiptToApprove(boolean isExpense, String status, String total) {
+        Transaction transaction = transaction(alice, HUNDRED_THOUSAND, isExpense);
+        Receipt receipt = receipt(status, transaction);
+        receipt.setExtractedTotal(total == null ? null : new BigDecimal(total));
+        transaction.setReceipt(receipt);
+        when(receiptRepo.findDetailedById(RECEIPT_ID)).thenReturn(Optional.of(receipt));
+        lenient().when(entityManager.find(User.class, ALICE_ID, LockModeType.PESSIMISTIC_WRITE)).thenReturn(alice);
+        lenient().when(transactionRepo.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        return receipt;
+    }
+
+    private Receipt expenseReceiptToApprove(String total) {
+        return receiptToApprove(true, "WAITING_FOR_REVIEW", total);
+    }
+
+    static Stream<Arguments> approvalCases() {
+        // is expense, status of the receipt, its total, amount of the transaction afterwards, wallet afterwards (100,000 before)
+        return Stream.of(
+                Arguments.of(true, "WAITING_FOR_REVIEW", "120000", "120000", "980000"),        // the owner corrected it: 20,000 more spent
+                Arguments.of(true, "WAITING_FOR_REVIEW", "40000", "40000", "1060000"),         // 60,000 less spent
+                Arguments.of(false, "WAITING_FOR_REVIEW", "250000", "250000", "1150000"),      // 150,000 more earned
+                Arguments.of(false, "WAITING_FOR_REVIEW", "30000", "30000", "930000"),         // 70,000 less earned
+                Arguments.of(true, "SUCCESS", "120000", "120000", "980000"),                   // what the AI read differs from what was typed
+                Arguments.of(true, "PENDING", "120000", "120000", "980000"),
+                Arguments.of(true, "FAILED", "120000", "120000", "980000"),                    // an administrator overrules an earlier rejection
+                Arguments.of(true, "WAITING_FOR_REVIEW", "100000.50", "100000.50", "999999.50"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("approvalCases")
+    void approvingAReceiptWritesItsTotalIntoTheTransactionAndMovesTheWalletByTheDifference(
+            boolean isExpense, String status, String total, String amountAfter, String walletAfter) {
+        Receipt receipt = receiptToApprove(isExpense, status, total);
+        Transaction transaction = receipt.getTransaction();
+
+        service.approveReceipt(RECEIPT_ID);
+
+        assertMoney(amountAfter, transaction.getAmount());
+        assertMoney(walletAfter, alice.getWalletBalance());
+        assertEquals("SUCCESS", receipt.getStatus());
+        assertEquals(isExpense, transaction.isExpense(), "approving never changes the direction of a transaction");
+        verify(userRepo).saveAndFlush(alice);
+        verify(transactionRepo).save(transaction);
+        verify(receiptRepo).save(receipt);
+    }
+
+    @Test
+    void aReceiptWhoseTotalAlreadyMatchesTheTransactionOnlyChangesItsStatus() {
+        Receipt receipt = expenseReceiptToApprove("100000.00");
+        Transaction transaction = receipt.getTransaction();
+
+        service.approveReceipt(RECEIPT_ID);
+
+        assertEquals("SUCCESS", receipt.getStatus());
+        assertMoney("100000", transaction.getAmount());
+        assertMoney("1000000", alice.getWalletBalance());
+        verify(userRepo, never()).saveAndFlush(any());
+        verify(receiptRepo).save(receipt);
+        verifyNoInteractions(budgetAlertService);
+    }
+
+    @Test
+    void approvingTheSameReceiptAgainDoesNotMoveTheWalletAgain() {
+        Receipt receipt = expenseReceiptToApprove("120000");
+
+        service.approveReceipt(RECEIPT_ID);
+        service.approveReceipt(RECEIPT_ID);
+
+        assertMoney("980000", alice.getWalletBalance());
+        assertMoney("120000", receipt.getTransaction().getAmount());
+        verify(userRepo, times(1)).saveAndFlush(alice);
+        verify(budgetAlertService, times(1)).notifyAfterUpdate(any(), any());
+    }
+
+    @Test
+    void theWalletIsLockedAndTheRowsAreReadAgainBeforeTheWalletIsWrittenAndThenTheRowsAreSaved() {
+        Receipt receipt = expenseReceiptToApprove("120000");
+        Transaction transaction = receipt.getTransaction();
+
+        service.approveReceipt(RECEIPT_ID);
+
+        InOrder order = inOrder(entityManager, userRepo, transactionRepo, receiptRepo);
+        order.verify(entityManager).detach(alice);
+        order.verify(entityManager).find(User.class, ALICE_ID, LockModeType.PESSIMISTIC_WRITE);
+        order.verify(entityManager).refresh(transaction);
+        order.verify(userRepo).saveAndFlush(alice);
+        order.verify(transactionRepo).save(transaction);
+        order.verify(receiptRepo).save(receipt);
+    }
+
+    @Test
+    void theBalanceUsedByAnApprovalIsTheOneReadUnderTheLockNotTheOneReadEarlier() {
+        Receipt receipt = expenseReceiptToApprove("120000");
+        User reloaded = user(ALICE_ID, new BigDecimal("1300000")); // another request committed +300,000 in the meantime
+        when(entityManager.find(User.class, ALICE_ID, LockModeType.PESSIMISTIC_WRITE)).thenReturn(reloaded);
+
+        service.approveReceipt(RECEIPT_ID);
+
+        assertMoney("1280000", reloaded.getWalletBalance());
+        assertMoney("1000000", alice.getWalletBalance()); // the stale copy is never written
+        verify(userRepo).saveAndFlush(reloaded);
+        verify(userRepo, never()).saveAndFlush(alice);
+        assertSame(reloaded, receipt.getTransaction().getUser());
+    }
+
+    @Test
+    void aWalletThatCannotCarryTheHigherTotalRefusesTheApprovalAndNothingChanges() {
+        alice.setWalletBalance(new BigDecimal("19999.99"));
+        Receipt receipt = expenseReceiptToApprove("120000"); // 20,000 more than the transaction holds now
+        Transaction transaction = receipt.getTransaction();
+
+        InsufficientBalanceException refused = assertThrows(InsufficientBalanceException.class,
+                () -> service.approveReceipt(RECEIPT_ID));
+
+        assertEquals("GIAO DỊCH THẤT BẠI: Số dư ví không đủ!", refused.getMessage());
+        assertMoney("19999.99", alice.getWalletBalance());
+        assertMoney("100000", transaction.getAmount());
+        assertEquals("WAITING_FOR_REVIEW", receipt.getStatus());
+        verify(userRepo, never()).saveAndFlush(any());
+        verify(transactionRepo, never()).save(any());
+        verify(receiptRepo, never()).save(any());
+        verifyNoInteractions(budgetAlertService);
+    }
+
+    @Test
+    void aFailureWhileSavingTheApprovedTransactionIsNotSwallowedAndTheReceiptIsNotSaved() {
+        expenseReceiptToApprove("120000");
+        when(transactionRepo.save(any(Transaction.class))).thenThrow(new IllegalStateException("disk full"));
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.approveReceipt(RECEIPT_ID));
+
+        assertEquals("disk full", error.getMessage());
+        verify(receiptRepo, never()).save(any());
+        verifyNoInteractions(budgetAlertService);
+    }
+
+    @Test
+    void anApprovalHandsTheTransactionToTheBudgetAlertWithWhatItCountedForBeforeTheApproval() {
+        Receipt receipt = expenseReceiptToApprove("120000");
+        Transaction transaction = receipt.getTransaction();
+        LocalDateTime dateBefore = transaction.getTransactionDate();
+
+        service.approveReceipt(RECEIPT_ID);
+
+        ArgumentCaptor<BudgetAlertService.SpendingSnapshot> before = ArgumentCaptor.forClass(BudgetAlertService.SpendingSnapshot.class);
+        InOrder order = inOrder(transactionRepo, budgetAlertService);
+        order.verify(transactionRepo).save(transaction);
+        order.verify(budgetAlertService).notifyAfterUpdate(same(transaction), before.capture());
+        // What the transaction counted for until the approval (100,000 on food), not the 120,000 it counts for now.
+        assertEquals(new BudgetAlertService.SpendingSnapshot(HUNDRED_THOUSAND, true, dateBefore.toLocalDate(), FOOD_ID),
+                before.getValue());
+    }
+
+    @Test
+    void aReceiptThatDoesNotExistCannotBeApproved() {
+        when(receiptRepo.findDetailedById(RECEIPT_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ReceiptNotFoundException.class, () -> service.approveReceipt(RECEIPT_ID));
+
+        verifyNothingWasWritten();
+        verify(receiptRepo, never()).save(any());
+    }
+
+    @Test
+    void aReceiptNoTransactionCarriesCannotBeApprovedAndTheWalletIsNotEvenLocked() {
+        Receipt orphan = receipt("WAITING_FOR_REVIEW", null);
+        orphan.setExtractedTotal(new BigDecimal("120000"));
+        when(receiptRepo.findDetailedById(RECEIPT_ID)).thenReturn(Optional.of(orphan));
+
+        IllegalStateException refused = assertThrows(IllegalStateException.class, () -> service.approveReceipt(RECEIPT_ID));
+
+        assertTrue(refused.getMessage().contains("giao dịch"));
+        assertEquals("WAITING_FOR_REVIEW", orphan.getStatus());
+        verifyNothingWasWritten();
+        verify(receiptRepo, never()).save(any());
+    }
+
+    @Test
+    void aCanceledReceiptCannotBeApprovedAndNothingMoves() {
+        Receipt canceled = receiptToApprove(true, "CANCELED", "120000");
+        Transaction transaction = canceled.getTransaction();
+
+        IllegalStateException refused = assertThrows(IllegalStateException.class, () -> service.approveReceipt(RECEIPT_ID));
+
+        assertTrue(refused.getMessage().contains("hủy"));
+        assertEquals("CANCELED", canceled.getStatus());
+        assertMoney("100000", transaction.getAmount());
+        assertMoney("1000000", alice.getWalletBalance());
+        verify(userRepo, never()).saveAndFlush(any());
+        verify(transactionRepo, never()).save(any());
+        verify(receiptRepo, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"0", "-5", "0.004", "1000000000001"})
+    void aReceiptWithoutAUsableTotalCannotBeApprovedAndNothingMoves(String total) {
+        Receipt receipt = receiptToApprove(true, "WAITING_FOR_REVIEW", total);
+        Transaction transaction = receipt.getTransaction();
+
+        IllegalStateException refused = assertThrows(IllegalStateException.class, () -> service.approveReceipt(RECEIPT_ID));
+
+        assertTrue(refused.getMessage().contains("tổng tiền"));
+        assertEquals("WAITING_FOR_REVIEW", receipt.getStatus());
+        assertMoney("100000", transaction.getAmount());
+        assertMoney("1000000", alice.getWalletBalance());
+        verify(userRepo, never()).saveAndFlush(any());
+        verify(transactionRepo, never()).save(any());
+        verify(receiptRepo, never()).save(any());
+    }
+
     // ------------------------------------------------------------------------------------- checkout with a scanned receipt
 
     private TransactionRequestDto checkout(String rawReceiptData) {
@@ -1049,6 +1269,195 @@ class TransactionServiceTest {
         assertMoney("1000000", alice.getWalletBalance());
     }
 
+    // ----------------------------------------------------------------------------- checkout: idempotency by client id
+
+    private static final String CLIENT_ID = "0b7e6f1c-5f0a-4a55-9d1f-2f6f6b1c9a11";
+
+    private TransactionRequestDto checkoutWithClientId(String clientId) {
+        TransactionRequestDto request = checkout(true, "150000");
+        request.setCategoryId(FOOD_ID);
+        request.setClientId(clientId);
+        return request;
+    }
+
+    /** Alice has already checked out an expense of 100,000 (transaction {@code TX_ID}) with this client id. */
+    private void aliceAlreadyCheckedOutWith(String clientId) {
+        Transaction original = transaction(alice, HUNDRED_THOUSAND, true);
+        original.setClientId(clientId);
+        when(transactionRepo.findByUserIdAndClientId(ALICE_ID, clientId)).thenReturn(Optional.of(original));
+    }
+
+    private Transaction savedTransaction() {
+        ArgumentCaptor<Transaction> saved = ArgumentCaptor.forClass(Transaction.class);
+        verify(transactionRepo).save(saved.capture());
+        return saved.getValue();
+    }
+
+    @Test
+    void theFirstCheckoutWithAClientIdCreatesTheTransactionAndRemembersTheId() {
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+
+        Map<String, Object> result = service.createMyTransaction(checkoutWithClientId(CLIENT_ID));
+
+        assertEquals(CLIENT_ID, savedTransaction().getClientId());
+        assertMoney("850000", alice.getWalletBalance());
+        assertMoney("850000", (BigDecimal) result.get("remainingBalance"));
+        verify(transactionRepo).findByUserIdAndClientId(ALICE_ID, CLIENT_ID);
+        verify(budgetAlertService).notifyAfterCreate(any(Transaction.class));
+    }
+
+    @Test
+    void aRepeatedCheckoutIsAnsweredWithTheFirstTransactionAndChangesNothing() {
+        checkoutAsAlice();
+        aliceAlreadyCheckedOutWith(CLIENT_ID);
+
+        Map<String, Object> result = service.createMyTransaction(checkoutWithClientId(CLIENT_ID));
+
+        assertEquals(TX_ID, result.get("transactionId"));
+        assertMoney("100000", (BigDecimal) result.get("finalAmount")); // what the first checkout saved, not the 150,000 of this body
+        assertMoney("1000000", (BigDecimal) result.get("remainingBalance"));
+        assertEquals("", result.get("warning"));
+        assertEquals(Set.of("transactionId", "finalAmount", "remainingBalance", "warning"), result.keySet(),
+                "a repeat is answered in the same shape as the first checkout");
+        assertMoney("1000000", alice.getWalletBalance());
+        verify(userRepo, never()).save(any());
+        verify(userRepo, never()).saveAndFlush(any());
+        verify(transactionRepo, never()).save(any());
+        verifyNoInteractions(budgetAlertService, receiptProcessingService, auditLogService);
+    }
+
+    @Test
+    void aRepeatedCheckoutIsNotCheckedAgainAndBuildsNoSecondReceipt() {
+        // The first attempt spent 100,000; the wallet holds 1,000 now, and this body names a category that does not exist.
+        alice.setWalletBalance(new BigDecimal("1000"));
+        checkoutAsAlice();
+        aliceAlreadyCheckedOutWith(CLIENT_ID);
+        TransactionRequestDto request = checkoutWithClientId(CLIENT_ID);
+        request.setCategoryId(99L);
+        request.setRawReceiptData("{\"seller\": {}}");
+
+        Map<String, Object> result = service.createMyTransaction(request);
+
+        assertEquals(TX_ID, result.get("transactionId"));
+        assertTrue(((String) result.get("warning")).startsWith("CẢNH BÁO"), "the wallet is low now, and the answer says so");
+        assertMoney("1000", alice.getWalletBalance());
+        verifyNoInteractions(categoryRepo, receiptProcessingService);
+        verify(transactionRepo, never()).save(any());
+    }
+
+    @Test
+    void aRepeatedCheckoutShowsTheWalletAsItIsUnderTheLock() {
+        checkoutAsAlice();
+        aliceAlreadyCheckedOutWith(CLIENT_ID);
+        // A twin request committed while this one waited for the lock: the reloaded row is the current one.
+        User reloaded = user(ALICE_ID, new BigDecimal("900000"));
+        when(entityManager.find(User.class, ALICE_ID, LockModeType.PESSIMISTIC_WRITE)).thenReturn(reloaded);
+
+        Map<String, Object> result = service.createMyTransaction(checkoutWithClientId(CLIENT_ID));
+
+        assertMoney("900000", (BigDecimal) result.get("remainingBalance"));
+    }
+
+    @Test
+    void theWalletIsLockedBeforeTheClientIdIsLookedUpSoTwoRequestsQueueUp() {
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+
+        service.createMyTransaction(checkoutWithClientId(CLIENT_ID));
+
+        InOrder order = inOrder(entityManager, transactionRepo);
+        order.verify(entityManager).detach(alice);
+        order.verify(entityManager).find(User.class, ALICE_ID, LockModeType.PESSIMISTIC_WRITE);
+        order.verify(transactionRepo).findByUserIdAndClientId(ALICE_ID, CLIENT_ID);
+        order.verify(transactionRepo).save(any(Transaction.class));
+    }
+
+    @Test
+    void aCheckoutWithAClientIdChargesTheBalanceReadUnderTheLockNotTheOneReadEarlier() {
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+        // Another checkout of Alice committed -300,000 after this one first read the user.
+        User reloaded = user(ALICE_ID, new BigDecimal("700000"));
+        when(entityManager.find(User.class, ALICE_ID, LockModeType.PESSIMISTIC_WRITE)).thenReturn(reloaded);
+
+        Map<String, Object> result = service.createMyTransaction(checkoutWithClientId(CLIENT_ID));
+
+        assertMoney("550000", reloaded.getWalletBalance());
+        assertMoney("1000000", alice.getWalletBalance()); // the stale copy is never charged
+        assertMoney("550000", (BigDecimal) result.get("remainingBalance"));
+        verify(userRepo).save(reloaded);
+        assertSame(reloaded, savedTransaction().getUser());
+    }
+
+    @Test
+    void theClientIdIsLookedUpForTheCallerOnlySoSomebodyElsesIdIsNoDuplicate() {
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+        // Bob used the same id for one of his own checkouts; it says nothing about Alice's.
+        lenient().when(transactionRepo.findByUserIdAndClientId(BOB_ID, CLIENT_ID))
+                .thenReturn(Optional.of(transaction(bob, HUNDRED_THOUSAND, true)));
+
+        service.createMyTransaction(checkoutWithClientId(CLIENT_ID));
+
+        verify(transactionRepo).findByUserIdAndClientId(ALICE_ID, CLIENT_ID);
+        verify(transactionRepo, never()).findByUserIdAndClientId(eq(BOB_ID), any());
+        assertSame(alice, savedTransaction().getUser());
+        assertMoney("850000", alice.getWalletBalance());
+    }
+
+    @Test
+    void theClientIdIsTrimmedBeforeItIsLookedUpAndStored() {
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+
+        service.createMyTransaction(checkoutWithClientId("  " + CLIENT_ID + "\t"));
+
+        verify(transactionRepo).findByUserIdAndClientId(ALICE_ID, CLIENT_ID);
+        assertEquals(CLIENT_ID, savedTransaction().getClientId());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "   ", "\t"})
+    void aCheckoutWithoutAClientIdIsNeverLookedUpNorLockedAndStoresNoId(String clientId) {
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+
+        service.createMyTransaction(checkoutWithClientId(clientId));
+
+        verify(transactionRepo, never()).findByUserIdAndClientId(any(), any());
+        verifyWalletNotLocked();
+        assertNull(savedTransaction().getClientId());
+        assertMoney("850000", alice.getWalletBalance());
+    }
+
+    @Test
+    void createTransactionWithAnExplicitUserIdIsIdempotentToo() {
+        when(userRepo.findById(ALICE_ID)).thenReturn(Optional.of(alice));
+        lenient().when(entityManager.find(User.class, ALICE_ID, LockModeType.PESSIMISTIC_WRITE)).thenReturn(alice);
+        aliceAlreadyCheckedOutWith(CLIENT_ID);
+
+        Map<String, Object> result = service.createTransaction(checkoutWithClientId(CLIENT_ID), ALICE_ID);
+
+        assertEquals(TX_ID, result.get("transactionId"));
+        verify(transactionRepo, never()).save(any());
+    }
+
+    @Test
+    void aCheckoutTheWalletCannotCarryStaysRefusedWhateverItsClientIdAndLeavesNoTransactionBehind() {
+        alice.setWalletBalance(new BigDecimal("50000"));
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+
+        RuntimeException refused = assertThrows(RuntimeException.class,
+                () -> service.createMyTransaction(checkoutWithClientId(CLIENT_ID)));
+
+        assertEquals("GIAO DỊCH THẤT BẠI: Số dư ví không đủ!", refused.getMessage());
+        verify(transactionRepo, never()).save(any());
+        assertMoney("50000", alice.getWalletBalance());
+    }
+
     // ------------------------------------------------------------------------------------------- budget notifications
 
     @Test
@@ -1129,6 +1538,7 @@ class TransactionServiceTest {
                 TransactionService.class.getMethod("updateTransaction", Long.class, TransactionUpdateRequestDto.class),
                 TransactionService.class.getMethod("deleteTransaction", Long.class),
                 TransactionService.class.getMethod("cancelMyReceipt", Long.class),
+                TransactionService.class.getMethod("approveReceipt", Long.class),
                 TransactionService.class.getMethod("createMyTransaction", TransactionRequestDto.class),
                 TransactionService.class.getMethod("createTransaction", TransactionRequestDto.class, Long.class));
 

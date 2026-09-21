@@ -197,12 +197,10 @@ class ReceiptProcessingServiceTest {
     }
 
     @Test
-    void feedbackAndApprovalRunInsideADatabaseTransaction() throws NoSuchMethodException {
+    void feedbackRunsInsideADatabaseTransaction() throws NoSuchMethodException {
         Method feedback = ReceiptProcessingService.class.getMethod("submitFeedback", Long.class, BigDecimal.class);
-        Method approval = ReceiptProcessingService.class.getMethod("approveReceipt", Long.class);
 
         assertTrue(AnnotatedElementUtils.hasAnnotation(feedback, Transactional.class));
-        assertTrue(AnnotatedElementUtils.hasAnnotation(approval, Transactional.class));
     }
 
     // ---------------------------------------------------------------------------------------- linking a scanned receipt
@@ -289,39 +287,5 @@ class ReceiptProcessingServiceTest {
         service.attachReceipt(transaction, FULL_SCAN, imageUrl);
 
         assertNull(transaction.getReceipt().getImageUrl());
-    }
-
-    // -------------------------------------------------------------------------------------------------------- approval
-
-    @Test
-    void aReceiptCarriedByATransactionIsVerified() {
-        Receipt waiting = receipt("WAITING_FOR_REVIEW", transactionOf(alice));
-        repositoryHolds(waiting);
-
-        service.approveReceipt(RECEIPT_ID);
-
-        assertEquals("SUCCESS", waiting.getStatus());
-        verify(receiptRepo).save(waiting);
-    }
-
-    @Test
-    void aReceiptNoTransactionCarriesCannotBeVerified() {
-        Receipt orphan = receipt("WAITING_FOR_REVIEW", null);
-        repositoryHolds(orphan);
-
-        IllegalStateException refused = assertThrows(IllegalStateException.class, () -> service.approveReceipt(RECEIPT_ID));
-
-        assertTrue(refused.getMessage().contains("giao dịch"));
-        assertEquals("WAITING_FOR_REVIEW", orphan.getStatus());
-        verify(receiptRepo, never()).save(any());
-    }
-
-    @Test
-    void aReceiptThatDoesNotExistCannotBeVerified() {
-        when(receiptRepo.findDetailedById(RECEIPT_ID)).thenReturn(Optional.empty());
-
-        assertThrows(ReceiptNotFoundException.class, () -> service.approveReceipt(RECEIPT_ID));
-
-        verify(receiptRepo, never()).save(any());
     }
 }

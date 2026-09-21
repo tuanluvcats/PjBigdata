@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/models/sync_status.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/models/budget_model.dart';
 import 'package:finance_ai_app/models/budget_progress.dart';
@@ -17,7 +18,9 @@ import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/screens/ledger/edit_transaction_page.dart';
 import 'package:finance_ai_app/widgets/budget/budget_alert_presenter.dart';
 import 'package:finance_ai_app/widgets/budget/budget_section.dart';
+import 'package:finance_ai_app/widgets/dialogs/app_dialog.dart';
 import 'package:finance_ai_app/widgets/receipt/receipt_status_badge.dart';
+import 'package:finance_ai_app/widgets/sync/sync_status_badge.dart';
 
 import 'add_transaction_page.dart';
 
@@ -32,7 +35,14 @@ class LedgerPage extends StatefulWidget {
 
 class LedgerPageState extends State<LedgerPage> {
   bool _isLoading = true;
+
+  /// True when the list of the server could not be loaded: [_transactions] then holds only the transactions of this
+  /// device that are waiting to be sent, which must stay reachable so that they can be resent.
+  bool _transactionsFailed = false;
   List<TransactionModel> _transactions = [];
+
+  /// clientIds of the transactions being resent, so that a second tap on the same one cannot start a second send.
+  final Set<String> _resendingClientIds = {};
   List<BudgetModel> _budgets = [];
   bool _budgetsFailed = false;
   List<BudgetProgress> _budgetProgress = [];
@@ -78,12 +88,21 @@ class LedgerPageState extends State<LedgerPage> {
 
     // Started together: the budgets do not depend on the transactions, so the wait is that of the slower request.
     final budgetsRequest = AppRepository.instance.tryGetBudgets(userId);
-    final txs = await AppRepository.instance.getTransactions(userId);
+    List<TransactionModel> txs;
+    var transactionsFailed = false;
+    try {
+      txs = await AppRepository.instance.getTransactions(userId);
+    } catch (e) {
+      debugPrint('Lỗi tải giao dịch: $e');
+      transactionsFailed = true;
+      txs = await AppRepository.instance.getUnsyncedTransactions(userId);
+    }
     final budgets = await budgetsRequest;
 
     if (!mounted) return;
     setState(() {
       _isLoading = false;
+      _transactionsFailed = transactionsFailed;
       _transactions = txs;
       _budgets = budgets ?? [];
       _budgetsFailed = budgets == null;
@@ -246,6 +265,7 @@ List<TransactionModel> get _periodTransactions {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                 children: [
+                  if (_transactionsFailed) _buildLoadFailedNotice(),
                   _buildDateStepper(),
                   const SizedBox(height: 16),
                   _buildPeriodHeader(),
@@ -668,6 +688,10 @@ List<TransactionModel> get _periodTransactions {
                               const SizedBox(height: 4),
                               ReceiptStatusBadge(status: tx.receiptStatus!),
                             ],
+                            if (tx.isUnsynced) ...[
+                              const SizedBox(height: 4),
+                              SyncStatusBadge(status: tx.syncStatus),
+                            ],
                           ],
                         ),
                       ),
@@ -903,6 +927,27 @@ List<TransactionModel> get _periodTransactions {
                     ),
                   ),
                 ],
+                if (tx.isUnsynced) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        const Text('Đồng bộ:', style: TextStyle(color: AppTheme.textGray, fontSize: 15)),
+                        SyncStatusBadge(status: tx.syncStatus),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Giao dịch chưa được máy chủ xác nhận. Khi đã có mạng, bấm "Gửi lại". Gửi lại sẽ không tạo giao dịch trùng.',
+                    style: TextStyle(color: AppTheme.textGray, fontSize: 13),
+                  ),
+                ],
                 if (tx.imageUrl != null && tx.imageUrl!.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   const Text('Ảnh hóa đơn gốc:', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
@@ -940,6 +985,27 @@ List<TransactionModel> get _periodTransactions {
                 ],
                 
                 const SizedBox(height: 24),
+                // The server has no copy of an unsynced transaction, so the only thing to do with it is to send it again.
+                if (tx.isUnsynced) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.mintAccent,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                      ),
+                      icon: const Icon(Icons.cloud_upload_rounded),
+                      label: const Text('Gửi lại', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _resendTransactionAction(tx);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 // Editing goes through the server; offline there is no edit form, so the button is not offered.
                 if (AppConfig.isFull && tx.id != null) ...[
                   SizedBox(
@@ -973,8 +1039,12 @@ List<TransactionModel> get _periodTransactions {
                     icon: const Icon(Icons.delete_rounded),
                     label: const Text('Xóa giao dịch này', style: TextStyle(fontWeight: FontWeight.bold)),
                     onPressed: () {
-                      Navigator.pop(ctx); 
-                      _deleteTransactionAction(tx.id!); 
+                      Navigator.pop(ctx);
+                      if (tx.isUnsynced) {
+                        _deleteUnsyncedAction(tx);
+                      } else {
+                        _deleteTransactionAction(tx.id!);
+                      }
                     },
                   ),
                 ),
@@ -1036,6 +1106,93 @@ List<TransactionModel> get _periodTransactions {
     } else {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Xóa thất bại, vui lòng thử lại')));
     }
+  }
+
+  /// Sends a transaction that the server has not confirmed again. It carries the clientId it was created with, so when
+  /// the first send did arrive the server answers with that transaction instead of creating a second one.
+  Future<void> _resendTransactionAction(TransactionModel tx) async {
+    if (!mounted) return;
+    final userId = SessionService.currentUserId;
+    if (userId == null) {
+      await AppDialog.error(context, title: 'Phiên đăng nhập hết hạn', message: 'Vui lòng đăng nhập lại.');
+      return;
+    }
+    final clientId = tx.clientId;
+    if (clientId == null || !_resendingClientIds.add(clientId)) return;
+
+    SyncStatus? outcome;
+    String? failure;
+    try {
+      outcome = await AppRepository.instance.resendTransaction(userId, tx);
+    } on TransactionRefusedException catch (e) {
+      failure = e.message;
+    } catch (e) {
+      debugPrint('Lỗi gửi lại giao dịch: $e');
+      failure = 'Không gửi lại được giao dịch. Vui lòng thử lại.';
+    } finally {
+      _resendingClientIds.remove(clientId);
+    }
+    if (!mounted) return;
+
+    if (failure != null) {
+      await AppDialog.error(context, title: 'Gửi lại thất bại', message: failure);
+    } else if (outcome == SyncStatus.synced) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã gửi giao dịch lên máy chủ')));
+    } else {
+      await AppDialog.warning(
+        context,
+        title: 'Vẫn chưa gửi được',
+        message: 'Chưa kết nối được máy chủ. Giao dịch vẫn được giữ trên thiết bị, bạn có thể gửi lại sau.',
+      );
+    }
+    if (!mounted) return;
+    await _load();
+  }
+
+  /// Removes a transaction that the server never confirmed from the device only: there is nothing on the server to
+  /// delete, and its local row number is not a server id.
+  Future<void> _deleteUnsyncedAction(TransactionModel tx) async {
+    if (!mounted) return;
+    final userId = SessionService.currentUserId;
+    final clientId = tx.clientId;
+    if (userId == null || clientId == null) return;
+
+    final confirmed = await AppDialog.confirm(
+      context,
+      title: 'Xóa giao dịch chưa gửi?',
+      message: 'Giao dịch này chưa được máy chủ xác nhận. Xóa khỏi thiết bị và không gửi nữa? Hành động này không thể khôi phục.',
+      confirmText: 'Xóa ngay',
+      danger: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    await AppRepository.instance.deleteUnsyncedTransaction(userId, clientId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa giao dịch chưa gửi')));
+    await _load();
+  }
+
+  Widget _buildLoadFailedNotice() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.warningColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.cloud_off_rounded, color: AppTheme.warningColor, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Không tải được danh sách từ máy chủ. Chỉ hiển thị các giao dịch chưa gửi trên thiết bị. Kéo xuống để thử lại.',
+              style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildTypeOption(BuildContext ctx, String label, IconData icon,
