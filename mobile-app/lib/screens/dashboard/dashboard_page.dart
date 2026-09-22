@@ -17,14 +17,16 @@ import 'package:finance_ai_app/widgets/budget/budget_section.dart';
 import 'package:finance_ai_app/widgets/receipt/receipt_status_badge.dart';
 import 'package:finance_ai_app/widgets/sync/sync_status_badge.dart';
 import 'package:finance_ai_app/widgets/dialogs/dashboard_bottom_sheets.dart';
-import 'package:finance_ai_app/screens/ai/ai_tab_page.dart';
+
 class DashboardPage extends StatefulWidget {
-  final VoidCallback? onNavigateToAI; 
+  final VoidCallback? onNavigateToAI;
   const DashboardPage({super.key, this.onNavigateToAI});
   @override
   State<DashboardPage> createState() => DashboardPageState();
 }
-class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveClientMixin {
+
+class DashboardPageState extends State<DashboardPage>
+    with AutomaticKeepAliveClientMixin {
   /// How many budgets the home screen lists; the rest is one line saying how many more there are.
   static const int _maxBudgetCards = 3;
 
@@ -36,11 +38,9 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
   bool _isLoading = true;
   bool _balanceHidden = false;
   UserModel? _user;
-  List<TransactionModel> _transactions = [];
   List<WalletModel> _wallets = [];
   List<BudgetProgress> _budgetProgress = [];
   bool _budgetsFailed = false;
-
 
   double _totalAssets = 0;
   double _monthlyIncome = 0;
@@ -75,34 +75,42 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
       if (!mounted) return;
 
       final List<TransactionModel> txs = summary['transactions'];
-      
 
       double assets = 0, mInc = 0, mExp = 0, pInc = 0, pExp = 0;
-      
+
       for (var tx in txs) {
         if (tx.isExpense) {
           assets -= tx.amount;
-          if (tx.date.year == now.year && tx.date.month == now.month) mExp += tx.amount;
-          if (tx.date.year == prevMonth.year && tx.date.month == prevMonth.month) pExp += tx.amount;
+          if (tx.date.year == now.year && tx.date.month == now.month) {
+            mExp += tx.amount;
+          }
+          if (tx.date.year == prevMonth.year &&
+              tx.date.month == prevMonth.month) {
+            pExp += tx.amount;
+          }
         } else {
           assets += tx.amount;
-          if (tx.date.year == now.year && tx.date.month == now.month) mInc += tx.amount;
-          if (tx.date.year == prevMonth.year && tx.date.month == prevMonth.month) pInc += tx.amount;
+          if (tx.date.year == now.year && tx.date.month == now.month) {
+            mInc += tx.amount;
+          }
+          if (tx.date.year == prevMonth.year &&
+              tx.date.month == prevMonth.month) {
+            pInc += tx.amount;
+          }
         }
       }
 
       // The budgets whose week or month contains today, the most used first.
       final budgetProgress = budgets == null
           ? <BudgetProgress>[]
-          : (BudgetProgress.activeOn(now, budgets, txs)..sort((a, b) => b.percent.compareTo(a.percent)));
+          : (BudgetProgress.activeOn(now, budgets, txs)
+              ..sort((a, b) => b.percent.compareTo(a.percent)));
 
       setState(() {
         _user = summary['user'];
-        _transactions = txs;
         _wallets = summary['wallets'];
         _budgetProgress = budgetProgress;
         _budgetsFailed = budgets == null;
-
 
         _totalAssets = assets;
         _monthlyIncome = mInc;
@@ -114,7 +122,13 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
         _isLoading = false;
       });
       // Not awaited: a dialog waiting for the user must not keep the pull-to-refresh spinner turning.
-      unawaited(BudgetAlertPresenter.showNew(context, userId: userId, progresses: budgetProgress));
+      unawaited(
+        BudgetAlertPresenter.showNew(
+          context,
+          userId: userId,
+          progresses: budgetProgress,
+        ),
+      );
     } catch (e) {
       debugPrint('Lỗi tải trang chủ: $e');
       if (!mounted) return;
@@ -122,7 +136,11 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
     }
   }
 
-  String _formatCurrency(double amount) => NumberFormat.currency(locale: 'vi_VN', symbol: 'đ', decimalDigits: 0).format(amount);
+  String _formatCurrency(double amount) => NumberFormat.currency(
+    locale: 'vi_VN',
+    symbol: 'đ',
+    decimalDigits: 0,
+  ).format(amount);
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -172,31 +190,25 @@ class DashboardPageState extends State<DashboardPage> with AutomaticKeepAliveCli
     );
   }
 
-Widget _buildLoadingScreen() {
+  Widget _buildLoadingScreen() {
     return Stack(
       children: [
         _buildBackgroundGlow(),
         SafeArea(
           child: TweenAnimationBuilder<double>(
-
             tween: Tween<double>(begin: 0.3, end: 0.8),
             duration: const Duration(milliseconds: 1000),
             curve: Curves.easeInOut,
             builder: (context, opacity, child) {
-              return Opacity(
-                opacity: opacity,
-                child: child,
-              );
+              return Opacity(opacity: opacity, child: child);
             },
             onEnd: () {
-
-              if (mounted) setState(() {}); 
+              if (mounted) setState(() {});
             },
             child: ListView(
               padding: const EdgeInsets.only(bottom: 32, top: 10),
               physics: const NeverScrollableScrollPhysics(),
               children: [
-
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -205,38 +217,67 @@ Widget _buildLoadingScreen() {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildSkeletonBox(width: 80, height: 14, borderRadius: 4),
+                          _buildSkeletonBox(
+                            width: 80,
+                            height: 14,
+                            borderRadius: 4,
+                          ),
                           const SizedBox(height: 8),
-                          _buildSkeletonBox(width: 150, height: 22, borderRadius: 6),
+                          _buildSkeletonBox(
+                            width: 150,
+                            height: 22,
+                            borderRadius: 6,
+                          ),
                         ],
                       ),
-                      _buildSkeletonBox(width: 48, height: 48, shape: BoxShape.circle),
+                      _buildSkeletonBox(
+                        width: 48,
+                        height: 48,
+                        shape: BoxShape.circle,
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 24),
-                
 
-                _buildSkeletonBox(height: 180, margin: const EdgeInsets.symmetric(horizontal: 20), borderRadius: 24),
+                _buildSkeletonBox(
+                  height: 180,
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  borderRadius: 24,
+                ),
                 const SizedBox(height: 32),
-                
 
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildSkeletonBox(width: 100, height: 20, borderRadius: 6),
+                      _buildSkeletonBox(
+                        width: 100,
+                        height: 20,
+                        borderRadius: 6,
+                      ),
                       const SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: List.generate(4, (_) => Column(
-                          children: [
-                            _buildSkeletonBox(width: 56, height: 56, borderRadius: 16),
-                            const SizedBox(height: 8),
-                            _buildSkeletonBox(width: 50, height: 12, borderRadius: 4),
-                          ],
-                        )),
+                        children: List.generate(
+                          4,
+                          (_) => Column(
+                            children: [
+                              _buildSkeletonBox(
+                                width: 56,
+                                height: 56,
+                                borderRadius: 16,
+                              ),
+                              const SizedBox(height: 8),
+                              _buildSkeletonBox(
+                                width: 50,
+                                height: 12,
+                                borderRadius: 4,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -248,29 +289,52 @@ Widget _buildLoadingScreen() {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildSkeletonBox(width: 160, height: 20, borderRadius: 6),
+                      _buildSkeletonBox(
+                        width: 160,
+                        height: 20,
+                        borderRadius: 6,
+                      ),
                       const SizedBox(height: 16),
-                      ...List.generate(4, (_) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Row(
-                          children: [
-                            _buildSkeletonBox(width: 48, height: 48, borderRadius: 16),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildSkeletonBox(width: double.infinity, height: 16, borderRadius: 4),
-                                  const SizedBox(height: 8),
-                                  _buildSkeletonBox(width: 100, height: 12, borderRadius: 4),
-                                ],
+                      ...List.generate(
+                        4,
+                        (_) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            children: [
+                              _buildSkeletonBox(
+                                width: 48,
+                                height: 48,
+                                borderRadius: 16,
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            _buildSkeletonBox(width: 80, height: 20, borderRadius: 4),
-                          ],
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildSkeletonBox(
+                                      width: double.infinity,
+                                      height: 16,
+                                      borderRadius: 4,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _buildSkeletonBox(
+                                      width: 100,
+                                      height: 12,
+                                      borderRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              _buildSkeletonBox(
+                                width: 80,
+                                height: 20,
+                                borderRadius: 4,
+                              ),
+                            ],
+                          ),
                         ),
-                      )),
+                      ),
                     ],
                   ),
                 ),
@@ -281,10 +345,11 @@ Widget _buildLoadingScreen() {
       ],
     );
   }
+
   Widget _buildSkeletonBox({
-    double? width, 
-    double? height, 
-    EdgeInsetsGeometry? margin, 
+    double? width,
+    double? height,
+    EdgeInsetsGeometry? margin,
     BoxShape shape = BoxShape.rectangle,
     double borderRadius = 20,
   }) {
@@ -295,18 +360,26 @@ Widget _buildLoadingScreen() {
       decoration: BoxDecoration(
         color: AppTheme.textGray.withValues(alpha: 0.15),
         shape: shape,
-        borderRadius: shape == BoxShape.rectangle ? BorderRadius.circular(borderRadius) : null,
+        borderRadius: shape == BoxShape.rectangle
+            ? BorderRadius.circular(borderRadius)
+            : null,
       ),
     );
   }
+
   Widget _buildBackgroundGlow() {
     return Positioned(
-      top: -100, left: -100,
+      top: -100,
+      left: -100,
       child: ImageFiltered(
         imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
         child: Container(
-          width: 300, height: 300,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.mintAccent.withValues(alpha: 0.15)),
+          width: 300,
+          height: 300,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppTheme.mintAccent.withValues(alpha: 0.15),
+          ),
         ),
       ),
     );
@@ -324,15 +397,29 @@ Widget _buildLoadingScreen() {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Xin chào,', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
-                  Text(_user?.fullName ?? 'User', style: const TextStyle(color: AppTheme.textWhite, fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Xin chào,',
+                    style: TextStyle(color: AppTheme.textGray, fontSize: 14),
+                  ),
+                  Text(
+                    _user?.fullName ?? 'User',
+                    style: const TextStyle(
+                      color: AppTheme.textWhite,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
               CircleAvatar(
                 backgroundColor: AppTheme.navyLight,
                 child: IconButton(
-                  icon: const Icon(Icons.notifications_outlined, color: AppTheme.textWhite),
-                  onPressed: () => DashboardBottomSheets.showNotifications(context),
+                  icon: const Icon(
+                    Icons.notifications_outlined,
+                    color: AppTheme.textWhite,
+                  ),
+                  onPressed: () =>
+                      DashboardBottomSheets.showNotifications(context),
                 ),
               ),
             ],
@@ -350,7 +437,13 @@ Widget _buildLoadingScreen() {
       decoration: BoxDecoration(
         gradient: AppTheme.purpleCardGradient,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: AppTheme.primary.withValues(alpha: 0.30), blurRadius: 24, offset: const Offset(0, 12))],
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primary.withValues(alpha: 0.30),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,10 +451,22 @@ Widget _buildLoadingScreen() {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Tổng tài sản hiện tại', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 14)),
+              Text(
+                'Tổng tài sản hiện tại',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.75),
+                  fontSize: 14,
+                ),
+              ),
               GestureDetector(
                 onTap: () => setState(() => _balanceHidden = !_balanceHidden),
-                child: Icon(_balanceHidden ? Icons.visibility_off_rounded : Icons.visibility_rounded, color: Colors.white.withValues(alpha: 0.75), size: 20),
+                child: Icon(
+                  _balanceHidden
+                      ? Icons.visibility_off_rounded
+                      : Icons.visibility_rounded,
+                  color: Colors.white.withValues(alpha: 0.75),
+                  size: 20,
+                ),
               ),
             ],
           ),
@@ -371,7 +476,11 @@ Widget _buildLoadingScreen() {
             child: Text(
               _balanceHidden ? '••••••••' : _formatCurrency(_totalAssets),
               key: ValueKey(_balanceHidden),
-              style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 36,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -384,58 +493,113 @@ Widget _buildLoadingScreen() {
   Widget _buildTrendCapsule() {
     final curNet = _monthlyIncome - _monthlyExpense;
     final prevNet = _prevMonthlyIncome - _prevMonthlyExpense;
-    final diff = prevNet == 0 ? (curNet > 0 ? 100.0 : (curNet < 0 ? -100.0 : 0.0)) : (curNet - prevNet) / prevNet.abs() * 100;
+    final diff = prevNet == 0
+        ? (curNet > 0 ? 100.0 : (curNet < 0 ? -100.0 : 0.0))
+        : (curNet - prevNet) / prevNet.abs() * 100;
     final up = diff >= 0;
-    
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(20)),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(up ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, color: Colors.white, size: 14),
+              Icon(
+                up ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                color: Colors.white,
+                size: 14,
+              ),
               const SizedBox(width: 4),
-              Text('${diff.abs().toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+              Text(
+                '${diff.abs().toStringAsFixed(1)}%',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
             ],
           ),
         ),
         const SizedBox(width: 8),
-        Text('so với tháng trước', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 12)),
+        Text(
+          'so với tháng trước',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.75),
+            fontSize: 12,
+          ),
+        ),
       ],
     );
   }
 
   void _openBudgetScreen() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const BudgetScreen())).then((_) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const BudgetScreen()),
+    ).then((_) {
       if (mounted) _load();
     });
   }
 
-Widget _buildUtilityGrid() {
+  Widget _buildUtilityGrid() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Tiện ích', style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text(
+            'Tiện ích',
+            style: TextStyle(
+              color: AppTheme.textWhite,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildUtilityIcon(Icons.pie_chart_rounded, 'Báo cáo', () {  if (widget.onNavigateToAI != null) { widget.onNavigateToAI!();  }}),
-              _buildUtilityIcon(Icons.savings_rounded, 'Sổ tiết kiệm', () => _navigateTo(const SavingsPage())),
-              _buildUtilityIcon(Icons.account_balance_rounded, 'Kết nối\nngân hàng', () => DashboardBottomSheets.showBankConnect(context)),
+              _buildUtilityIcon(Icons.pie_chart_rounded, 'Báo cáo', () {
+                if (widget.onNavigateToAI != null) {
+                  widget.onNavigateToAI!();
+                }
+              }),
+              _buildUtilityIcon(
+                Icons.savings_rounded,
+                'Sổ tiết kiệm',
+                () => _navigateTo(const SavingsPage()),
+              ),
+              _buildUtilityIcon(
+                Icons.account_balance_rounded,
+                'Kết nối\nngân hàng',
+                () => DashboardBottomSheets.showBankConnect(context),
+              ),
               _buildUtilityIcon(Icons.grid_view_rounded, 'Tất cả', () {
                 DashboardBottomSheets.showAllFeatures(
                   context,
-                  onSavings: () { Navigator.pop(context); _navigateTo(const SavingsPage()); },
-                  onBankSources: () { Navigator.pop(context); DashboardBottomSheets.showBankSources(context, _wallets); },
+                  onSavings: () {
+                    Navigator.pop(context);
+                    _navigateTo(const SavingsPage());
+                  },
+                  onBankSources: () {
+                    Navigator.pop(context);
+                    DashboardBottomSheets.showBankSources(context, _wallets);
+                  },
                   onLinkedServices: () async {
                     Navigator.pop(context);
-                    final synced = await Navigator.push(context, MaterialPageRoute(builder: (_) => const LinkedServicesPage()));
+                    final synced = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const LinkedServicesPage(),
+                      ),
+                    );
                     if (synced == true) reload();
                   },
                 );
@@ -453,12 +617,24 @@ Widget _buildUtilityGrid() {
       child: Column(
         children: [
           Container(
-            width: 56, height: 56,
-            decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(16)),
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: AppTheme.navyLight,
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Icon(icon, color: AppTheme.mintAccent, size: 28),
           ),
           const SizedBox(height: 8),
-          Text(label, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.textGray, fontSize: 12, height: 1.2)),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppTheme.textGray,
+              fontSize: 12,
+              height: 1.2,
+            ),
+          ),
         ],
       ),
     );
@@ -470,19 +646,36 @@ Widget _buildUtilityGrid() {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Giao dịch gần đây', style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text(
+            'Giao dịch gần đây',
+            style: TextStyle(
+              color: AppTheme.textWhite,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 16),
           if (_recentTransactions.isEmpty)
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(20)),
-              child: const Center(child: Text('Chưa có giao dịch nào.', style: TextStyle(color: AppTheme.textGray))),
+              decoration: BoxDecoration(
+                color: AppTheme.navyLight,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Center(
+                child: Text(
+                  'Chưa có giao dịch nào.',
+                  style: TextStyle(color: AppTheme.textGray),
+                ),
+              ),
             )
           else
-            ..._recentTransactions.map((tx) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildTxItem(tx),
-            )),
+            ..._recentTransactions.map(
+              (tx) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildTxItem(tx),
+              ),
+            ),
         ],
       ),
     );
@@ -491,12 +684,18 @@ Widget _buildUtilityGrid() {
   Widget _buildTxItem(TransactionModel tx) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: AppTheme.navyLight,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: tx.color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(
+              color: tx.color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Icon(tx.icon, color: tx.color),
           ),
           const SizedBox(width: 16),
@@ -504,9 +703,22 @@ Widget _buildUtilityGrid() {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(tx.title, style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(
+                  tx.title,
+                  style: const TextStyle(
+                    color: AppTheme.textWhite,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(_formatTime(tx.date), style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+                Text(
+                  _formatTime(tx.date),
+                  style: const TextStyle(
+                    color: AppTheme.textGray,
+                    fontSize: 12,
+                  ),
+                ),
                 if (tx.receiptStatus != null) ...[
                   const SizedBox(height: 6),
                   ReceiptStatusBadge(status: tx.receiptStatus!),
@@ -518,7 +730,14 @@ Widget _buildUtilityGrid() {
               ],
             ),
           ),
-          Text('${tx.isExpense ? "- " : "+ "}${_formatCurrency(tx.amount)}', style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(
+            '${tx.isExpense ? "- " : "+ "}${_formatCurrency(tx.amount)}',
+            style: const TextStyle(
+              color: AppTheme.textWhite,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
         ],
       ),
     );
@@ -526,9 +745,15 @@ Widget _buildUtilityGrid() {
 
   String _formatTime(DateTime date) {
     final now = DateTime.now();
-    if (DateUtils.isSameDay(date, now)) return 'Hôm nay, ${DateFormat('HH:mm').format(date)}';
-    if (DateUtils.isSameDay(date, now.subtract(const Duration(days: 1)))) return 'Hôm qua, ${DateFormat('HH:mm').format(date)}';
-    if (now.difference(date).inDays < 7) return DateFormat('EEEE, HH:mm', 'vi_VN').format(date);
+    if (DateUtils.isSameDay(date, now)) {
+      return 'Hôm nay, ${DateFormat('HH:mm').format(date)}';
+    }
+    if (DateUtils.isSameDay(date, now.subtract(const Duration(days: 1)))) {
+      return 'Hôm qua, ${DateFormat('HH:mm').format(date)}';
+    }
+    if (now.difference(date).inDays < 7) {
+      return DateFormat('EEEE, HH:mm', 'vi_VN').format(date);
+    }
     return DateFormat('dd/MM/yyyy, HH:mm').format(date);
   }
 

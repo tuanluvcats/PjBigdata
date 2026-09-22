@@ -11,44 +11,90 @@ void main() {
         DateTime(2026, 9, 16), // Wednesday
         DateTime(2026, 9, 20), // Sunday
       ]) {
-        final range = BudgetPeriodType.rangeContaining(BudgetPeriodType.week, day);
+        final range = BudgetPeriodType.rangeContaining(
+          BudgetPeriodType.week,
+          day,
+        );
         expect(range.start, DateTime(2026, 9, 14), reason: '$day');
         expect(range.end, DateTime(2026, 9, 20), reason: '$day');
       }
     });
 
     test('a week can cross a month and a year boundary', () {
-      final overMonth = BudgetPeriodType.rangeContaining(BudgetPeriodType.week, DateTime(2026, 9, 30));
-      expect((overMonth.start, overMonth.end), (DateTime(2026, 9, 28), DateTime(2026, 10, 4)));
+      final overMonth = BudgetPeriodType.rangeContaining(
+        BudgetPeriodType.week,
+        DateTime(2026, 9, 30),
+      );
+      expect(
+        (overMonth.start, overMonth.end),
+        (DateTime(2026, 9, 28), DateTime(2026, 10, 4)),
+      );
 
-      final overYear = BudgetPeriodType.rangeContaining(BudgetPeriodType.week, DateTime(2026, 1, 1));
-      expect((overYear.start, overYear.end), (DateTime(2025, 12, 29), DateTime(2026, 1, 4)));
+      final overYear = BudgetPeriodType.rangeContaining(
+        BudgetPeriodType.week,
+        DateTime(2026, 1, 1),
+      );
+      expect(
+        (overYear.start, overYear.end),
+        (DateTime(2025, 12, 29), DateTime(2026, 1, 4)),
+      );
     });
 
-    test('a month runs from its first to its last day, leap years included', () {
-      final expected = {
-        DateTime(2026, 9, 16): (DateTime(2026, 9, 1), DateTime(2026, 9, 30)),
-        DateTime(2026, 2, 10): (DateTime(2026, 2, 1), DateTime(2026, 2, 28)),
-        DateTime(2028, 2, 10): (DateTime(2028, 2, 1), DateTime(2028, 2, 29)),
-        DateTime(2026, 12, 31): (DateTime(2026, 12, 1), DateTime(2026, 12, 31)),
-      };
-      expected.forEach((day, bounds) {
-        final range = BudgetPeriodType.rangeContaining(BudgetPeriodType.month, day);
-        expect((range.start, range.end), bounds, reason: '$day');
-      });
-    });
+    test(
+      'a month runs from its first to its last day, leap years included',
+      () {
+        final expected = {
+          DateTime(2026, 9, 16): (DateTime(2026, 9, 1), DateTime(2026, 9, 30)),
+          DateTime(2026, 2, 10): (DateTime(2026, 2, 1), DateTime(2026, 2, 28)),
+          DateTime(2028, 2, 10): (DateTime(2028, 2, 1), DateTime(2028, 2, 29)),
+          DateTime(2026, 12, 31): (
+            DateTime(2026, 12, 1),
+            DateTime(2026, 12, 31),
+          ),
+        };
+        expected.forEach((day, bounds) {
+          final range = BudgetPeriodType.rangeContaining(
+            BudgetPeriodType.month,
+            day,
+          );
+          expect((range.start, range.end), bounds, reason: '$day');
+        });
+      },
+    );
 
-    test('every day of a year falls inside a range the backend accepts (at most 7 days, resp. 31)', () {
-      for (var day = DateTime(2026, 1, 1); day.year == 2026; day = DateTime(day.year, day.month, day.day + 1)) {
-        for (final entry in {BudgetPeriodType.week: 7, BudgetPeriodType.month: 31}.entries) {
-          final range = BudgetPeriodType.rangeContaining(entry.key, day);
-          final days = range.end.difference(range.start).inDays + 1;
-          expect(days <= entry.value, isTrue, reason: '${entry.key} of $day lasts $days days');
-          expect(range.start.isAfter(day), isFalse, reason: '${entry.key} of $day starts after it');
-          expect(range.end.isBefore(day), isFalse, reason: '${entry.key} of $day ends before it');
+    test(
+      'every day of a year falls inside a range the backend accepts (at most 7 days, resp. 31)',
+      () {
+        for (
+          var day = DateTime(2026, 1, 1);
+          day.year == 2026;
+          day = DateTime(day.year, day.month, day.day + 1)
+        ) {
+          for (final entry in {
+            BudgetPeriodType.week: 7,
+            BudgetPeriodType.month: 31,
+          }.entries) {
+            final range = BudgetPeriodType.rangeContaining(entry.key, day);
+            final days = range.end.difference(range.start).inDays + 1;
+            expect(
+              days <= entry.value,
+              isTrue,
+              reason: '${entry.key} of $day lasts $days days',
+            );
+            expect(
+              range.start.isAfter(day),
+              isFalse,
+              reason: '${entry.key} of $day starts after it',
+            );
+            expect(
+              range.end.isBefore(day),
+              isFalse,
+              reason: '${entry.key} of $day ends before it',
+            );
+          }
         }
-      }
-    });
+      },
+    );
   });
 
   group('BudgetModel and the backend JSON', () {
@@ -74,29 +120,39 @@ void main() {
       expect(budget.end, DateTime(2026, 9, 30));
     });
 
-    test('fromJson reads a budget for every category and an integer amount', () {
-      final budget = BudgetModel.fromJson({
-        'id': 8,
-        'categoryId': null,
-        'categoryName': null,
-        'amount': 500000,
-        'periodType': 'WEEK',
-        'startDate': '2026-09-14',
-        'endDate': '2026-09-20',
-      });
+    test(
+      'fromJson reads a budget for every category and an integer amount',
+      () {
+        final budget = BudgetModel.fromJson({
+          'id': 8,
+          'categoryId': null,
+          'categoryName': null,
+          'amount': 500000,
+          'periodType': 'WEEK',
+          'startDate': '2026-09-14',
+          'endDate': '2026-09-20',
+        });
 
-      expect(budget.categoryId, isNull);
-      expect(budget.categoryName, isNull);
-      expect(budget.amount, 500000.0);
-      expect(budget.periodType, BudgetPeriodType.week);
-    });
+        expect(budget.categoryId, isNull);
+        expect(budget.categoryName, isNull);
+        expect(budget.amount, 500000.0);
+        expect(budget.periodType, BudgetPeriodType.week);
+      },
+    );
 
-    test('fromJson refuses a response without its dates instead of inventing them', () {
-      expect(
-        () => BudgetModel.fromJson({'id': 1, 'amount': 1, 'periodType': 'MONTH'}),
-        throwsA(isA<TypeError>()),
-      );
-    });
+    test(
+      'fromJson refuses a response without its dates instead of inventing them',
+      () {
+        expect(
+          () => BudgetModel.fromJson({
+            'id': 1,
+            'amount': 1,
+            'periodType': 'MONTH',
+          }),
+          throwsA(isA<TypeError>()),
+        );
+      },
+    );
 
     test('toJson is exactly the request body: no id, no user', () {
       const budget = BudgetModel(
@@ -177,21 +233,24 @@ void main() {
       expect(budget.userId, 7);
     });
 
-    test('a budget for every category is stored under category id 0 and read back as null', () {
-      final row = BudgetModel.forPeriod(
-        amount: 1000000,
-        periodType: BudgetPeriodType.month,
-        day: DateTime(2026, 9, 16),
-        userId: 7,
-      ).toMap();
+    test(
+      'a budget for every category is stored under category id 0 and read back as null',
+      () {
+        final row = BudgetModel.forPeriod(
+          amount: 1000000,
+          periodType: BudgetPeriodType.month,
+          day: DateTime(2026, 9, 16),
+          userId: 7,
+        ).toMap();
 
-      expect(row['category_id'], BudgetModel.allCategoriesLocalId);
-      expect(row['category_name'], '');
+        expect(row['category_id'], BudgetModel.allCategoriesLocalId);
+        expect(row['category_name'], '');
 
-      final back = BudgetModel.fromMap(row);
-      expect(back.categoryId, isNull);
-      expect(back.categoryName, isNull);
-    });
+        final back = BudgetModel.fromMap(row);
+        expect(back.categoryId, isNull);
+        expect(back.categoryName, isNull);
+      },
+    );
 
     test('toMap keeps the column names and the month of the budget', () {
       const budget = BudgetModel(
@@ -233,12 +292,30 @@ void main() {
     });
 
     test('overlaps is true as soon as one day is shared', () {
-      expect(september.overlaps(DateTime(2026, 8, 25), DateTime(2026, 9, 1)), isTrue);
-      expect(september.overlaps(DateTime(2026, 9, 30), DateTime(2026, 10, 5)), isTrue);
-      expect(september.overlaps(DateTime(2026, 9, 10), DateTime(2026, 9, 12)), isTrue);
-      expect(september.overlaps(DateTime(2026, 8, 1), DateTime(2026, 12, 31)), isTrue);
-      expect(september.overlaps(DateTime(2026, 8, 1), DateTime(2026, 8, 31)), isFalse);
-      expect(september.overlaps(DateTime(2026, 10, 1), DateTime(2026, 10, 31)), isFalse);
+      expect(
+        september.overlaps(DateTime(2026, 8, 25), DateTime(2026, 9, 1)),
+        isTrue,
+      );
+      expect(
+        september.overlaps(DateTime(2026, 9, 30), DateTime(2026, 10, 5)),
+        isTrue,
+      );
+      expect(
+        september.overlaps(DateTime(2026, 9, 10), DateTime(2026, 9, 12)),
+        isTrue,
+      );
+      expect(
+        september.overlaps(DateTime(2026, 8, 1), DateTime(2026, 12, 31)),
+        isTrue,
+      );
+      expect(
+        september.overlaps(DateTime(2026, 8, 1), DateTime(2026, 8, 31)),
+        isFalse,
+      );
+      expect(
+        september.overlaps(DateTime(2026, 10, 1), DateTime(2026, 10, 31)),
+        isFalse,
+      );
     });
   });
 }

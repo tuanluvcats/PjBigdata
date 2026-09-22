@@ -44,32 +44,42 @@ class _LoginScreenState extends State<LoginScreen> {
     final normalizedPassword = password;
 
     if (normalizedEmail.isEmpty || normalizedPassword.isEmpty) {
-      await AppDialog.error(context,
-          title: 'Thiếu thông tin',
-          message: 'Vui lòng nhập email và mật khẩu.');
+      await AppDialog.error(
+        context,
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập email và mật khẩu.',
+      );
       return;
     }
     if (_isLoginLoading || _isSocialLoading) return;
     setState(() => _isLoginLoading = true);
     try {
       if (AppConfig.isFull) {
-        final result = await RemoteApiHelper.instance.login(normalizedEmail, normalizedPassword);
+        final result = await RemoteApiHelper.instance.login(
+          normalizedEmail,
+          normalizedPassword,
+        );
         final data = (result['data'] as Map?) ?? result;
-        
+
         final token = (data['token'] ?? result['token'])?.toString() ?? '';
-        final refreshToken = (data['refreshToken'] ?? result['refreshToken'])?.toString() ?? '';
-        
+        final refreshToken =
+            (data['refreshToken'] ?? result['refreshToken'])?.toString() ?? '';
+
         final user = data['user'] as Map?;
-        final userId = (user?['id'] ?? data['userId'] ?? result['userId'] ?? result['id']) as int?;
-        
+        final userId =
+            (user?['id'] ?? data['userId'] ?? result['userId'] ?? result['id'])
+                as int?;
+
         if (token.isNotEmpty && refreshToken.isNotEmpty) {
           await SessionService.setTokens(token, refreshToken);
         }
-        
+
         if (userId != null) {
           await SessionService.setCurrentUserId(userId);
-  
-          AppRepository.instance.getHomeSummary(userId).catchError((_) => {});
+
+          AppRepository.instance
+              .getHomeSummary(userId)
+              .catchError((_) => <String, dynamic>{});
 
           if (!context.mounted) return;
           Navigator.of(context).pushAndRemoveUntil(
@@ -88,15 +98,19 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!context.mounted) return;
 
       if (user?.id == null) {
-        await AppDialog.error(context,
-            title: 'Đăng nhập thất bại',
-            message: 'Sai email hoặc mật khẩu.');
+        await AppDialog.error(
+          context,
+          title: 'Đăng nhập thất bại',
+          message: 'Sai email hoặc mật khẩu.',
+        );
         return;
       }
 
-      await SessionService.setCurrentUserId(user!.id!);     
+      await SessionService.setCurrentUserId(user!.id!);
 
-      AppRepository.instance.getHomeSummary(user.id!).catchError((_) => {});
+      AppRepository.instance
+          .getHomeSummary(user.id!)
+          .catchError((_) => <String, dynamic>{});
 
       if (!context.mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -107,16 +121,21 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!context.mounted) return;
       final data = e.response?.data;
       final serverMsg = (data is Map ? data['message'] : null)?.toString();
-      await AppDialog.error(context,
-          title: 'Đăng nhập thất bại',
-          message: e.response?.statusCode == 401
-              ? (serverMsg ?? 'Sai email hoặc mật khẩu!')
-              : (serverMsg ?? 'Không thể kết nối máy chủ. Vui lòng thử lại.'));
+      await AppDialog.error(
+        context,
+        title: 'Đăng nhập thất bại',
+        message: e.response?.statusCode == 401
+            ? (serverMsg ?? 'Sai email hoặc mật khẩu!')
+            : (serverMsg ?? 'Không thể kết nối máy chủ. Vui lòng thử lại.'),
+      );
     } catch (e) {
       if (!context.mounted) return;
-      await AppDialog.error(context, title: 'Đăng nhập thất bại', message: '$e');
-    }
-    finally {
+      await AppDialog.error(
+        context,
+        title: 'Đăng nhập thất bại',
+        message: '$e',
+      );
+    } finally {
       if (mounted) setState(() => _isLoginLoading = false);
     }
   }
@@ -128,9 +147,13 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Quên mật khẩu',
-            style: TextStyle(
-                color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Quên mật khẩu',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -159,14 +182,18 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy',
-                style: TextStyle(color: AppTheme.textSecondary)),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () async {
               final email = emailCtrl.text.trim();
@@ -177,17 +204,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   await RemoteApiHelper.instance.forgotPassword(email: email);
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đã gửi email đặt lại mật khẩu!')),
+                    const SnackBar(
+                      content: Text('Đã gửi email đặt lại mật khẩu!'),
+                    ),
                   );
                 } catch (e) {
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Lỗi: $e')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
                 }
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Tính năng chỉ khả dụng khi kết nối server.')),
+                  const SnackBar(
+                    content: Text('Tính năng chỉ khả dụng khi kết nối server.'),
+                  ),
                 );
               }
             },
@@ -198,14 +229,9 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _comingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Tính năng sắp ra mắt')),
-    );
-  }
-
-Future<void> _handleSocial(
-      Future<Map<String, dynamic>> Function() signIn) async {
+  Future<void> _handleSocial(
+    Future<Map<String, dynamic>> Function() signIn,
+  ) async {
     if (!AppConfig.isFull) {
       return;
     }
@@ -215,22 +241,24 @@ Future<void> _handleSocial(
       final res = await signIn();
       final data = (res['data'] as Map?) ?? res;
       final token = (data['token'] ?? res['token'])?.toString() ?? '';
-      final refreshToken = (data['refreshToken'] ?? res['refreshToken'])?.toString() ?? '';
-      
+      final refreshToken =
+          (data['refreshToken'] ?? res['refreshToken'])?.toString() ?? '';
+
       final user = data['user'] as Map?;
       final userId = (user?['id'] ?? data['userId'] ?? res['userId']) as int?;
-      
+
       if (token.isNotEmpty && refreshToken.isNotEmpty) {
         await SessionService.setTokens(token, refreshToken);
       }
-      
+
       if (userId != null) {
         await SessionService.setCurrentUserId(userId);
-        
 
-        AppRepository.instance.getHomeSummary(userId).catchError((_) => {});
+        AppRepository.instance
+            .getHomeSummary(userId)
+            .catchError((_) => <String, dynamic>{});
       }
-      
+
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MainScaffold()),
@@ -238,8 +266,13 @@ Future<void> _handleSocial(
       );
     } catch (e) {
       if (!mounted) return;
-      if (!e.toString().contains('Đã hủy') && !e.toString().contains('canceled')) {
-         await AppDialog.error(context, title: 'Đăng nhập thất bại', message: '$e');
+      if (!e.toString().contains('Đã hủy') &&
+          !e.toString().contains('canceled')) {
+        await AppDialog.error(
+          context,
+          title: 'Đăng nhập thất bại',
+          message: '$e',
+        );
       }
     } finally {
       if (mounted) setState(() => _isSocialLoading = false);
@@ -306,38 +339,49 @@ Future<void> _handleSocial(
                     height: 24,
                     child: Checkbox(
                       value: _rememberMe,
-                      onChanged: (v) => setState(() => _rememberMe = v ?? false),
+                      onChanged: (v) =>
+                          setState(() => _rememberMe = v ?? false),
                       activeColor: AppTheme.primary,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6)),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text('Ghi nhớ đăng nhập',
-                      style:
-                          TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                  const Text(
+                    'Ghi nhớ đăng nhập',
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
                   const Spacer(),
                   GestureDetector(
                     onTap: () => _showForgotPassword(context),
-                    child: const Text('Quên mật khẩu?',
-                        style: TextStyle(
-                            color: AppTheme.primary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600)),
+                    child: const Text(
+                      'Quên mật khẩu?',
+                      style: TextStyle(
+                        color: AppTheme.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
               PrimaryButton(
                 text: _isLoginLoading ? 'Đang xử lý...' : 'Đăng nhập',
-                onPressed: (_isLoginLoading || _isSocialLoading) ? null : () {
-                  _handleLogin(
-                    context,
-                    email: _emailController.text,
-                    password: _passwordController.text,
-                  );
-                },
+                onPressed: (_isLoginLoading || _isSocialLoading)
+                    ? null
+                    : () {
+                        _handleLogin(
+                          context,
+                          email: _emailController.text,
+                          password: _passwordController.text,
+                        );
+                      },
               ),
               const SizedBox(height: 16),
               Center(
@@ -349,13 +393,17 @@ Future<void> _handleSocial(
                   child: RichText(
                     text: const TextSpan(
                       text: 'Chưa có tài khoản? ',
-                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 14,
+                      ),
                       children: [
                         TextSpan(
                           text: 'Đăng ký ngay',
                           style: TextStyle(
-                              color: AppTheme.primary,
-                              fontWeight: FontWeight.bold),
+                            color: AppTheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -372,14 +420,16 @@ Future<void> _handleSocial(
                     Icons.g_mobiledata_rounded,
                     const Color(0xFFDB4437),
                     () => _handleSocial(
-                        SocialAuthService.instance.signInWithGoogle),
+                      SocialAuthService.instance.signInWithGoogle,
+                    ),
                   ),
                   const SizedBox(width: 20),
                   _socialBtn(
                     Icons.facebook,
                     const Color(0xFF1877F2),
                     () => _handleSocial(
-                        SocialAuthService.instance.signInWithFacebook),
+                      SocialAuthService.instance.signInWithFacebook,
+                    ),
                   ),
                 ],
               ),
@@ -417,11 +467,14 @@ Future<void> _handleSocial(
       padding: const EdgeInsets.only(bottom: 8, left: 2),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text(text,
-            style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -450,19 +503,23 @@ Future<void> _handleSocial(
     return Row(
       children: [
         Expanded(
-            child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3))),
+          child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(text,
-              style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+          child: Text(
+            text,
+            style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+          ),
         ),
         Expanded(
-            child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3))),
+          child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
+        ),
       ],
     );
   }
 
-Widget _socialBtn(IconData icon, Color color, VoidCallback onTap) {
+  Widget _socialBtn(IconData icon, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: _isSocialLoading ? null : onTap,
       borderRadius: BorderRadius.circular(30),
@@ -474,7 +531,7 @@ Widget _socialBtn(IconData icon, Color color, VoidCallback onTap) {
           shape: BoxShape.circle,
           boxShadow: AppTheme.softShadow,
         ),
-        child: Icon(icon, color: color, size: 30), 
+        child: Icon(icon, color: color, size: 30),
       ),
     );
   }

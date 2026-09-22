@@ -1,13 +1,14 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+
 class SessionService {
   static const String _keyUserId = 'current_user_id';
   static const String _keyToken = 'auth_token';
-  static const String _keyRefreshToken = 'refresh_token'; 
+  static const String _keyRefreshToken = 'refresh_token';
   static final ValueNotifier<bool> needRefreshAI = ValueNotifier(false);
   static int? _cachedUserId;
   static String? _cachedToken;
-  static String? _cachedRefreshToken; 
+  static String? _cachedRefreshToken;
 
   static int? get currentUserId => _cachedUserId;
   static String? get currentToken => _cachedToken;

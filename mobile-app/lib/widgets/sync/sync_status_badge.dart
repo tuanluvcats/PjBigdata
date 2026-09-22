@@ -11,16 +11,16 @@ class SyncStatusBadge extends StatelessWidget {
   const SyncStatusBadge({super.key, required this.status});
 
   Color get _color => switch (status) {
-        SyncStatus.pending => AppTheme.warningColor,
-        SyncStatus.synced => AppTheme.positive,
-        SyncStatus.error => AppTheme.dangerColor,
-      };
+    SyncStatus.pending => AppTheme.warningColor,
+    SyncStatus.synced => AppTheme.positive,
+    SyncStatus.error => AppTheme.dangerColor,
+  };
 
   IconData get _icon => switch (status) {
-        SyncStatus.pending => Icons.cloud_upload_outlined,
-        SyncStatus.synced => Icons.cloud_done_rounded,
-        SyncStatus.error => Icons.cloud_off_rounded,
-      };
+    SyncStatus.pending => Icons.cloud_upload_outlined,
+    SyncStatus.synced => Icons.cloud_done_rounded,
+    SyncStatus.error => Icons.cloud_off_rounded,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +41,11 @@ class SyncStatusBadge extends StatelessWidget {
               status.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

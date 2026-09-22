@@ -40,7 +40,10 @@ void main() {
     });
 
     test('a password of spaces only', () {
-      expect(PasswordPolicy.validate('        '), 'Mật khẩu không được để trống.');
+      expect(
+        PasswordPolicy.validate('        '),
+        'Mật khẩu không được để trống.',
+      );
     });
   });
 

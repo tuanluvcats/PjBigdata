@@ -23,7 +23,9 @@ const String _saveLabel = 'Lưu giao dịch';
 /// Dio hands a request from one step to the next with zero-length timers, which only fire when the fake clock moves.
 const Duration _requestStep = Duration(milliseconds: 100);
 
-final RegExp _uuidV4 = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+final RegExp _uuidV4 = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+);
 
 final List<Map<String, Object?>> _serverCategories = [
   {'id': 10, 'name': 'Ăn uống', 'type': 'EXPENSE'},
@@ -114,119 +116,172 @@ void main() {
   /// clock, so the request would still be inside Dio, and pumpAndSettle would wait for an answer that a test holds back.
   Future<void> pumpForRequest(WidgetTester tester) => tester.pump(_requestStep);
 
-  Future<void> typeAmount(WidgetTester tester, String text) => tester.enterText(find.byType(TextField).at(0), text);
+  Future<void> typeAmount(WidgetTester tester, String text) =>
+      tester.enterText(find.byType(TextField).at(0), text);
 
   List<Map<String, dynamic>> sentBodies() => [
-        for (final request in backend.requests)
-          if (request.method == 'POST' && request.path == _checkout) Map<String, dynamic>.from(request.data as Map),
-      ];
+    for (final request in backend.requests)
+      if (request.method == 'POST' && request.path == _checkout)
+        Map<String, dynamic>.from(request.data as Map),
+  ];
 
   group('saving in full mode', () {
-    testWidgets('the request carries a UUID v4 clientId, the local copy ends synced and the form closes with true',
-        (tester) async {
-      backend.on('POST', _checkout, (_) => okResponse({'transactionId': 5}));
-      await openForm(tester);
-
-      await typeAmount(tester, '45000');
-      await tester.enterText(find.byType(TextField).at(1), 'Cà phê');
-      await tapText(tester, _saveLabel);
-
-      expect(find.text('Đã thêm giao dịch mới.'), findsOneWidget);
-      await tapText(tester, 'OK');
-
-      final body = sentBodies().single;
-      expect(body['clientId'], matches(_uuidV4));
-      expect(body['amount'], 45000.0);
-      expect(body['note'], 'Cà phê');
-      expect(body['categoryName'], 'Ăn uống');
-      expect(store.rows.single.clientId, body['clientId']);
-      expect(store.rows.single.syncStatus, SyncStatus.synced);
-      expect(closed, isTrue);
-      expect(result, isTrue);
-    });
-
-    testWidgets('without a network the transaction is kept flagged error, the user is told, and the form closes with true',
-        (tester) {
-      return withCapturedLogs((logs) async {
-        backend.on(
-          'POST',
-          _checkout,
-          (options) => throw DioException(requestOptions: options, type: DioExceptionType.connectionError),
-        );
+    testWidgets(
+      'the request carries a UUID v4 clientId, the local copy ends synced and the form closes with true',
+      (tester) async {
+        backend.on('POST', _checkout, (_) => okResponse({'transactionId': 5}));
         await openForm(tester);
 
         await typeAmount(tester, '45000');
+        await tester.enterText(find.byType(TextField).at(1), 'Cà phê');
         await tapText(tester, _saveLabel);
 
-        expect(find.text('Chưa gửi được lên máy chủ'), findsOneWidget);
-        expect(find.textContaining('Gửi lại'), findsOneWidget, reason: 'the message says where to resend it');
-        await tapText(tester, 'Đã hiểu');
+        expect(find.text('Đã thêm giao dịch mới.'), findsOneWidget);
+        await tapText(tester, 'OK');
 
-        expect(store.rows.single.syncStatus, SyncStatus.error);
-        expect(store.rows.single.clientId, sentBodies().single['clientId']);
+        final body = sentBodies().single;
+        expect(body['clientId'], matches(_uuidV4));
+        expect(body['amount'], 45000.0);
+        expect(body['note'], 'Cà phê');
+        expect(body['categoryName'], 'Ăn uống');
+        expect(store.rows.single.clientId, body['clientId']);
+        expect(store.rows.single.syncStatus, SyncStatus.synced);
         expect(closed, isTrue);
-        expect(result, isTrue, reason: 'the Ledger reloads and shows the flagged transaction');
-        expect(logs.where((line) => line.contains('Lỗi gửi giao dịch')), isNotEmpty);
-      });
-    });
+        expect(result, isTrue);
+      },
+    );
 
-    testWidgets('a refusal of the server shows its reason, keeps nothing and leaves the form open', (tester) {
-      return withCapturedLogs((logs) async {
-        backend.on('POST', _checkout, (_) => jsonResponse(400, {'code': 400, 'message': 'Số dư ví không đủ'}));
+    testWidgets(
+      'without a network the transaction is kept flagged error, the user is told, and the form closes with true',
+      (tester) {
+        return withCapturedLogs((logs) async {
+          backend.on(
+            'POST',
+            _checkout,
+            (options) => throw DioException(
+              requestOptions: options,
+              type: DioExceptionType.connectionError,
+            ),
+          );
+          await openForm(tester);
+
+          await typeAmount(tester, '45000');
+          await tapText(tester, _saveLabel);
+
+          expect(find.text('Chưa gửi được lên máy chủ'), findsOneWidget);
+          expect(
+            find.textContaining('Gửi lại'),
+            findsOneWidget,
+            reason: 'the message says where to resend it',
+          );
+          await tapText(tester, 'Đã hiểu');
+
+          expect(store.rows.single.syncStatus, SyncStatus.error);
+          expect(store.rows.single.clientId, sentBodies().single['clientId']);
+          expect(closed, isTrue);
+          expect(
+            result,
+            isTrue,
+            reason: 'the Ledger reloads and shows the flagged transaction',
+          );
+          expect(
+            logs.where((line) => line.contains('Lỗi gửi giao dịch')),
+            isNotEmpty,
+          );
+        });
+      },
+    );
+
+    testWidgets(
+      'a refusal of the server shows its reason, keeps nothing and leaves the form open',
+      (tester) {
+        return withCapturedLogs((logs) async {
+          backend.on(
+            'POST',
+            _checkout,
+            (_) => jsonResponse(400, {
+              'code': 400,
+              'message': 'Số dư ví không đủ',
+            }),
+          );
+          await openForm(tester);
+
+          await typeAmount(tester, '45000');
+          await tapText(tester, _saveLabel);
+
+          expect(find.text('Lưu thất bại'), findsOneWidget);
+          expect(find.text('Số dư ví không đủ'), findsOneWidget);
+          await tapText(tester, 'Đã hiểu');
+
+          expect(store.rows, isEmpty);
+          expect(closed, isFalse);
+          expect(
+            find.text(_saveLabel),
+            findsOneWidget,
+            reason: 'still on the form, so the user can correct it',
+          );
+        });
+      },
+    );
+
+    testWidgets(
+      'while a save runs the button is off, so a second tap cannot send a second transaction',
+      (tester) async {
+        final answer = Completer<ResponseBody>();
+        backend.on('POST', _checkout, (_) => answer.future);
+        await openForm(tester);
+        await typeAmount(tester, '45000');
+
+        await tester.tap(find.text(_saveLabel));
+        await pumpForRequest(tester);
+
+        final button = tester.widget<ElevatedButton>(
+          find.widgetWithText(ElevatedButton, _saveLabel),
+        );
+        expect(button.onPressed, isNull);
+        expect(
+          sentBodies(),
+          hasLength(1),
+          reason:
+              'the first tap started the request, which waits for its answer',
+        );
+        await tester.tap(find.text(_saveLabel), warnIfMissed: false);
+        await pumpForRequest(tester);
+        expect(
+          sentBodies(),
+          hasLength(1),
+          reason: 'the second tap sent nothing',
+        );
+
+        answer.complete(okResponse({'transactionId': 5}));
+        await tester.pumpAndSettle();
+        await tapText(tester, 'OK');
+
+        expect(sentBodies(), hasLength(1));
+        expect(store.rows, hasLength(1));
+        expect(store.rows.single.syncStatus, SyncStatus.synced);
+      },
+    );
+
+    testWidgets(
+      'an invalid amount is refused before anything is stored or sent',
+      (tester) async {
         await openForm(tester);
 
-        await typeAmount(tester, '45000');
+        await typeAmount(tester, '');
         await tapText(tester, _saveLabel);
 
-        expect(find.text('Lưu thất bại'), findsOneWidget);
-        expect(find.text('Số dư ví không đủ'), findsOneWidget);
-        await tapText(tester, 'Đã hiểu');
-
+        expect(find.text('Số tiền không hợp lệ'), findsOneWidget);
         expect(store.rows, isEmpty);
-        expect(closed, isFalse);
-        expect(find.text(_saveLabel), findsOneWidget, reason: 'still on the form, so the user can correct it');
-      });
-    });
-
-    testWidgets('while a save runs the button is off, so a second tap cannot send a second transaction', (tester) async {
-      final answer = Completer<ResponseBody>();
-      backend.on('POST', _checkout, (_) => answer.future);
-      await openForm(tester);
-      await typeAmount(tester, '45000');
-
-      await tester.tap(find.text(_saveLabel));
-      await pumpForRequest(tester);
-
-      final button = tester.widget<ElevatedButton>(find.widgetWithText(ElevatedButton, _saveLabel));
-      expect(button.onPressed, isNull);
-      expect(sentBodies(), hasLength(1), reason: 'the first tap started the request, which waits for its answer');
-      await tester.tap(find.text(_saveLabel), warnIfMissed: false);
-      await pumpForRequest(tester);
-      expect(sentBodies(), hasLength(1), reason: 'the second tap sent nothing');
-
-      answer.complete(okResponse({'transactionId': 5}));
-      await tester.pumpAndSettle();
-      await tapText(tester, 'OK');
-
-      expect(sentBodies(), hasLength(1));
-      expect(store.rows, hasLength(1));
-      expect(store.rows.single.syncStatus, SyncStatus.synced);
-    });
-
-    testWidgets('an invalid amount is refused before anything is stored or sent', (tester) async {
-      await openForm(tester);
-
-      await typeAmount(tester, '');
-      await tapText(tester, _saveLabel);
-
-      expect(find.text('Số tiền không hợp lệ'), findsOneWidget);
-      expect(store.rows, isEmpty);
-      expect(sentBodies(), isEmpty);
-    });
+        expect(sentBodies(), isEmpty);
+      },
+    );
   });
 
   group('saving in local mode', () {
-    testWidgets('the transaction is stored as synced and no request is made', (tester) async {
+    testWidgets('the transaction is stored as synced and no request is made', (
+      tester,
+    ) async {
       addTearDown(() => AppConfig.mode = AppMode.full);
       AppConfig.mode = AppMode.demo;
       await openForm(tester);

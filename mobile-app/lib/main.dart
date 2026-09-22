@@ -7,7 +7,7 @@ import 'package:finance_ai_app/screens/auth/login_page.dart';
 import 'package:finance_ai_app/screens/main_scaffold.dart';
 import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
-import 'package:finance_ai_app/core/constants/transaction_categories.dart'; 
+import 'package:finance_ai_app/core/constants/transaction_categories.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -18,7 +18,9 @@ void main() async {
   RemoteApiHelper.instance.init();
   final prefs = await SharedPreferences.getInstance();
   final saved = prefs.getString('app_theme') ?? 'light';
-  AppTheme.themeNotifier.value = saved == 'dark' ? ThemeMode.dark : ThemeMode.light;
+  AppTheme.themeNotifier.value = saved == 'dark'
+      ? ThemeMode.dark
+      : ThemeMode.light;
   runApp(const DonutPayApp());
 }
 
@@ -63,8 +65,8 @@ class _DonutPayAppState extends State<DonutPayApp> {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: AppTheme.themeNotifier,
-      builder: (_, themeMode, __) => MaterialApp(
-        navigatorKey: navigatorKey, 
+      builder: (_, themeMode, _) => MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'Donut Pay',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
@@ -78,8 +80,8 @@ class _DonutPayAppState extends State<DonutPayApp> {
                 ),
               )
             : _loggedIn
-                ? const MainScaffold()
-                : const LoginScreen(),
+            ? const MainScaffold()
+            : const LoginScreen(),
       ),
     );
   }

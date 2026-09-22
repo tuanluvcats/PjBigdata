@@ -64,18 +64,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final password = _passwordController.text;
     final phone = _phoneController.text.trim();
 
-    if (fullName.isEmpty || email.isEmpty || password.isEmpty || phone.isEmpty) {
-      await AppDialog.error(context,
-          title: 'Thiếu thông tin',
-          message: 'Vui lòng nhập đủ thông tin (gồm số điện thoại).');
+    if (fullName.isEmpty ||
+        email.isEmpty ||
+        password.isEmpty ||
+        phone.isEmpty) {
+      await AppDialog.error(
+        context,
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập đủ thông tin (gồm số điện thoại).',
+      );
       return;
     }
 
     final policyError = PasswordPolicy.validate(password);
     if (!_isPasswordValid() || policyError != null) {
-      await AppDialog.error(context,
-          title: 'Mật khẩu yếu',
-          message: policyError ?? 'Mật khẩu chưa đạt yêu cầu.');
+      await AppDialog.error(
+        context,
+        title: 'Mật khẩu yếu',
+        message: policyError ?? 'Mật khẩu chưa đạt yêu cầu.',
+      );
       return;
     }
 
@@ -88,16 +95,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
           phone: phone,
         );
         if (!mounted) return;
-        await AppDialog.success(context,
-            title: 'Đăng ký thành công',
-            message: 'Tài khoản đã được tạo. Vui lòng đăng nhập.');
+        await AppDialog.success(
+          context,
+          title: 'Đăng ký thành công',
+          message: 'Tài khoản đã được tạo. Vui lòng đăng nhập.',
+        );
         if (!mounted) return;
         Navigator.pop(context);
         return;
       }
 
       final userId = await LocalAuthRepository.instance.register(
-        UserModel(email: email, password: password, fullName: fullName, phone: phone),
+        UserModel(
+          email: email,
+          password: password,
+          fullName: fullName,
+          phone: phone,
+        ),
       );
 
       if (!mounted) return;
@@ -114,31 +128,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       final data = e.response?.data;
       final serverMsg = (data is Map ? data['message'] : null)?.toString();
-      await AppDialog.error(context,
-          title: 'Đăng ký thất bại',
-          message: serverMsg ?? 'Không thể kết nối máy chủ. Vui lòng thử lại.');
+      await AppDialog.error(
+        context,
+        title: 'Đăng ký thất bại',
+        message: serverMsg ?? 'Không thể kết nối máy chủ. Vui lòng thử lại.',
+      );
     } catch (e) {
       if (!mounted) return;
 
       final msg = e.toString().toLowerCase();
-      if (msg.contains('unique') || msg.contains('1555') || msg.contains('2067')) {
-        await AppDialog.error(context,
-            title: 'Email đã tồn tại',
-            message: 'Email này đã được đăng ký. Vui lòng dùng email khác.');
+      if (msg.contains('unique') ||
+          msg.contains('1555') ||
+          msg.contains('2067')) {
+        await AppDialog.error(
+          context,
+          title: 'Email đã tồn tại',
+          message: 'Email này đã được đăng ký. Vui lòng dùng email khác.',
+        );
       } else {
-        await AppDialog.error(context, title: 'Đăng ký thất bại', message: '$e');
+        await AppDialog.error(
+          context,
+          title: 'Đăng ký thất bại',
+          message: '$e',
+        );
       }
     }
   }
 
-  void _comingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Tính năng sắp ra mắt')),
-    );
-  }
-
   Future<void> _handleSocial(
-      Future<Map<String, dynamic>> Function() signIn) async {
+    Future<Map<String, dynamic>> Function() signIn,
+  ) async {
     if (!AppConfig.isFull) {
       return;
     }
@@ -146,14 +165,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final res = await signIn();
       final data = (res['data'] as Map?) ?? res;
       final token = (data['token'] ?? res['token'])?.toString() ?? '';
-      final refreshToken = (data['refreshToken'] ?? res['refreshToken'])?.toString() ?? '';
-      
+      final refreshToken =
+          (data['refreshToken'] ?? res['refreshToken'])?.toString() ?? '';
+
       final user = data['user'] as Map?;
       final userId = (user?['id'] ?? data['userId'] ?? res['userId']) as int?;
       if (token.isNotEmpty && refreshToken.isNotEmpty) {
         await SessionService.setTokens(token, refreshToken);
       }
-      
+
       if (userId != null) {
         await SessionService.setCurrentUserId(userId);
       }
@@ -205,10 +225,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 28),
               _label('Họ và tên'),
-              _input(
-                controller: _fullNameController,
-                hint: 'Nhập họ và tên',
-              ),
+              _input(controller: _fullNameController, hint: 'Nhập họ và tên'),
               const SizedBox(height: 18),
               _label('Email'),
               _input(
@@ -250,10 +267,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     : const SizedBox(width: double.infinity),
               ),
               const SizedBox(height: 28),
-              PrimaryButton(
-                text: 'Tạo tài khoản',
-                onPressed: _handleRegister,
-              ),
+              PrimaryButton(text: 'Tạo tài khoản', onPressed: _handleRegister),
               const SizedBox(height: 24),
               _orDivider('Hoặc đăng ký với'),
               const SizedBox(height: 20),
@@ -264,14 +278,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     Icons.g_mobiledata_rounded,
                     const Color(0xFFDB4437),
                     () => _handleSocial(
-                        SocialAuthService.instance.signInWithGoogle),
+                      SocialAuthService.instance.signInWithGoogle,
+                    ),
                   ),
                   const SizedBox(width: 20),
                   _socialBtn(
                     Icons.facebook,
                     const Color(0xFF1877F2),
                     () => _handleSocial(
-                        SocialAuthService.instance.signInWithFacebook),
+                      SocialAuthService.instance.signInWithFacebook,
+                    ),
                   ),
                 ],
               ),
@@ -286,15 +302,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       TextSpan(
                         text: 'Điều khoản',
                         style: TextStyle(
-                            color: AppTheme.primary,
-                            fontWeight: FontWeight.w600),
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       TextSpan(text: ' và '),
                       TextSpan(
                         text: 'Điều kiện sử dụng',
                         style: TextStyle(
-                            color: AppTheme.primary,
-                            fontWeight: FontWeight.w600),
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
@@ -318,11 +336,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Mật khẩu cần:',
-              style: TextStyle(
-                  color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+          const Text(
+            'Mật khẩu cần:',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 12),
-          _conditionRow('Ít nhất ${PasswordPolicy.minLength} ký tự', _hasMinLength),
+          _conditionRow(
+            'Ít nhất ${PasswordPolicy.minLength} ký tự',
+            _hasMinLength,
+          ),
           _conditionRow('Chữ viết hoa (A-Z)', _hasUppercase),
           _conditionRow('Chữ viết thường (a-z)', _hasLowercase),
           _conditionRow('Chữ số (0-9)', _hasNumber),
@@ -360,11 +385,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       padding: const EdgeInsets.only(bottom: 8, left: 2),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text(text,
-            style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -397,14 +425,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return Row(
       children: [
         Expanded(
-            child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3))),
+          child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(text,
-              style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+          child: Text(
+            text,
+            style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+          ),
         ),
         Expanded(
-            child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3))),
+          child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
+        ),
       ],
     );
   }

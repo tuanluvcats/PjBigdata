@@ -5,15 +5,29 @@ class BudgetPeriodType {
   static const String month = 'MONTH';
   static const List<String> values = [week, month];
 
-  static String label(String periodType) => periodType == week ? 'Tuần' : 'Tháng';
+  static String label(String periodType) =>
+      periodType == week ? 'Tuần' : 'Tháng';
 
   /// The calendar week (Monday to Sunday) or month that contains [day].
-  static ({DateTime start, DateTime end}) rangeContaining(String periodType, DateTime day) {
+  static ({DateTime start, DateTime end}) rangeContaining(
+    String periodType,
+    DateTime day,
+  ) {
     if (periodType == week) {
-      final monday = DateTime(day.year, day.month, day.day - (day.weekday - DateTime.monday));
-      return (start: monday, end: DateTime(monday.year, monday.month, monday.day + 6));
+      final monday = DateTime(
+        day.year,
+        day.month,
+        day.day - (day.weekday - DateTime.monday),
+      );
+      return (
+        start: monday,
+        end: DateTime(monday.year, monday.month, monday.day + 6),
+      );
     }
-    return (start: DateTime(day.year, day.month, 1), end: DateTime(day.year, day.month + 1, 0));
+    return (
+      start: DateTime(day.year, day.month, 1),
+      end: DateTime(day.year, day.month + 1, 0),
+    );
   }
 }
 
@@ -124,7 +138,10 @@ class BudgetModel {
     final now = DateTime.now();
     final localCategoryId = map['category_id'] as int? ?? allCategoriesLocalId;
     final isAllCategories = localCategoryId == allCategoriesLocalId;
-    final month = DateTime(map['year'] as int? ?? now.year, map['month'] as int? ?? now.month);
+    final month = DateTime(
+      map['year'] as int? ?? now.year,
+      map['month'] as int? ?? now.month,
+    );
     return BudgetModel.forPeriod(
       id: map['id'] as int?,
       categoryId: isAllCategories ? null : localCategoryId,

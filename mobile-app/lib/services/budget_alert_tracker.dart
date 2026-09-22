@@ -57,7 +57,11 @@ class BudgetAlertTracker {
   /// Records [alerts] as shown. The in-memory flags are set before the first await, so a check made right after
   /// this call already sees them. Reaching "exceeded" also marks "warning", so a jump from 70% straight to 110%
   /// never alerts a second time for the lower level.
-  Future<void> markShown(int userId, Iterable<BudgetAlert> alerts, {DateTime? now}) async {
+  Future<void> markShown(
+    int userId,
+    Iterable<BudgetAlert> alerts, {
+    DateTime? now,
+  }) async {
     for (final alert in alerts) {
       _shown.add(_flag(userId, alert.progress, BudgetAlertLevel.warning));
       if (alert.level == BudgetAlertLevel.exceeded) {
@@ -83,7 +87,14 @@ class BudgetAlertTracker {
 
   String _flag(int userId, BudgetProgress progress, BudgetAlertLevel level) {
     final budget = progress.budget;
-    return [userId, budget.id, budget.startDate, budget.endDate, budget.amount, level.name].join(_separator);
+    return [
+      userId,
+      budget.id,
+      budget.startDate,
+      budget.endDate,
+      budget.amount,
+      level.name,
+    ].join(_separator);
   }
 
   void _forgetOldFlags(DateTime now) {

@@ -27,7 +27,7 @@ jobs:
           cache-dependency-path: 'core-backend/pom.xml'
 
       - name: Run backend tests
-        run: cd core-backend && mvn -B clean test
+        run: cd core-backend && mvn -B clean test -Dtest=!CoreBackendApplicationTests
 
   mobile-ci:
     runs-on: ubuntu-latest

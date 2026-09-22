@@ -8,7 +8,11 @@ import 'package:finance_ai_app/models/budget_progress.dart';
 /// One budget with what has been spent of it: a progress bar that turns orange from 80% and red from 100%, and
 /// text that says how much is left or by how much the limit was passed.
 class BudgetProgressCard extends StatelessWidget {
-  static final NumberFormat _money = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ', decimalDigits: 0);
+  static final NumberFormat _money = NumberFormat.currency(
+    locale: 'vi_VN',
+    symbol: 'đ',
+    decimalDigits: 0,
+  );
   static final DateFormat _day = DateFormat('dd/MM/yyyy');
 
   final BudgetProgress progress;
@@ -16,15 +20,16 @@ class BudgetProgressCard extends StatelessWidget {
   const BudgetProgressCard({super.key, required this.progress});
 
   Color get _accent => switch (progress.level) {
-        BudgetAlertLevel.exceeded => AppTheme.dangerColor,
-        BudgetAlertLevel.warning => AppTheme.warningColor,
-        BudgetAlertLevel.none => AppTheme.primary,
-      };
+    BudgetAlertLevel.exceeded => AppTheme.dangerColor,
+    BudgetAlertLevel.warning => AppTheme.warningColor,
+    BudgetAlertLevel.none => AppTheme.primary,
+  };
 
   String get _status {
     final left = _money.format(progress.remaining);
     return switch (progress.level) {
-      BudgetAlertLevel.exceeded => 'Đã vượt hạn mức: ${_money.format(-progress.remaining)}',
+      BudgetAlertLevel.exceeded =>
+        'Đã vượt hạn mức: ${_money.format(-progress.remaining)}',
       BudgetAlertLevel.warning => 'Sắp chạm hạn mức · Còn lại: $left',
       BudgetAlertLevel.none => 'Còn lại: $left',
     };
@@ -83,14 +88,20 @@ class BudgetProgressCard extends StatelessWidget {
                 child: Text(
                   _status,
                   style: TextStyle(
-                    color: progress.level == BudgetAlertLevel.none ? AppTheme.positive : _accent,
+                    color: progress.level == BudgetAlertLevel.none
+                        ? AppTheme.positive
+                        : _accent,
                     fontSize: 12,
                   ),
                 ),
               ),
               Text(
                 '${progress.percentLabel}%',
-                style: TextStyle(color: _accent, fontSize: 12, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: _accent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),

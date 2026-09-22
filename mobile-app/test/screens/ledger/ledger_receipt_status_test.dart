@@ -24,7 +24,11 @@ const String _failedLabel = 'Lỗi · cần xác nhận lại';
 const String _editLabel = 'Sửa giao dịch';
 const String _deleteLabel = 'Xóa giao dịch này';
 
-final NumberFormat _money = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ', decimalDigits: 0);
+final NumberFormat _money = NumberFormat.currency(
+  locale: 'vi_VN',
+  symbol: 'đ',
+  decimalDigits: 0,
+);
 
 final List<Map<String, Object?>> _serverCategories = [
   {'id': 10, 'name': 'Ăn uống', 'type': 'EXPENSE'},
@@ -33,14 +37,15 @@ final List<Map<String, Object?>> _serverCategories = [
 ];
 
 /// A transaction the way core-backend sends it; [receiptStatus] is left out for a transaction without a receipt.
-Map<String, Object?> _tx(int id, {num amount = 45000, String? receiptStatus}) => {
+Map<String, Object?> _tx(int id, {num amount = 45000, String? receiptStatus}) =>
+    {
       'id': id,
       'title': 'Giao dịch $id',
       'amount': amount,
       'date': DateTime.now().toIso8601String(),
       'category': 'Ăn uống',
       'isExpense': true,
-      if (receiptStatus != null) 'receiptStatus': receiptStatus,
+      'receiptStatus': ?receiptStatus,
     };
 
 void main() {
@@ -71,8 +76,16 @@ void main() {
 
     backend.reset();
     transactions = [];
-    backend.on('GET', '/api/users/me', (_) => okResponse({'id': 1, 'email': 'an@example.com'}));
-    backend.on('GET', '/api/transactions/mine', (_) => okResponse(transactions));
+    backend.on(
+      'GET',
+      '/api/users/me',
+      (_) => okResponse({'id': 1, 'email': 'an@example.com'}),
+    );
+    backend.on(
+      'GET',
+      '/api/transactions/mine',
+      (_) => okResponse(transactions),
+    );
     backend.on('GET', '/api/budgets', (_) => okResponse([]));
     backend.on('GET', '/api/categories', (_) => okResponse(_serverCategories));
   });
@@ -94,102 +107,153 @@ void main() {
   group('Ledger', () {
     const app = MaterialApp(home: LedgerPage());
 
-    Finder rowOf(int id) => find.ancestor(of: find.text('Giao dịch $id'), matching: find.byType(InkWell));
+    Finder rowOf(int id) => find.ancestor(
+      of: find.text('Giao dịch $id'),
+      matching: find.byType(InkWell),
+    );
 
-    Finder inRow(int id, String label) => find.descendant(of: rowOf(id), matching: find.text(label));
+    Finder inRow(int id, String label) =>
+        find.descendant(of: rowOf(id), matching: find.text(label));
 
-    testWidgets('each row shows the state of its receipt, and rows without one show none', (tester) async {
-      transactions = [
-        _tx(1, receiptStatus: 'PENDING'),
-        _tx(2, receiptStatus: 'success'),
-        _tx(3, receiptStatus: 'FAILED'),
-        _tx(4),
-        _tx(5, receiptStatus: 'CANCELED'),
-      ];
+    testWidgets(
+      'each row shows the state of its receipt, and rows without one show none',
+      (tester) async {
+        transactions = [
+          _tx(1, receiptStatus: 'PENDING'),
+          _tx(2, receiptStatus: 'success'),
+          _tx(3, receiptStatus: 'FAILED'),
+          _tx(4),
+          _tx(5, receiptStatus: 'CANCELED'),
+        ];
 
-      await pump(tester, app);
+        await pump(tester, app);
 
-      expect(find.byType(ReceiptStatusBadge), findsNWidgets(3));
-      expect(inRow(1, _processingLabel), findsOneWidget);
-      expect(inRow(2, _successLabel), findsOneWidget);
-      expect(inRow(3, _failedLabel), findsOneWidget);
-      expect(find.descendant(of: rowOf(4), matching: find.byType(ReceiptStatusBadge)), findsNothing);
-      expect(find.descendant(of: rowOf(5), matching: find.byType(ReceiptStatusBadge)), findsNothing);
-    });
+        expect(find.byType(ReceiptStatusBadge), findsNWidgets(3));
+        expect(inRow(1, _processingLabel), findsOneWidget);
+        expect(inRow(2, _successLabel), findsOneWidget);
+        expect(inRow(3, _failedLabel), findsOneWidget);
+        expect(
+          find.descendant(
+            of: rowOf(4),
+            matching: find.byType(ReceiptStatusBadge),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.descendant(
+            of: rowOf(5),
+            matching: find.byType(ReceiptStatusBadge),
+          ),
+          findsNothing,
+        );
+      },
+    );
 
-    testWidgets('a status the server adds later is left out instead of breaking the list', (tester) async {
-      transactions = [_tx(1, receiptStatus: 'SOMETHING_NEW'), _tx(2, receiptStatus: 'SUCCESS')];
+    testWidgets(
+      'a status the server adds later is left out instead of breaking the list',
+      (tester) async {
+        transactions = [
+          _tx(1, receiptStatus: 'SOMETHING_NEW'),
+          _tx(2, receiptStatus: 'SUCCESS'),
+        ];
 
-      await pump(tester, app);
+        await pump(tester, app);
 
-      expect(find.text('Giao dịch 1'), findsOneWidget);
-      expect(find.byType(ReceiptStatusBadge), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+        expect(find.text('Giao dịch 1'), findsOneWidget);
+        expect(find.byType(ReceiptStatusBadge), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
-    testWidgets('the details show the state of the receipt and offer to edit and to delete the transaction', (tester) async {
-      transactions = [_tx(1, receiptStatus: 'FAILED')];
-      await pump(tester, app);
+    testWidgets(
+      'the details show the state of the receipt and offer to edit and to delete the transaction',
+      (tester) async {
+        transactions = [_tx(1, receiptStatus: 'FAILED')];
+        await pump(tester, app);
 
-      await tapText(tester, 'Giao dịch 1');
+        await tapText(tester, 'Giao dịch 1');
 
-      expect(find.text('Trạng thái hóa đơn:'), findsOneWidget);
-      expect(find.text(_failedLabel), findsNWidgets(2), reason: 'once in the list and once in the details');
-      expect(find.text(_editLabel), findsOneWidget);
-      expect(find.text(_deleteLabel), findsOneWidget);
-    });
+        expect(find.text('Trạng thái hóa đơn:'), findsOneWidget);
+        expect(
+          find.text(_failedLabel),
+          findsNWidgets(2),
+          reason: 'once in the list and once in the details',
+        );
+        expect(find.text(_editLabel), findsOneWidget);
+        expect(find.text(_deleteLabel), findsOneWidget);
+      },
+    );
 
-    testWidgets('the details of a transaction without a receipt have no status row', (tester) async {
-      transactions = [_tx(1)];
-      await pump(tester, app);
+    testWidgets(
+      'the details of a transaction without a receipt have no status row',
+      (tester) async {
+        transactions = [_tx(1)];
+        await pump(tester, app);
 
-      await tapText(tester, 'Giao dịch 1');
+        await tapText(tester, 'Giao dịch 1');
 
-      expect(find.text('Trạng thái hóa đơn:'), findsNothing);
-      expect(find.byType(ReceiptStatusBadge), findsNothing);
-      expect(find.text(_editLabel), findsOneWidget);
-    });
+        expect(find.text('Trạng thái hóa đơn:'), findsNothing);
+        expect(find.byType(ReceiptStatusBadge), findsNothing);
+        expect(find.text(_editLabel), findsOneWidget);
+      },
+    );
 
-    testWidgets('offline there is no edit button, and deleting is still offered as before', (tester) async {
-      transactions = [_tx(1)];
-      await pump(tester, app);
-      // The user is in local mode by the time the details open; the data is already on screen.
-      addTearDown(() => AppConfig.mode = AppMode.full);
-      AppConfig.mode = AppMode.demo;
+    testWidgets(
+      'offline there is no edit button, and deleting is still offered as before',
+      (tester) async {
+        transactions = [_tx(1)];
+        await pump(tester, app);
+        // The user is in local mode by the time the details open; the data is already on screen.
+        addTearDown(() => AppConfig.mode = AppMode.full);
+        AppConfig.mode = AppMode.demo;
 
-      await tapText(tester, 'Giao dịch 1');
+        await tapText(tester, 'Giao dịch 1');
 
-      expect(find.text(_editLabel), findsNothing);
-      expect(find.text(_deleteLabel), findsOneWidget);
-    });
+        expect(find.text(_editLabel), findsNothing);
+        expect(find.text(_deleteLabel), findsOneWidget);
+      },
+    );
 
-    testWidgets('editing from the details PUTs the change, then the ledger shows the new amount', (tester) async {
-      transactions = [_tx(1, amount: 45000, receiptStatus: 'FAILED')];
-      backend.on('PUT', '/api/transactions/1', (_) {
-        transactions = [_tx(1, amount: 50000, receiptStatus: 'FAILED')];
-        return okResponse(transactions.single);
-      });
-      await pump(tester, app);
-      expect(find.text('- ${_money.format(45000)}'), findsOneWidget);
+    testWidgets(
+      'editing from the details PUTs the change, then the ledger shows the new amount',
+      (tester) async {
+        transactions = [_tx(1, amount: 45000, receiptStatus: 'FAILED')];
+        backend.on('PUT', '/api/transactions/1', (_) {
+          transactions = [_tx(1, amount: 50000, receiptStatus: 'FAILED')];
+          return okResponse(transactions.single);
+        });
+        await pump(tester, app);
+        expect(find.text('- ${_money.format(45000)}'), findsOneWidget);
 
-      await tapText(tester, 'Giao dịch 1');
-      await tapText(tester, _editLabel);
+        await tapText(tester, 'Giao dịch 1');
+        await tapText(tester, _editLabel);
 
-      expect(find.text('Lưu thay đổi'), findsOneWidget, reason: 'the edit form is open');
-      await tester.enterText(find.byType(TextField).first, '50000');
-      await tapText(tester, 'Lưu thay đổi');
-      await tapText(tester, 'OK');
+        expect(
+          find.text('Lưu thay đổi'),
+          findsOneWidget,
+          reason: 'the edit form is open',
+        );
+        await tester.enterText(find.byType(TextField).first, '50000');
+        await tapText(tester, 'Lưu thay đổi');
+        await tapText(tester, 'OK');
 
-      final puts = backend.requests.where((r) => r.method == 'PUT').toList();
-      expect(puts, hasLength(1));
-      expect(puts.single.path, '/api/transactions/1');
-      expect(puts.single.data, {'amount': 50000.0});
-      expect(find.text('Lưu thay đổi'), findsNothing, reason: 'back on the ledger');
-      expect(find.text('- ${_money.format(50000)}'), findsOneWidget);
-      expect(find.text('- ${_money.format(45000)}'), findsNothing);
-    });
+        final puts = backend.requests.where((r) => r.method == 'PUT').toList();
+        expect(puts, hasLength(1));
+        expect(puts.single.path, '/api/transactions/1');
+        expect(puts.single.data, {'amount': 50000.0});
+        expect(
+          find.text('Lưu thay đổi'),
+          findsNothing,
+          reason: 'back on the ledger',
+        );
+        expect(find.text('- ${_money.format(50000)}'), findsOneWidget);
+        expect(find.text('- ${_money.format(45000)}'), findsNothing);
+      },
+    );
 
-    testWidgets('closing the edit form without saving changes nothing', (tester) async {
+    testWidgets('closing the edit form without saving changes nothing', (
+      tester,
+    ) async {
       transactions = [_tx(1)];
       await pump(tester, app);
       final requestsBefore = backend.requests.length;
@@ -203,18 +267,26 @@ void main() {
       expect(find.text('- ${_money.format(45000)}'), findsOneWidget);
       expect(backend.requests.where((r) => r.method == 'PUT'), isEmpty);
       expect(
-        backend.requests.skip(requestsBefore).map((r) => '${r.method} ${r.path}'),
+        backend.requests
+            .skip(requestsBefore)
+            .map((r) => '${r.method} ${r.path}'),
         ['GET /api/categories'],
-        reason: 'only the category list is fetched: no reload after a form that saved nothing',
+        reason:
+            'only the category list is fetched: no reload after a form that saved nothing',
       );
     });
   });
 
   group('Dashboard', () {
-    testWidgets('the recent transactions carry the badge of their receipt', (tester) async {
+    testWidgets('the recent transactions carry the badge of their receipt', (
+      tester,
+    ) async {
       transactions = [_tx(1, receiptStatus: 'SUCCESS'), _tx(2)];
 
-      await pump(tester, const MaterialApp(home: Scaffold(body: DashboardPage())));
+      await pump(
+        tester,
+        const MaterialApp(home: Scaffold(body: DashboardPage())),
+      );
 
       expect(find.text('Giao dịch 1'), findsOneWidget);
       expect(find.text('Giao dịch 2'), findsOneWidget);

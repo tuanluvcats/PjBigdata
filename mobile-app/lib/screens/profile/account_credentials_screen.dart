@@ -30,9 +30,12 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
   /// Shown instead of the real password in full mode: the server never sends it.
   static const String _serverPasswordMask = '********';
   static const String _changePasswordFailedTitle = 'Đổi mật khẩu thất bại';
-  static const String _sessionExpiredMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
-  static const String _noConnectionMessage = 'Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.';
-  static const String _genericFailureMessage = 'Đã xảy ra lỗi. Vui lòng thử lại.';
+  static const String _sessionExpiredMessage =
+      'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+  static const String _noConnectionMessage =
+      'Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.';
+  static const String _genericFailureMessage =
+      'Đã xảy ra lỗi. Vui lòng thử lại.';
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -96,17 +99,6 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
     return List.filled(clampedLength, '*').join();
   }
 
-  String _editingTitle() {
-    switch (_editingField) {
-      case _EditingField.email:
-        return 'Chỉnh sửa tên đăng nhập';
-      case _EditingField.password:
-        return 'Đổi mật khẩu';
-      default:
-        return '';
-    }
-  }
-
   Future<void> _saveEmail() async {
     final current = _user;
     if (current == null) return;
@@ -121,7 +113,11 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
 
     if (AppConfig.isFull) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chỉnh sửa tài khoản chưa hỗ trợ trên server (chỉ ở bản demo).')),
+        const SnackBar(
+          content: Text(
+            'Chỉnh sửa tài khoản chưa hỗ trợ trên server (chỉ ở bản demo).',
+          ),
+        ),
       );
       return;
     }
@@ -129,9 +125,9 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
     try {
       await SqfliteHelper.instance.updateUser(updated);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã cập nhật tài khoản.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Đã cập nhật tài khoản.')));
       setState(() {
         _user = updated;
         _editingField = null;
@@ -139,14 +135,16 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
     } catch (e) {
       if (!mounted) return;
       final msg = e.toString().toLowerCase();
-      if (msg.contains('unique') || msg.contains('1555') || msg.contains('2067')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Email đã tồn tại.')),
-        );
+      if (msg.contains('unique') ||
+          msg.contains('1555') ||
+          msg.contains('2067')) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Email đã tồn tại.')));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cập nhật thất bại: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Cập nhật thất bại: $e')));
       }
     }
   }
@@ -179,22 +177,22 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
     }
     // In full mode the server never sends the password, so only the server can tell that the old one is wrong.
     if (!AppConfig.isFull && currentPassword != current.password) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mật khẩu cũ không đúng.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Mật khẩu cũ không đúng.')));
       return;
     }
     final policyError = PasswordPolicy.validate(newPassword);
     if (policyError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(policyError)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(policyError)));
       return;
     }
     if (newPassword != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mật khẩu mới không khớp.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Mật khẩu mới không khớp.')));
       return;
     }
 
@@ -209,18 +207,18 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
     try {
       await SqfliteHelper.instance.updateUser(updated);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đổi mật khẩu thành công.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Đổi mật khẩu thành công.')));
       setState(() {
         _user = updated;
         _editingField = null;
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đổi mật khẩu thất bại: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Đổi mật khẩu thất bại: $e')));
     }
   }
 
@@ -273,9 +271,13 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
       return _sessionExpiredMessage;
     }
     final data = error.response?.data;
-    final serverMessage = (data is Map ? data['message'] : null)?.toString().trim();
+    final serverMessage = (data is Map ? data['message'] : null)
+        ?.toString()
+        .trim();
     if (serverMessage != null && serverMessage.isNotEmpty) return serverMessage;
-    return error.response == null ? _noConnectionMessage : _genericFailureMessage;
+    return error.response == null
+        ? _noConnectionMessage
+        : _genericFailureMessage;
   }
 
   Widget _buildEditableInfoRow({
@@ -427,13 +429,11 @@ class _PasswordChangeForm extends StatefulWidget {
     required String currentPassword,
     required String newPassword,
     required String confirmPassword,
-  }) onSave;
+  })
+  onSave;
   final VoidCallback onCancel;
 
-  const _PasswordChangeForm({
-    required this.onSave,
-    required this.onCancel,
-  });
+  const _PasswordChangeForm({required this.onSave, required this.onCancel});
 
   @override
   State<_PasswordChangeForm> createState() => _PasswordChangeFormState();
@@ -523,10 +523,7 @@ class _PasswordChangeFormState extends State<_PasswordChangeForm> {
         const SizedBox(height: 8),
         TextButton(
           onPressed: widget.onCancel,
-          child: const Text(
-            'Hủy',
-            style: TextStyle(color: AppTheme.textGray),
-          ),
+          child: const Text('Hủy', style: TextStyle(color: AppTheme.textGray)),
         ),
       ],
     );

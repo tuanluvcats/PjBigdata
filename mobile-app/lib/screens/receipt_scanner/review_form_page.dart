@@ -31,7 +31,8 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
 
   final TextEditingController _storeNameController = TextEditingController();
   final TextEditingController _dateController = TextEditingController(
-      text: DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()));
+    text: DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
+  );
   String _selectedCategory = 'Ăn uống';
 
   @override
@@ -50,24 +51,36 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
 
   Future<void> _callDonutApi() async {
     try {
-      final result = await RemoteApiHelper.instance.scanReceipt(widget.imagePath);
-      
+      final result = await RemoteApiHelper.instance.scanReceipt(
+        widget.imagePath,
+      );
+
       if (AppConfig.isFull) {
         try {
-          _imageUrl = await RemoteApiHelper.instance.uploadImage(widget.imagePath);
+          _imageUrl = await RemoteApiHelper.instance.uploadImage(
+            widget.imagePath,
+          );
         } catch (e) {
           debugPrint('Upload anh receipt lỗi: $e');
         }
       }
 
-      final seller = result['seller'] is Map 
-          ? Map<String, dynamic>.from(result['seller']) 
+      final seller = result['seller'] is Map
+          ? Map<String, dynamic>.from(result['seller'])
           : <String, dynamic>{};
-          
+
       final storeName = seller['seller_name']?.toString() ?? '';
       final timestamp = seller['timestamp']?.toString() ?? '';
       final n = seller['total_cost_number'];
-      final total = n is num ? n.toDouble() : (double.tryParse((seller['total_cost'] ?? '0').toString().replaceAll(RegExp(r'[^\d.]'), '')) ?? 0.0);
+      final total = n is num
+          ? n.toDouble()
+          : (double.tryParse(
+                  (seller['total_cost'] ?? '0').toString().replaceAll(
+                    RegExp(r'[^\d.]'),
+                    '',
+                  ),
+                ) ??
+                0.0);
 
       if (!mounted) return;
       setState(() {
@@ -75,7 +88,12 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
         if (storeName.isNotEmpty) _storeNameController.text = storeName;
         if (timestamp.isNotEmpty) _dateController.text = timestamp;
         _donutTotal = total;
-        _receipt = ReceiptModel(storeName: storeName, date: timestamp, items: [], tax: 0);
+        _receipt = ReceiptModel(
+          storeName: storeName,
+          date: timestamp,
+          items: [],
+          tax: 0,
+        );
         _isProcessing = false;
       });
 
@@ -85,7 +103,9 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isProcessing = false);
-      _showSnack('Quét hóa đơn thất bại (Kiểm tra AI service). Vui lòng nhập tay.');
+      _showSnack(
+        'Quét hóa đơn thất bại (Kiểm tra AI service). Vui lòng nhập tay.',
+      );
     }
   }
 
@@ -104,7 +124,9 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
 
     DateTime parsedDate;
     try {
-      parsedDate = DateFormat('dd/MM/yyyy HH:mm').parse(_dateController.text.trim());
+      parsedDate = DateFormat(
+        'dd/MM/yyyy HH:mm',
+      ).parse(_dateController.text.trim());
     } catch (_) {
       parsedDate = DateTime.now();
     }
@@ -123,7 +145,9 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
         await RemoteApiHelper.instance.addTransaction({
           'amount': transaction.amount,
           'note': transaction.title,
-          'location': transaction.title.isEmpty ? 'Hóa đơn quét' : transaction.title,
+          'location': transaction.title.isEmpty
+              ? 'Hóa đơn quét'
+              : transaction.title,
           'paymentMethod': 'WALLET',
           'transactionDate': transaction.date.toIso8601String(),
           'categoryName': transaction.category,
@@ -147,12 +171,14 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
     if (TransactionCategories.expenseSelectable.isEmpty) {
       await TransactionCategories.loadFromApi();
     }
-    
+
     if (!mounted) return;
     final picked = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppTheme.navyLight,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (_) => SafeArea(
         child: ListView(
           shrinkWrap: true,
@@ -160,14 +186,35 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 12, 20, 8),
-              child: Text('Chọn danh mục chi', style: TextStyle(color: AppTheme.textWhite, fontSize: 16, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Chọn danh mục chi',
+                style: TextStyle(
+                  color: AppTheme.textWhite,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             ...TransactionCategories.expenseSelectable.map((cat) {
               final selected = cat == _selectedCategory;
               return ListTile(
-                leading: Icon(TransactionCategories.iconFor(cat), color: selected ? AppTheme.mintAccent : AppTheme.textGray),
-                title: Text(cat, style: TextStyle(color: selected ? AppTheme.textWhite : AppTheme.textGray, fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
-                trailing: selected ? const Icon(Icons.check_rounded, color: AppTheme.mintAccent) : null,
+                leading: Icon(
+                  TransactionCategories.iconFor(cat),
+                  color: selected ? AppTheme.mintAccent : AppTheme.textGray,
+                ),
+                title: Text(
+                  cat,
+                  style: TextStyle(
+                    color: selected ? AppTheme.textWhite : AppTheme.textGray,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                trailing: selected
+                    ? const Icon(
+                        Icons.check_rounded,
+                        color: AppTheme.mintAccent,
+                      )
+                    : null,
                 onTap: () => Navigator.pop(context, cat),
               );
             }),
@@ -194,16 +241,30 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
         children: [
           CircularProgressIndicator(color: AppTheme.mintAccent),
           SizedBox(height: 24),
-          Text('Đang phân tích hóa đơn...', style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(
+            'Đang phân tích hóa đơn...',
+            style: TextStyle(
+              color: AppTheme.textWhite,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           SizedBox(height: 8),
-          Text('Vui lòng đợi trong giây lát', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
+          Text(
+            'Vui lòng đợi trong giây lát',
+            style: TextStyle(color: AppTheme.textGray, fontSize: 14),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildFormContent() {
-    final fmt = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ', decimalDigits: 0);
+    final fmt = NumberFormat.currency(
+      locale: 'vi_VN',
+      symbol: 'đ',
+      decimalDigits: 0,
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -216,11 +277,21 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.file(
-                  File(widget.imagePath), width: 80, height: 120, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 80, height: 120,
-                    decoration: BoxDecoration(color: AppTheme.navyLight, borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.image_not_supported, color: AppTheme.textGray),
+                  File(widget.imagePath),
+                  width: 80,
+                  height: 120,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Container(
+                    width: 80,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: AppTheme.navyLight,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.image_not_supported,
+                      color: AppTheme.textGray,
+                    ),
                   ),
                 ),
               ),
@@ -229,9 +300,23 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Trích xuất thành công', style: TextStyle(color: AppTheme.mintAccent, fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(
+                      'Trích xuất thành công',
+                      style: TextStyle(
+                        color: AppTheme.mintAccent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
                     SizedBox(height: 8),
-                    Text('Vui lòng kiểm tra lại thông tin bên dưới và đối chiếu với ảnh gốc trước khi lưu.', style: TextStyle(color: AppTheme.textGray, fontSize: 13, height: 1.4)),
+                    Text(
+                      'Vui lòng kiểm tra lại thông tin bên dưới và đối chiếu với ảnh gốc trước khi lưu.',
+                      style: TextStyle(
+                        color: AppTheme.textGray,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -240,12 +325,23 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
           const SizedBox(height: 32),
 
           _buildSectionTitle('Thông tin chung'),
-          _buildTextField('Tên cửa hàng', _storeNameController, Icons.storefront),
+          _buildTextField(
+            'Tên cửa hàng',
+            _storeNameController,
+            Icons.storefront,
+          ),
           const SizedBox(height: 16),
-          _buildTextField('Ngày giao dịch', _dateController, Icons.calendar_today),
+          _buildTextField(
+            'Ngày giao dịch',
+            _dateController,
+            Icons.calendar_today,
+          ),
           const SizedBox(height: 16),
 
-          const Text('Danh mục', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
+          const Text(
+            'Danh mục',
+            style: TextStyle(color: AppTheme.textGray, fontSize: 14),
+          ),
           const SizedBox(height: 8),
           InkWell(
             onTap: _pickCategory,
@@ -255,14 +351,30 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
               decoration: BoxDecoration(
                 color: AppTheme.navyLight,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.textGray.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppTheme.textGray.withValues(alpha: 0.3),
+                ),
               ),
               child: Row(
                 children: [
-                  Icon(TransactionCategories.iconFor(_selectedCategory), color: AppTheme.textGray),
+                  Icon(
+                    TransactionCategories.iconFor(_selectedCategory),
+                    color: AppTheme.textGray,
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: Text(_selectedCategory, style: const TextStyle(color: AppTheme.textWhite, fontSize: 16))),
-                  const Icon(Icons.chevron_right_rounded, color: AppTheme.textGray),
+                  Expanded(
+                    child: Text(
+                      _selectedCategory,
+                      style: const TextStyle(
+                        color: AppTheme.textWhite,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppTheme.textGray,
+                  ),
                 ],
               ),
             ),
@@ -271,7 +383,9 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
           const SizedBox(height: 24),
           _buildSectionTitle('Tổng kết'),
           Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -281,9 +395,16 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
                   _buildTotalRow('Thuế VAT/Khác:', fmt.format(_receipt.tax)),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Divider(height: 1, color: Colors.white.withValues(alpha: 0.1)),
+                    child: Divider(
+                      height: 1,
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
                   ),
-                  _buildTotalRow('TỔNG TIỀN:', fmt.format(_donutTotal), isGrandTotal: true),
+                  _buildTotalRow(
+                    'TỔNG TIỀN:',
+                    fmt.format(_donutTotal),
+                    isGrandTotal: true,
+                  ),
                 ],
               ),
             ),
@@ -291,17 +412,33 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
 
           const SizedBox(height: 40),
           SizedBox(
-            width: double.infinity, height: 56,
+            width: double.infinity,
+            height: 56,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.mintAccent,
                 foregroundColor: AppTheme.navyDark,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
               onPressed: _isSaving ? null : _saveToDatabase,
               child: _isSaving
-                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: AppTheme.navyDark, strokeWidth: 2))
-                  : const Text('Xác nhận & Lưu CSDL', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: AppTheme.navyDark,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'Xác nhận & Lưu CSDL',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -312,12 +449,26 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textWhite)),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+          color: AppTheme.textWhite,
+        ),
+      ),
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon) {
-    final border = OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.textGray.withValues(alpha: 0.3)));
+  Widget _buildTextField(
+    String label,
+    TextEditingController controller,
+    IconData icon,
+  ) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: AppTheme.textGray.withValues(alpha: 0.3)),
+    );
     return TextFormField(
       controller: controller,
       style: const TextStyle(color: AppTheme.textWhite),
@@ -329,17 +480,38 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
         fillColor: AppTheme.navyLight,
         border: border,
         enabledBorder: border,
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.mintAccent)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppTheme.mintAccent),
+        ),
       ),
     );
   }
 
-  Widget _buildTotalRow(String label, String value, {bool isGrandTotal = false}) {
+  Widget _buildTotalRow(
+    String label,
+    String value, {
+    bool isGrandTotal = false,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: TextStyle(color: isGrandTotal ? AppTheme.textWhite : AppTheme.textGray, fontSize: isGrandTotal ? 16 : 14, fontWeight: isGrandTotal ? FontWeight.bold : FontWeight.normal)),
-        Text(value, style: TextStyle(color: isGrandTotal ? AppTheme.dangerColor : AppTheme.textWhite, fontSize: isGrandTotal ? 20 : 14, fontWeight: FontWeight.bold)),
+        Text(
+          label,
+          style: TextStyle(
+            color: isGrandTotal ? AppTheme.textWhite : AppTheme.textGray,
+            fontSize: isGrandTotal ? 16 : 14,
+            fontWeight: isGrandTotal ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: isGrandTotal ? AppTheme.dangerColor : AppTheme.textWhite,
+            fontSize: isGrandTotal ? 20 : 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ],
     );
   }

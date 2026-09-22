@@ -52,15 +52,18 @@ class LedgerPageState extends State<LedgerPage> {
 
   bool _showExpenses = true;
   bool _showIncome = true;
-  String _sortOption = 'date_desc'; 
+  String _sortOption = 'date_desc';
   double? _filterMinAmount;
   double? _filterMaxAmount;
   bool _isSearching = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  static final _fmtCur =
-      NumberFormat.currency(locale: 'vi_VN', symbol: 'đ', decimalDigits: 0);
+  static final _fmtCur = NumberFormat.currency(
+    locale: 'vi_VN',
+    symbol: 'đ',
+    decimalDigits: 0,
+  );
 
   @override
   void initState() {
@@ -110,11 +113,13 @@ class LedgerPageState extends State<LedgerPage> {
     });
     if (budgets != null) {
       // Not awaited, so a dialog waiting for the user does not hold up the pull-to-refresh.
-      unawaited(BudgetAlertPresenter.showNew(
-        context,
-        userId: userId,
-        progresses: BudgetProgress.activeOn(DateTime.now(), budgets, txs),
-      ));
+      unawaited(
+        BudgetAlertPresenter.showNew(
+          context,
+          userId: userId,
+          progresses: BudgetProgress.activeOn(DateTime.now(), budgets, txs),
+        ),
+      );
     }
   }
 
@@ -129,7 +134,12 @@ class LedgerPageState extends State<LedgerPage> {
     final to = _period == LedgerPeriod.week
         ? _weekEnd.subtract(const Duration(days: 1))
         : DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
-    _budgetProgress = BudgetProgress.overlapping(from, to, _budgets, _transactions);
+    _budgetProgress = BudgetProgress.overlapping(
+      from,
+      to,
+      _budgets,
+      _transactions,
+    );
   }
 
   DateTime get _weekStart {
@@ -144,8 +154,7 @@ class LedgerPageState extends State<LedgerPage> {
     if (_period == LedgerPeriod.week) {
       return !date.isBefore(_weekStart) && date.isBefore(_weekEnd);
     }
-    return date.year == _selectedDate.year &&
-        date.month == _selectedDate.month;
+    return date.year == _selectedDate.year && date.month == _selectedDate.month;
   }
 
   String get _periodLabel {
@@ -156,16 +165,22 @@ class LedgerPageState extends State<LedgerPage> {
     return DateFormat('MMMM yyyy', 'vi_VN').format(_selectedDate);
   }
 
-List<TransactionModel> get _periodTransactions {
+  List<TransactionModel> get _periodTransactions {
     final q = _searchQuery.toLowerCase().trim();
     final list = _transactions.where((tx) {
       final inPeriod = _inSelectedPeriod(tx.date);
-      final matchType = (_showExpenses && tx.isExpense) || (_showIncome && !tx.isExpense);
-      final matchSearch = q.isEmpty || tx.title.toLowerCase().contains(q) || tx.category.toLowerCase().contains(q);
+      final matchType =
+          (_showExpenses && tx.isExpense) || (_showIncome && !tx.isExpense);
+      final matchSearch =
+          q.isEmpty ||
+          tx.title.toLowerCase().contains(q) ||
+          tx.category.toLowerCase().contains(q);
 
-      final matchMin = _filterMinAmount == null || tx.amount >= _filterMinAmount!;
-      final matchMax = _filterMaxAmount == null || tx.amount <= _filterMaxAmount!;
-      
+      final matchMin =
+          _filterMinAmount == null || tx.amount >= _filterMinAmount!;
+      final matchMax =
+          _filterMaxAmount == null || tx.amount <= _filterMaxAmount!;
+
       return inPeriod && matchType && matchSearch && matchMin && matchMax;
     }).toList();
 
@@ -173,7 +188,7 @@ List<TransactionModel> get _periodTransactions {
       if (_sortOption == 'date_asc') return a.date.compareTo(b.date);
       if (_sortOption == 'amount_desc') return b.amount.compareTo(a.amount);
       if (_sortOption == 'amount_asc') return a.amount.compareTo(b.amount);
-      return b.date.compareTo(a.date); 
+      return b.date.compareTo(a.date);
     });
     return list;
   }
@@ -191,8 +206,11 @@ List<TransactionModel> get _periodTransactions {
       if (_period == LedgerPeriod.week) {
         _selectedDate = _selectedDate.add(Duration(days: 7 * dir));
       } else {
-        _selectedDate =
-            DateTime(_selectedDate.year, _selectedDate.month + dir, 1);
+        _selectedDate = DateTime(
+          _selectedDate.year,
+          _selectedDate.month + dir,
+          1,
+        );
       }
       _refreshBudgetProgress();
     });
@@ -214,8 +232,10 @@ List<TransactionModel> get _periodTransactions {
                 ),
                 onChanged: (v) => setState(() => _searchQuery = v),
               )
-            : const Text('Sổ sách',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+            : const Text(
+                'Sổ sách',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+              ),
         leading: _isSearching
             ? IconButton(
                 icon: const Icon(Icons.close_rounded),
@@ -245,7 +265,8 @@ List<TransactionModel> get _periodTransactions {
               Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => AddTransactionPage(initialDate: _selectedDate),
+                  builder: (_) =>
+                      AddTransactionPage(initialDate: _selectedDate),
                 ),
               ).then((added) {
                 if (added == true) {
@@ -298,8 +319,11 @@ List<TransactionModel> get _periodTransactions {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.calendar_today_rounded,
-                  size: 16, color: AppTheme.primary),
+              const Icon(
+                Icons.calendar_today_rounded,
+                size: 16,
+                color: AppTheme.primary,
+              ),
               const SizedBox(width: 8),
               const Text(
                 'Lịch',
@@ -344,7 +368,8 @@ List<TransactionModel> get _periodTransactions {
       ),
     );
     if (picked == null) return;
-    final monthChanged = picked.month != _selectedDate.month ||
+    final monthChanged =
+        picked.month != _selectedDate.month ||
         picked.year != _selectedDate.year;
     setState(() {
       _selectedDate = picked;
@@ -360,7 +385,11 @@ List<TransactionModel> get _periodTransactions {
       child: Container(
         width: 34,
         height: 34,
-        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: AppTheme.softShadow),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: AppTheme.softShadow,
+        ),
         child: Icon(icon, size: 20, color: AppTheme.textPrimary),
       ),
     );
@@ -395,8 +424,11 @@ List<TransactionModel> get _periodTransactions {
             child: DropdownButton<LedgerPeriod>(
               value: _period,
               isDense: true,
-              icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                  color: AppTheme.primary, size: 18),
+              icon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: AppTheme.primary,
+                size: 18,
+              ),
               style: const TextStyle(
                 color: AppTheme.primary,
                 fontWeight: FontWeight.w600,
@@ -404,10 +436,11 @@ List<TransactionModel> get _periodTransactions {
               ),
               dropdownColor: Colors.white,
               items: const [
+                DropdownMenuItem(value: LedgerPeriod.week, child: Text('Tuần')),
                 DropdownMenuItem(
-                    value: LedgerPeriod.week, child: Text('Tuần')),
-                DropdownMenuItem(
-                    value: LedgerPeriod.month, child: Text('Tháng')),
+                  value: LedgerPeriod.month,
+                  child: Text('Tháng'),
+                ),
               ],
               onChanged: (v) {
                 if (v != null) {
@@ -444,7 +477,9 @@ List<TransactionModel> get _periodTransactions {
             transitionBuilder: (child, anim) =>
                 FadeTransition(opacity: anim, child: child),
             child: SizedBox(
-              key: ValueKey('${_period.name}_${_selectedDate.month}_${_selectedDate.year}'),
+              key: ValueKey(
+                '${_period.name}_${_selectedDate.month}_${_selectedDate.year}',
+              ),
               height: 180,
               child: _buildBarChart(),
             ),
@@ -495,12 +530,15 @@ List<TransactionModel> get _periodTransactions {
         ),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
-          leftTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -510,9 +548,13 @@ List<TransactionModel> get _periodTransactions {
                 if (i < 0 || i >= labels.length) return const SizedBox();
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(labels[i],
-                      style: const TextStyle(
-                          color: AppTheme.textGray, fontSize: 11)),
+                  child: Text(
+                    labels[i],
+                    style: const TextStyle(
+                      color: AppTheme.textGray,
+                      fontSize: 11,
+                    ),
+                  ),
                 );
               },
             ),
@@ -601,15 +643,20 @@ List<TransactionModel> get _periodTransactions {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(_fmtCur.format(amount),
-                style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18)),
+            child: Text(
+              _fmtCur.format(amount),
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
           ),
           const SizedBox(height: 2),
-          Text(label,
-              style: const TextStyle(color: AppTheme.textGray, fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(color: AppTheme.textGray, fontSize: 13),
+          ),
         ],
       ),
     );
@@ -622,12 +669,16 @@ List<TransactionModel> get _periodTransactions {
         Container(
           width: 10,
           height: 10,
-          decoration:
-              BoxDecoration(color: c, borderRadius: BorderRadius.circular(3)),
+          decoration: BoxDecoration(
+            color: c,
+            borderRadius: BorderRadius.circular(3),
+          ),
         ),
         const SizedBox(width: 6),
-        Text(label,
-            style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+        Text(
+          label,
+          style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+        ),
       ],
     );
   }
@@ -637,33 +688,39 @@ List<TransactionModel> get _periodTransactions {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Giao dịch gần đây',
-            style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 16)),
+        const Text(
+          'Giao dịch gần đây',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
         const SizedBox(height: 12),
         if (txs.isEmpty)
           Container(
             padding: const EdgeInsets.all(16),
             decoration: AppTheme.card,
-            child: const Text('Không có giao dịch trong kỳ này.',
-                style: TextStyle(color: AppTheme.textGray)),
+            child: const Text(
+              'Không có giao dịch trong kỳ này.',
+              style: TextStyle(color: AppTheme.textGray),
+            ),
           )
         else
-          ...txs.map((tx) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: AppTheme.card,
+          ...txs.map(
+            (tx) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: AppTheme.card,
                 child: InkWell(
-                    onTap: () => _showTransactionDetails(tx), 
-                    borderRadius: BorderRadius.circular(12),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
+                  onTap: () => _showTransactionDetails(tx),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
                           color: tx.color.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -674,15 +731,20 @@ List<TransactionModel> get _periodTransactions {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(tx.title,
-                                style: const TextStyle(
-                                    color: AppTheme.textPrimary,
-                                    fontWeight: FontWeight.w600)),
+                            Text(
+                              tx.title,
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             const SizedBox(height: 2),
                             Text(
                               '${tx.category} • ${DateFormat('dd/MM HH:mm').format(tx.date)}',
                               style: const TextStyle(
-                                  color: AppTheme.textGray, fontSize: 12),
+                                color: AppTheme.textGray,
+                                fontSize: 12,
+                              ),
                             ),
                             if (tx.receiptStatus != null) ...[
                               const SizedBox(height: 4),
@@ -698,15 +760,18 @@ List<TransactionModel> get _periodTransactions {
                       Text(
                         '${tx.isExpense ? "- " : "+ "}${_fmtCur.format(tx.amount)}',
                         style: TextStyle(
-                            color: tx.isExpense
-                                ? AppTheme.dangerColor
-                                : AppTheme.positive,
-                            fontWeight: FontWeight.bold),
+                          color: tx.isExpense
+                              ? AppTheme.dangerColor
+                              : AppTheme.positive,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ))),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -721,11 +786,14 @@ List<TransactionModel> get _periodTransactions {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Tổng kết',
-                style: TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16)),
+            const Text(
+              'Tổng kết',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
             TextButton.icon(
               onPressed: _exportToExcel,
               icon: const Icon(Icons.download_rounded, size: 18),
@@ -744,9 +812,12 @@ List<TransactionModel> get _periodTransactions {
               const SizedBox(height: 8),
               _summaryRow('Tổng chi', _periodExpense, AppTheme.dangerColor),
               const Divider(height: 24),
-              _summaryRow('Số dư', balance,
-                  balance >= 0 ? AppTheme.positive : AppTheme.dangerColor,
-                  bold: true),
+              _summaryRow(
+                'Số dư',
+                balance,
+                balance >= 0 ? AppTheme.positive : AppTheme.dangerColor,
+                bold: true,
+              ),
             ],
           ),
         ),
@@ -754,17 +825,26 @@ List<TransactionModel> get _periodTransactions {
     );
   }
 
-  Widget _summaryRow(String label, double amount, Color color,
-      {bool bold = false}) {
+  Widget _summaryRow(
+    String label,
+    double amount,
+    Color color, {
+    bool bold = false,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label,
-            style: TextStyle(
-                color: bold ? AppTheme.textPrimary : AppTheme.textGray,
-                fontWeight: bold ? FontWeight.bold : FontWeight.normal)),
-        Text(_fmtCur.format(amount),
-            style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        Text(
+          label,
+          style: TextStyle(
+            color: bold ? AppTheme.textPrimary : AppTheme.textGray,
+            fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        Text(
+          _fmtCur.format(amount),
+          style: TextStyle(color: color, fontWeight: FontWeight.bold),
+        ),
       ],
     );
   }
@@ -774,7 +854,9 @@ List<TransactionModel> get _periodTransactions {
       context: context,
       backgroundColor: AppTheme.navyLight,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => SafeArea(
           child: Padding(
@@ -783,85 +865,155 @@ List<TransactionModel> get _periodTransactions {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Bộ lọc & Sắp xếp thông minh', style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Bộ lọc & Sắp xếp thông minh',
+                  style: TextStyle(
+                    color: AppTheme.textWhite,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 20),
-                
-                const Text('1. Loại giao dịch', style: TextStyle(color: AppTheme.mintAccent, fontWeight: FontWeight.bold)),
+
+                const Text(
+                  '1. Loại giao dịch',
+                  style: TextStyle(
+                    color: AppTheme.mintAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 Wrap(
                   spacing: 8,
                   children: [
                     ChoiceChip(
-                      label: const Text('Tất cả'), selected: _showExpenses && _showIncome,
-                      onSelected: (_) => setModalState(() { _showExpenses = true; _showIncome = true; }),
+                      label: const Text('Tất cả'),
+                      selected: _showExpenses && _showIncome,
+                      onSelected: (_) => setModalState(() {
+                        _showExpenses = true;
+                        _showIncome = true;
+                      }),
                     ),
                     ChoiceChip(
-                      label: const Text('Chỉ Khoản Chi'), selected: _showExpenses && !_showIncome,
-                      onSelected: (_) => setModalState(() { _showExpenses = true; _showIncome = false; }),
+                      label: const Text('Chỉ Khoản Chi'),
+                      selected: _showExpenses && !_showIncome,
+                      onSelected: (_) => setModalState(() {
+                        _showExpenses = true;
+                        _showIncome = false;
+                      }),
                     ),
                     ChoiceChip(
-                      label: const Text('Chỉ Khoản Thu'), selected: !_showExpenses && _showIncome,
-                      onSelected: (_) => setModalState(() { _showExpenses = false; _showIncome = true; }),
+                      label: const Text('Chỉ Khoản Thu'),
+                      selected: !_showExpenses && _showIncome,
+                      onSelected: (_) => setModalState(() {
+                        _showExpenses = false;
+                        _showIncome = true;
+                      }),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
 
-                const Text('2. Khoảng tiền', style: TextStyle(color: AppTheme.mintAccent, fontWeight: FontWeight.bold)),
+                const Text(
+                  '2. Khoảng tiền',
+                  style: TextStyle(
+                    color: AppTheme.mintAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 Wrap(
                   spacing: 8,
                   children: [
                     ChoiceChip(
-                      label: const Text('Mọi mức giá'), selected: _filterMaxAmount == null && _filterMinAmount == null,
-                      onSelected: (_) => setModalState(() { _filterMinAmount = null; _filterMaxAmount = null; }),
+                      label: const Text('Mọi mức giá'),
+                      selected:
+                          _filterMaxAmount == null && _filterMinAmount == null,
+                      onSelected: (_) => setModalState(() {
+                        _filterMinAmount = null;
+                        _filterMaxAmount = null;
+                      }),
                     ),
                     ChoiceChip(
-                      label: const Text('< 100k'), selected: _filterMaxAmount == 100000,
-                      onSelected: (_) => setModalState(() { _filterMinAmount = null; _filterMaxAmount = 100000; }),
+                      label: const Text('< 100k'),
+                      selected: _filterMaxAmount == 100000,
+                      onSelected: (_) => setModalState(() {
+                        _filterMinAmount = null;
+                        _filterMaxAmount = 100000;
+                      }),
                     ),
                     ChoiceChip(
-                      label: const Text('100k - 500k'), selected: _filterMinAmount == 100000 && _filterMaxAmount == 500000,
-                      onSelected: (_) => setModalState(() { _filterMinAmount = 100000; _filterMaxAmount = 500000; }),
+                      label: const Text('100k - 500k'),
+                      selected:
+                          _filterMinAmount == 100000 &&
+                          _filterMaxAmount == 500000,
+                      onSelected: (_) => setModalState(() {
+                        _filterMinAmount = 100000;
+                        _filterMaxAmount = 500000;
+                      }),
                     ),
                     ChoiceChip(
-                      label: const Text('> 500k'), selected: _filterMinAmount == 500000 && _filterMaxAmount == null,
-                      onSelected: (_) => setModalState(() { _filterMinAmount = 500000; _filterMaxAmount = null; }),
+                      label: const Text('> 500k'),
+                      selected:
+                          _filterMinAmount == 500000 &&
+                          _filterMaxAmount == null,
+                      onSelected: (_) => setModalState(() {
+                        _filterMinAmount = 500000;
+                        _filterMaxAmount = null;
+                      }),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
 
-                const Text('3. Sắp xếp theo', style: TextStyle(color: AppTheme.mintAccent, fontWeight: FontWeight.bold)),
+                const Text(
+                  '3. Sắp xếp theo',
+                  style: TextStyle(
+                    color: AppTheme.mintAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 Wrap(
                   spacing: 8,
                   children: [
                     ChoiceChip(
-                      label: const Text('Mới nhất'), selected: _sortOption == 'date_desc',
-                      onSelected: (_) => setModalState(() => _sortOption = 'date_desc'),
+                      label: const Text('Mới nhất'),
+                      selected: _sortOption == 'date_desc',
+                      onSelected: (_) =>
+                          setModalState(() => _sortOption = 'date_desc'),
                     ),
                     ChoiceChip(
-                      label: const Text('Cũ nhất'), selected: _sortOption == 'date_asc',
-                      onSelected: (_) => setModalState(() => _sortOption = 'date_asc'),
+                      label: const Text('Cũ nhất'),
+                      selected: _sortOption == 'date_asc',
+                      onSelected: (_) =>
+                          setModalState(() => _sortOption = 'date_asc'),
                     ),
                     ChoiceChip(
-                      label: const Text('Giá trị cao nhất'), selected: _sortOption == 'amount_desc',
-                      onSelected: (_) => setModalState(() => _sortOption = 'amount_desc'),
+                      label: const Text('Giá trị cao nhất'),
+                      selected: _sortOption == 'amount_desc',
+                      onSelected: (_) =>
+                          setModalState(() => _sortOption = 'amount_desc'),
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.mintAccent, foregroundColor: AppTheme.navyDark),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.mintAccent,
+                      foregroundColor: AppTheme.navyDark,
+                    ),
                     onPressed: () {
-                      setState(() {}); 
+                      setState(() {});
                       Navigator.pop(ctx);
                     },
-                    child: const Text('Áp dụng bộ lọc', style: TextStyle(fontWeight: FontWeight.bold)),
-                  )
-                )
+                    child: const Text(
+                      'Áp dụng bộ lọc',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -874,21 +1026,26 @@ List<TransactionModel> get _periodTransactions {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.navyLight,
-      isScrollControlled: true, 
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16), 
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: SingleChildScrollView(
             child: Column(
-              mainAxisSize: MainAxisSize.min, 
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: tx.color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(
+                        color: tx.color.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: Icon(tx.icon, color: tx.color, size: 28),
                     ),
                     const SizedBox(width: 16),
@@ -896,19 +1053,43 @@ List<TransactionModel> get _periodTransactions {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(tx.title, style: const TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
-                          Text(tx.category, style: const TextStyle(color: AppTheme.textGray, fontSize: 14)),
+                          Text(
+                            tx.title,
+                            style: const TextStyle(
+                              color: AppTheme.textWhite,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            tx.category,
+                            style: const TextStyle(
+                              color: AppTheme.textGray,
+                              fontSize: 14,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: AppTheme.textGray)),
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close, color: AppTheme.textGray),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
-                
-                _buildDetailRow('Số tiền:', '${tx.isExpense ? "-" : "+"}${_fmtCur.format(tx.amount)}', tx.isExpense ? AppTheme.dangerColor : AppTheme.positive),
+
+                _buildDetailRow(
+                  'Số tiền:',
+                  '${tx.isExpense ? "-" : "+"}${_fmtCur.format(tx.amount)}',
+                  tx.isExpense ? AppTheme.dangerColor : AppTheme.positive,
+                ),
                 const SizedBox(height: 12),
-                _buildDetailRow('Thời gian:', DateFormat('dd/MM/yyyy - HH:mm').format(tx.date), AppTheme.textWhite),
+                _buildDetailRow(
+                  'Thời gian:',
+                  DateFormat('dd/MM/yyyy - HH:mm').format(tx.date),
+                  AppTheme.textWhite,
+                ),
                 if (tx.receiptStatus != null) ...[
                   const SizedBox(height: 12),
                   // A Wrap, not a Row: on a narrow screen or with a large font the badge drops to its own line instead of
@@ -921,7 +1102,13 @@ List<TransactionModel> get _periodTransactions {
                       spacing: 8,
                       runSpacing: 6,
                       children: [
-                        const Text('Trạng thái hóa đơn:', style: TextStyle(color: AppTheme.textGray, fontSize: 15)),
+                        const Text(
+                          'Trạng thái hóa đơn:',
+                          style: TextStyle(
+                            color: AppTheme.textGray,
+                            fontSize: 15,
+                          ),
+                        ),
                         ReceiptStatusBadge(status: tx.receiptStatus!),
                       ],
                     ),
@@ -937,7 +1124,13 @@ List<TransactionModel> get _periodTransactions {
                       spacing: 8,
                       runSpacing: 6,
                       children: [
-                        const Text('Đồng bộ:', style: TextStyle(color: AppTheme.textGray, fontSize: 15)),
+                        const Text(
+                          'Đồng bộ:',
+                          style: TextStyle(
+                            color: AppTheme.textGray,
+                            fontSize: 15,
+                          ),
+                        ),
                         SyncStatusBadge(status: tx.syncStatus),
                       ],
                     ),
@@ -950,7 +1143,10 @@ List<TransactionModel> get _periodTransactions {
                 ],
                 if (tx.imageUrl != null && tx.imageUrl!.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  const Text('Ảnh hóa đơn gốc:', style: TextStyle(color: AppTheme.textGray, fontSize: 14)),
+                  const Text(
+                    'Ảnh hóa đơn gốc:',
+                    style: TextStyle(color: AppTheme.textGray, fontSize: 14),
+                  ),
                   const SizedBox(height: 8),
                   GestureDetector(
                     onTap: () {
@@ -959,8 +1155,17 @@ List<TransactionModel> get _periodTransactions {
                         MaterialPageRoute(
                           builder: (_) => Scaffold(
                             backgroundColor: Colors.black,
-                            appBar: AppBar(backgroundColor: Colors.black, iconTheme: const IconThemeData(color: Colors.white)),
-                            body: Center(child: InteractiveViewer(child: Image.network(tx.imageUrl!))), 
+                            appBar: AppBar(
+                              backgroundColor: Colors.black,
+                              iconTheme: const IconThemeData(
+                                color: Colors.white,
+                              ),
+                            ),
+                            body: Center(
+                              child: InteractiveViewer(
+                                child: Image.network(tx.imageUrl!),
+                              ),
+                            ),
                           ),
                         ),
                       );
@@ -970,20 +1175,24 @@ List<TransactionModel> get _periodTransactions {
                       child: Container(
                         color: AppTheme.navyDark,
                         width: double.infinity,
-                        height: 200, 
+                        height: 200,
                         child: Image.network(
                           tx.imageUrl!,
-                          fit: BoxFit.contain, 
+                          fit: BoxFit.contain,
                           loadingBuilder: (context, child, loadingProgress) {
                             if (loadingProgress == null) return child;
-                            return const Center(child: CircularProgressIndicator(color: AppTheme.mintAccent));
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                color: AppTheme.mintAccent,
+                              ),
+                            );
                           },
                         ),
                       ),
                     ),
                   ),
                 ],
-                
+
                 const SizedBox(height: 24),
                 // The server has no copy of an unsynced transaction, so the only thing to do with it is to send it again.
                 if (tx.isUnsynced) ...[
@@ -997,7 +1206,10 @@ List<TransactionModel> get _periodTransactions {
                         elevation: 0,
                       ),
                       icon: const Icon(Icons.cloud_upload_rounded),
-                      label: const Text('Gửi lại', style: TextStyle(fontWeight: FontWeight.bold)),
+                      label: const Text(
+                        'Gửi lại',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       onPressed: () {
                         Navigator.pop(ctx);
                         _resendTransactionAction(tx);
@@ -1018,7 +1230,10 @@ List<TransactionModel> get _periodTransactions {
                         elevation: 0,
                       ),
                       icon: const Icon(Icons.edit_rounded),
-                      label: const Text('Sửa giao dịch', style: TextStyle(fontWeight: FontWeight.bold)),
+                      label: const Text(
+                        'Sửa giao dịch',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       onPressed: () {
                         Navigator.pop(ctx);
                         _editTransactionAction(tx);
@@ -1032,12 +1247,17 @@ List<TransactionModel> get _periodTransactions {
                   height: 50,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.dangerColor.withValues(alpha: 0.1),
+                      backgroundColor: AppTheme.dangerColor.withValues(
+                        alpha: 0.1,
+                      ),
                       foregroundColor: AppTheme.dangerColor,
                       elevation: 0,
                     ),
                     icon: const Icon(Icons.delete_rounded),
-                    label: const Text('Xóa giao dịch này', style: TextStyle(fontWeight: FontWeight.bold)),
+                    label: const Text(
+                      'Xóa giao dịch này',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     onPressed: () {
                       Navigator.pop(ctx);
                       if (tx.isUnsynced) {
@@ -1061,8 +1281,18 @@ List<TransactionModel> get _periodTransactions {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: AppTheme.textGray, fontSize: 15)),
-        Text(value, style: TextStyle(color: valColor, fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(
+          label,
+          style: const TextStyle(color: AppTheme.textGray, fontSize: 15),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: valColor,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ],
     );
   }
@@ -1082,17 +1312,40 @@ List<TransactionModel> get _periodTransactions {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.navyDark,
-        title: const Text('Xóa giao dịch?', style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
-        content: const Text('Hành động này sẽ hoàn lại tiền vào ví và không thể khôi phục. Bạn chắc chứ?', style: TextStyle(color: AppTheme.textGray)),
+        title: const Text(
+          'Xóa giao dịch?',
+          style: TextStyle(
+            color: AppTheme.textWhite,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: const Text(
+          'Hành động này sẽ hoàn lại tiền vào ví và không thể khôi phục. Bạn chắc chứ?',
+          style: TextStyle(color: AppTheme.textGray),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Hủy', style: TextStyle(color: AppTheme.textGray))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: AppTheme.textGray),
+            ),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.dangerColor),
-            onPressed: () => Navigator.pop(ctx, true), 
-            child: const Text('Xóa ngay', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.dangerColor,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Xóa ngay',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
-      )
+      ),
     );
 
     if (confirm != true) return;
@@ -1100,11 +1353,17 @@ List<TransactionModel> get _periodTransactions {
     final success = await RemoteApiHelper.instance.deleteTransaction(id);
     if (success) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa giao dịch và hoàn tiền')));
-        _load(); 
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã xóa giao dịch và hoàn tiền')),
+        );
+        _load();
       }
     } else {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Xóa thất bại, vui lòng thử lại')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Xóa thất bại, vui lòng thử lại')),
+        );
+      }
     }
   }
 
@@ -1114,7 +1373,11 @@ List<TransactionModel> get _periodTransactions {
     if (!mounted) return;
     final userId = SessionService.currentUserId;
     if (userId == null) {
-      await AppDialog.error(context, title: 'Phiên đăng nhập hết hạn', message: 'Vui lòng đăng nhập lại.');
+      await AppDialog.error(
+        context,
+        title: 'Phiên đăng nhập hết hạn',
+        message: 'Vui lòng đăng nhập lại.',
+      );
       return;
     }
     final clientId = tx.clientId;
@@ -1135,14 +1398,21 @@ List<TransactionModel> get _periodTransactions {
     if (!mounted) return;
 
     if (failure != null) {
-      await AppDialog.error(context, title: 'Gửi lại thất bại', message: failure);
+      await AppDialog.error(
+        context,
+        title: 'Gửi lại thất bại',
+        message: failure,
+      );
     } else if (outcome == SyncStatus.synced) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã gửi giao dịch lên máy chủ')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã gửi giao dịch lên máy chủ')),
+      );
     } else {
       await AppDialog.warning(
         context,
         title: 'Vẫn chưa gửi được',
-        message: 'Chưa kết nối được máy chủ. Giao dịch vẫn được giữ trên thiết bị, bạn có thể gửi lại sau.',
+        message:
+            'Chưa kết nối được máy chủ. Giao dịch vẫn được giữ trên thiết bị, bạn có thể gửi lại sau.',
       );
     }
     if (!mounted) return;
@@ -1160,7 +1430,8 @@ List<TransactionModel> get _periodTransactions {
     final confirmed = await AppDialog.confirm(
       context,
       title: 'Xóa giao dịch chưa gửi?',
-      message: 'Giao dịch này chưa được máy chủ xác nhận. Xóa khỏi thiết bị và không gửi nữa? Hành động này không thể khôi phục.',
+      message:
+          'Giao dịch này chưa được máy chủ xác nhận. Xóa khỏi thiết bị và không gửi nữa? Hành động này không thể khôi phục.',
       confirmText: 'Xóa ngay',
       danger: true,
     );
@@ -1168,7 +1439,9 @@ List<TransactionModel> get _periodTransactions {
 
     await AppRepository.instance.deleteUnsyncedTransaction(userId, clientId);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa giao dịch chưa gửi')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Đã xóa giao dịch chưa gửi')));
     await _load();
   }
 
@@ -1195,30 +1468,6 @@ List<TransactionModel> get _periodTransactions {
     );
   }
 
-  Widget _buildTypeOption(BuildContext ctx, String label, IconData icon,
-      bool expense, bool income) {
-    final selected = _showExpenses == expense && _showIncome == income;
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon,
-          color: selected ? AppTheme.primary : AppTheme.textGray),
-      title: Text(label,
-          style: TextStyle(
-              color: selected ? AppTheme.primary : AppTheme.textPrimary,
-              fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
-      trailing: selected
-          ? const Icon(Icons.check_rounded, color: AppTheme.primary)
-          : null,
-      onTap: () {
-        setState(() {
-          _showExpenses = expense;
-          _showIncome = income;
-        });
-        Navigator.pop(ctx);
-      },
-    );
-  }
-
   Future<void> _exportToExcel() async {
     final monthName = DateFormat('MMMM yyyy', 'vi_VN').format(_selectedDate);
 
@@ -1235,9 +1484,13 @@ List<TransactionModel> get _periodTransactions {
     double totalExpense = 0;
     double totalIncome = 0;
 
-    final monthTxs = _transactions.where((tx) =>
-        tx.date.year == _selectedDate.year &&
-        tx.date.month == _selectedDate.month).toList();
+    final monthTxs = _transactions
+        .where(
+          (tx) =>
+              tx.date.year == _selectedDate.year &&
+              tx.date.month == _selectedDate.month,
+        )
+        .toList();
 
     for (var tx in monthTxs) {
       final dateStr = DateFormat('dd/MM/yyyy').format(tx.date);
@@ -1285,9 +1538,16 @@ List<TransactionModel> get _periodTransactions {
 
     final monthStart = DateTime(_selectedDate.year, _selectedDate.month, 1);
     final monthEnd = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
-    for (final progress in BudgetProgress.overlapping(monthStart, monthEnd, _budgets, _transactions)) {
+    for (final progress in BudgetProgress.overlapping(
+      monthStart,
+      monthEnd,
+      _budgets,
+      _transactions,
+    )) {
       sheet.appendRow([
-        TextCellValue(progress.budget.categoryName ?? BudgetModel.allCategoriesLabel),
+        TextCellValue(
+          progress.budget.categoryName ?? BudgetModel.allCategoriesLabel,
+        ),
         DoubleCellValue(progress.limit),
         DoubleCellValue(progress.spent),
         DoubleCellValue(progress.remaining),

@@ -11,16 +11,16 @@ class ReceiptStatusBadge extends StatelessWidget {
   const ReceiptStatusBadge({super.key, required this.status});
 
   Color get _color => switch (status) {
-        ReceiptStatus.processing => AppTheme.warningColor,
-        ReceiptStatus.success => AppTheme.positive,
-        ReceiptStatus.failed => AppTheme.dangerColor,
-      };
+    ReceiptStatus.processing => AppTheme.warningColor,
+    ReceiptStatus.success => AppTheme.positive,
+    ReceiptStatus.failed => AppTheme.dangerColor,
+  };
 
   IconData get _icon => switch (status) {
-        ReceiptStatus.processing => Icons.sync_rounded,
-        ReceiptStatus.success => Icons.check_circle_rounded,
-        ReceiptStatus.failed => Icons.error_rounded,
-      };
+    ReceiptStatus.processing => Icons.sync_rounded,
+    ReceiptStatus.success => Icons.check_circle_rounded,
+    ReceiptStatus.failed => Icons.error_rounded,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +41,11 @@ class ReceiptStatusBadge extends StatelessWidget {
               status.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

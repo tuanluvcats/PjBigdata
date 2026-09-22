@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
@@ -13,10 +12,10 @@ import 'package:finance_ai_app/screens/linked/linked_services_page.dart';
 import 'package:finance_ai_app/screens/auth/login_page.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/services/session_service.dart';
-import 'package:finance_ai_app/services/social_auth_service.dart'; 
+import 'package:finance_ai_app/services/social_auth_service.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/widgets/dialogs/app_dialog.dart';
-import 'package:finance_ai_app/widgets/dialogs/profile_bottom_sheets.dart'; 
+import 'package:finance_ai_app/widgets/dialogs/profile_bottom_sheets.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -61,7 +60,11 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.isEmpty) return '?';
     final first = parts.first.isNotEmpty ? parts.first[0] : '';
     final last = parts.length > 1 && parts.last.isNotEmpty ? parts.last[0] : '';
@@ -72,7 +75,13 @@ class _ProfilePageState extends State<ProfilePage> {
   /// local session is ALWAYS cleared and the user goes back to the login screen, even when the server call fails: a
   /// network error must never leave the user signed in.
   Future<void> _logout() async {
-    final confirmed = await AppDialog.confirm(context, title: 'Đăng xuất?', message: 'Bạn có chắc chắn muốn thoát?', confirmText: 'Đăng xuất', danger: true);
+    final confirmed = await AppDialog.confirm(
+      context,
+      title: 'Đăng xuất?',
+      message: 'Bạn có chắc chắn muốn thoát?',
+      confirmText: 'Đăng xuất',
+      danger: true,
+    );
     if (!confirmed || !mounted) return;
 
     try {
@@ -86,10 +95,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
     // Only the navigation needs the context: the session is already cleared even when this page is gone.
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
   }
 
-@override
+  @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return _buildSkeletonLoading();
@@ -106,7 +118,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildProfileHeader(name, email), 
+              _buildProfileHeader(name, email),
               const SizedBox(height: 24),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -121,7 +133,9 @@ class _ProfilePageState extends State<ProfilePage> {
                           label: 'Thông tin tài khoản',
                           onTap: () => Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const AccountInfoScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const AccountInfoScreen(),
+                            ),
                           ).then((_) => _load()),
                         ),
                       ],
@@ -131,10 +145,44 @@ class _ProfilePageState extends State<ProfilePage> {
                       title: 'Tiện ích',
                       icon: Icons.widgets_rounded,
                       items: [
-                        _SectionItem(icon: Icons.account_balance_rounded, label: 'Nguồn tiền', onTap: () => ProfileBottomSheets.showBankSources(context, _wallets)),
-                        _SectionItem(icon: Icons.link_rounded, label: 'Dịch vụ liên kết', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LinkedServicesPage()))),
-                        _SectionItem(icon: Icons.savings_rounded, label: 'Sổ tiết kiệm', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavingsPage()))),
-                        _SectionItem(icon: Icons.pie_chart_rounded, label: 'Ngân sách', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BudgetScreen()))),
+                        _SectionItem(
+                          icon: Icons.account_balance_rounded,
+                          label: 'Nguồn tiền',
+                          onTap: () => ProfileBottomSheets.showBankSources(
+                            context,
+                            _wallets,
+                          ),
+                        ),
+                        _SectionItem(
+                          icon: Icons.link_rounded,
+                          label: 'Dịch vụ liên kết',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LinkedServicesPage(),
+                            ),
+                          ),
+                        ),
+                        _SectionItem(
+                          icon: Icons.savings_rounded,
+                          label: 'Sổ tiết kiệm',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SavingsPage(),
+                            ),
+                          ),
+                        ),
+                        _SectionItem(
+                          icon: Icons.pie_chart_rounded,
+                          label: 'Ngân sách',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const BudgetScreen(),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -142,10 +190,41 @@ class _ProfilePageState extends State<ProfilePage> {
                       title: 'Cài đặt',
                       icon: Icons.settings_rounded,
                       items: [
-                        _SectionItem(icon: Icons.language_rounded, label: 'Ngôn ngữ', subtitle: 'Tiếng Việt', onTap: () => ProfileBottomSheets.showLanguagePicker(context)),
-                        _SectionItem(icon: Icons.notifications_rounded, label: 'Thông báo', onTap: () => ProfileBottomSheets.showNotificationSettings(context)),
-                        _SectionItem(icon: Icons.lock_rounded, label: 'Bảo mật & Quyền riêng tư', onTap: () => ProfileBottomSheets.showSecurityMenu(context, _recentTransactions)),
-                        _SectionItem(icon: Icons.palette_rounded, label: 'Giao diện', subtitle: AppTheme.themeNotifier.value == ThemeMode.light ? 'Sáng' : 'Tối', onTap: () => ProfileBottomSheets.showThemePicker(context, () => setState(() {}))),
+                        _SectionItem(
+                          icon: Icons.language_rounded,
+                          label: 'Ngôn ngữ',
+                          subtitle: 'Tiếng Việt',
+                          onTap: () =>
+                              ProfileBottomSheets.showLanguagePicker(context),
+                        ),
+                        _SectionItem(
+                          icon: Icons.notifications_rounded,
+                          label: 'Thông báo',
+                          onTap: () =>
+                              ProfileBottomSheets.showNotificationSettings(
+                                context,
+                              ),
+                        ),
+                        _SectionItem(
+                          icon: Icons.lock_rounded,
+                          label: 'Bảo mật & Quyền riêng tư',
+                          onTap: () => ProfileBottomSheets.showSecurityMenu(
+                            context,
+                            _recentTransactions,
+                          ),
+                        ),
+                        _SectionItem(
+                          icon: Icons.palette_rounded,
+                          label: 'Giao diện',
+                          subtitle:
+                              AppTheme.themeNotifier.value == ThemeMode.light
+                              ? 'Sáng'
+                              : 'Tối',
+                          onTap: () => ProfileBottomSheets.showThemePicker(
+                            context,
+                            () => setState(() {}),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -153,9 +232,23 @@ class _ProfilePageState extends State<ProfilePage> {
                       title: 'Hỗ trợ',
                       icon: Icons.help_rounded,
                       items: [
-                        _SectionItem(icon: Icons.help_outline_rounded, label: 'Hướng dẫn sử dụng', onTap: () => ProfileBottomSheets.showHelp(context)),
-                        _SectionItem(icon: Icons.feedback_rounded, label: 'Gửi phản hồi', onTap: () => ProfileBottomSheets.showFeedback(context)),
-                        _SectionItem(icon: Icons.info_outline_rounded, label: 'Về ứng dụng', subtitle: 'v1.0.0', onTap: () => ProfileBottomSheets.showAbout(context)),
+                        _SectionItem(
+                          icon: Icons.help_outline_rounded,
+                          label: 'Hướng dẫn sử dụng',
+                          onTap: () => ProfileBottomSheets.showHelp(context),
+                        ),
+                        _SectionItem(
+                          icon: Icons.feedback_rounded,
+                          label: 'Gửi phản hồi',
+                          onTap: () =>
+                              ProfileBottomSheets.showFeedback(context),
+                        ),
+                        _SectionItem(
+                          icon: Icons.info_outline_rounded,
+                          label: 'Về ứng dụng',
+                          subtitle: 'v1.0.0',
+                          onTap: () => ProfileBottomSheets.showAbout(context),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -194,7 +287,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Text(
                   'Cá nhân',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -204,23 +301,60 @@ class _ProfilePageState extends State<ProfilePage> {
         CircleAvatar(
           radius: 44,
           backgroundColor: AppTheme.primary,
-          child: Text(initials, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          child: Text(
+            initials,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
         const SizedBox(height: 12),
-        Text(name, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+        Text(
+          name,
+          style: const TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(email, style: const TextStyle(color: AppTheme.textGray, fontSize: 13)),
+        Text(
+          email,
+          style: const TextStyle(color: AppTheme.textGray, fontSize: 13),
+        ),
       ],
     );
   }
-  Widget _buildSection({required String title, required IconData icon, required List<_SectionItem> items, bool hideHeader = false}) {
+
+  Widget _buildSection({
+    required String title,
+    required IconData icon,
+    required List<_SectionItem> items,
+    bool hideHeader = false,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!hideHeader) Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 4),
-          child: Row(children: [Icon(icon, color: AppTheme.mintAccent, size: 17), const SizedBox(width: 6), Text(title, style: const TextStyle(color: AppTheme.textWhite, fontSize: 14, fontWeight: FontWeight.bold))]),
-        ),
+        if (!hideHeader)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8, left: 4),
+            child: Row(
+              children: [
+                Icon(icon, color: AppTheme.mintAccent, size: 17),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppTheme.textWhite,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
         // A Material, not a coloured Container: ListTile paints its background and ink splashes on the nearest Material,
         // so a coloured DecoratedBox in between would hide them (Flutter asserts on it).
         Material(
@@ -233,13 +367,41 @@ class _ProfilePageState extends State<ProfilePage> {
               return Column(
                 children: [
                   ListTile(
-                    leading: Icon(item.icon, color: item.color ?? AppTheme.mintAccent, size: 22),
-                    title: Text(item.label, style: TextStyle(color: item.color ?? AppTheme.textWhite, fontSize: 14)),
-                    subtitle: item.subtitle != null ? Text(item.subtitle!, style: const TextStyle(color: AppTheme.textGray, fontSize: 12)) : null,
-                    trailing: Icon(Icons.chevron_right_rounded, color: AppTheme.textGray.withValues(alpha: 0.5), size: 18),
+                    leading: Icon(
+                      item.icon,
+                      color: item.color ?? AppTheme.mintAccent,
+                      size: 22,
+                    ),
+                    title: Text(
+                      item.label,
+                      style: TextStyle(
+                        color: item.color ?? AppTheme.textWhite,
+                        fontSize: 14,
+                      ),
+                    ),
+                    subtitle: item.subtitle != null
+                        ? Text(
+                            item.subtitle!,
+                            style: const TextStyle(
+                              color: AppTheme.textGray,
+                              fontSize: 12,
+                            ),
+                          )
+                        : null,
+                    trailing: Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppTheme.textGray.withValues(alpha: 0.5),
+                      size: 18,
+                    ),
                     onTap: item.onTap,
                   ),
-                  if (e.key < items.length - 1) Divider(height: 1, indent: 60, endIndent: 16, color: AppTheme.textGray.withValues(alpha: 0.1)),
+                  if (e.key < items.length - 1)
+                    Divider(
+                      height: 1,
+                      indent: 60,
+                      endIndent: 16,
+                      color: AppTheme.textGray.withValues(alpha: 0.1),
+                    ),
                 ],
               );
             }).toList(),
@@ -249,7 +411,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-
   Widget _buildSkeletonLoading() {
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -258,9 +419,15 @@ class _ProfilePageState extends State<ProfilePage> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            Align(alignment: Alignment.center, child: _buildBox(width: 88, height: 88, shape: BoxShape.circle)),
+            Align(
+              alignment: Alignment.center,
+              child: _buildBox(width: 88, height: 88, shape: BoxShape.circle),
+            ),
             const SizedBox(height: 12),
-            Align(alignment: Alignment.center, child: _buildBox(width: 150, height: 20)),
+            Align(
+              alignment: Alignment.center,
+              child: _buildBox(width: 150, height: 20),
+            ),
             const SizedBox(height: 32),
             _buildBox(height: 150, borderRadius: 16),
             const SizedBox(height: 24),
@@ -271,10 +438,22 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildBox({double? width, double? height, BoxShape shape = BoxShape.rectangle, double borderRadius = 0}) {
+  Widget _buildBox({
+    double? width,
+    double? height,
+    BoxShape shape = BoxShape.rectangle,
+    double borderRadius = 0,
+  }) {
     return Container(
-      width: width, height: height,
-      decoration: BoxDecoration(color: AppTheme.navyLight.withValues(alpha: 0.6), shape: shape, borderRadius: shape == BoxShape.rectangle ? BorderRadius.circular(borderRadius) : null),
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppTheme.navyLight.withValues(alpha: 0.6),
+        shape: shape,
+        borderRadius: shape == BoxShape.rectangle
+            ? BorderRadius.circular(borderRadius)
+            : null,
+      ),
     );
   }
 }
@@ -285,5 +464,11 @@ class _SectionItem {
   final String? subtitle;
   final Color? color;
   final VoidCallback onTap;
-  const _SectionItem({required this.icon, required this.label, required this.onTap, this.subtitle, this.color});
+  const _SectionItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.subtitle,
+    this.color,
+  });
 }

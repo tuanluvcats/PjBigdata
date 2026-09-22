@@ -19,7 +19,11 @@ enum ReceiptStatus {
 
   static const String _serverSuccess = 'SUCCESS';
   static const String _serverFailed = 'FAILED';
-  static const Set<String> _serverInProgress = {'PENDING', 'WAITING_FOR_REVIEW', 'PROCESSING'};
+  static const Set<String> _serverInProgress = {
+    'PENDING',
+    'WAITING_FOR_REVIEW',
+    'PROCESSING',
+  };
 
   /// The status for the value the server sent, or null when there is nothing to show: no receipt, a withdrawn one
   /// (CANCELED) or a name this version of the app does not know.

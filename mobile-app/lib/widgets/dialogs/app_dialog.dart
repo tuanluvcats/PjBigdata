@@ -8,60 +8,56 @@ class AppDialog {
     required String title,
     String? message,
     String buttonText = 'OK',
-  }) =>
-      _show(
-        context,
-        icon: Icons.check_circle_rounded,
-        accent: AppTheme.positive,
-        title: title,
-        message: message,
-        confirmText: buttonText,
-      ).then((_) {});
+  }) => _show(
+    context,
+    icon: Icons.check_circle_rounded,
+    accent: AppTheme.positive,
+    title: title,
+    message: message,
+    confirmText: buttonText,
+  ).then((_) {});
 
   static Future<void> error(
     BuildContext context, {
     required String title,
     String? message,
     String buttonText = 'Đã hiểu',
-  }) =>
-      _show(
-        context,
-        icon: Icons.error_rounded,
-        accent: AppTheme.dangerColor,
-        title: title,
-        message: message,
-        confirmText: buttonText,
-      ).then((_) {});
+  }) => _show(
+    context,
+    icon: Icons.error_rounded,
+    accent: AppTheme.dangerColor,
+    title: title,
+    message: message,
+    confirmText: buttonText,
+  ).then((_) {});
 
   static Future<void> warning(
     BuildContext context, {
     required String title,
     String? message,
     String buttonText = 'Đã hiểu',
-  }) =>
-      _show(
-        context,
-        icon: Icons.warning_amber_rounded,
-        accent: AppTheme.warningColor,
-        title: title,
-        message: message,
-        confirmText: buttonText,
-      ).then((_) {});
+  }) => _show(
+    context,
+    icon: Icons.warning_amber_rounded,
+    accent: AppTheme.warningColor,
+    title: title,
+    message: message,
+    confirmText: buttonText,
+  ).then((_) {});
 
   static Future<void> info(
     BuildContext context, {
     required String title,
     String? message,
     String buttonText = 'OK',
-  }) =>
-      _show(
-        context,
-        icon: Icons.info_rounded,
-        accent: AppTheme.primary,
-        title: title,
-        message: message,
-        confirmText: buttonText,
-      ).then((_) {});
+  }) => _show(
+    context,
+    icon: Icons.info_rounded,
+    accent: AppTheme.primary,
+    title: title,
+    message: message,
+    confirmText: buttonText,
+  ).then((_) {});
 
   static Future<bool> confirm(
     BuildContext context, {
@@ -99,11 +95,13 @@ class AppDialog {
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 240),
       transitionBuilder: (ctx, anim, _, child) {
-        final curved =
-            CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
         return Opacity(
           opacity: anim.value.clamp(0.0, 1.0),
-          child: Transform.scale(scale: 0.85 + 0.15 * curved.value, child: child),
+          child: Transform.scale(
+            scale: 0.85 + 0.15 * curved.value,
+            child: child,
+          ),
         );
       },
       pageBuilder: (ctx, _, _) => Dialog(
@@ -157,10 +155,12 @@ class AppDialog {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.textSecondary,
                           side: BorderSide(
-                              color: AppTheme.textGray.withValues(alpha: 0.4)),
+                            color: AppTheme.textGray.withValues(alpha: 0.4),
+                          ),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
                         child: Text(cancelText),
                       ),
@@ -176,7 +176,8 @@ class AppDialog {
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                       child: Text(confirmText),
                     ),

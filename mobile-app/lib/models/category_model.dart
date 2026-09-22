@@ -38,7 +38,9 @@ class CategoryModel {
       name: map['name'] as String? ?? '',
       iconName: map['icon_name'] as String? ?? 'category',
       colorValue: map['color_value'] as int? ?? 0xFF9E9E9E,
-      type: (map['type'] as int?) == 0 ? CategoryType.expense : CategoryType.income,
+      type: (map['type'] as int?) == 0
+          ? CategoryType.expense
+          : CategoryType.income,
       userId: map['user_id'] as int?,
     );
   }

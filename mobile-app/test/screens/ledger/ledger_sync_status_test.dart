@@ -28,7 +28,8 @@ const String _pendingLabel = 'Chờ gửi';
 const String _resendLabel = 'Gửi lại';
 const String _editLabel = 'Sửa giao dịch';
 const String _deleteLabel = 'Xóa giao dịch này';
-const String _loadFailedNotice = 'Không tải được danh sách từ máy chủ. Chỉ hiển thị các giao dịch chưa gửi trên thiết bị. '
+const String _loadFailedNotice =
+    'Không tải được danh sách từ máy chủ. Chỉ hiển thị các giao dịch chưa gửi trên thiết bị. '
     'Kéo xuống để thử lại.';
 
 final List<Map<String, Object?>> _serverCategories = [
@@ -38,16 +39,17 @@ final List<Map<String, Object?>> _serverCategories = [
 
 /// A transaction the way core-backend sends it.
 Map<String, Object?> _serverRow(int id, {String? title}) => {
-      'id': id,
-      'title': title ?? 'Giao dịch $id',
-      'amount': 45000,
-      'date': DateTime.now().toIso8601String(),
-      'category': 'Ăn uống',
-      'isExpense': true,
-    };
+  'id': id,
+  'title': title ?? 'Giao dịch $id',
+  'amount': 45000,
+  'date': DateTime.now().toIso8601String(),
+  'category': 'Ăn uống',
+  'isExpense': true,
+};
 
 /// A transaction created on this device that the server has not confirmed.
-TransactionModel _unsent(String title, SyncStatus status) => TransactionModel.draft(
+TransactionModel _unsent(String title, SyncStatus status) =>
+    TransactionModel.draft(
       title: title,
       category: 'Ăn uống',
       amount: 30000,
@@ -56,8 +58,11 @@ TransactionModel _unsent(String title, SyncStatus status) => TransactionModel.dr
     ).withSyncStatus(status);
 
 /// The network is gone: the request never reaches the server.
-Never _noNetwork(RequestOptions options) =>
-    throw DioException(requestOptions: options, type: DioExceptionType.connectionError, error: 'no network');
+Never _noNetwork(RequestOptions options) => throw DioException(
+  requestOptions: options,
+  type: DioExceptionType.connectionError,
+  error: 'no network',
+);
 
 void main() {
   final backend = FakeBackend();
@@ -88,7 +93,11 @@ void main() {
     AppRepository.instance.localStore = store;
     backend.reset();
     onServer = [];
-    backend.on('GET', '/api/users/me', (_) => okResponse({'id': 1, 'email': 'an@example.com'}));
+    backend.on(
+      'GET',
+      '/api/users/me',
+      (_) => okResponse({'id': 1, 'email': 'an@example.com'}),
+    );
     backend.on('GET', _mine, (_) => okResponse(onServer));
     backend.on('GET', '/api/budgets', (_) => okResponse([]));
     backend.on('GET', '/api/categories', (_) => okResponse(_serverCategories));
@@ -108,166 +117,258 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  List<RequestOptions> checkoutPosts() =>
-      backend.requests.where((r) => r.method == 'POST' && r.path == _checkout).toList();
+  List<RequestOptions> checkoutPosts() => backend.requests
+      .where((r) => r.method == 'POST' && r.path == _checkout)
+      .toList();
 
   group('Ledger', () {
     const app = MaterialApp(home: LedgerPage());
 
-    Finder rowOf(String title) => find.ancestor(of: find.text(title), matching: find.byType(InkWell));
+    Finder rowOf(String title) =>
+        find.ancestor(of: find.text(title), matching: find.byType(InkWell));
 
-    Finder inRow(String title, String label) => find.descendant(of: rowOf(title), matching: find.text(label));
+    Finder inRow(String title, String label) =>
+        find.descendant(of: rowOf(title), matching: find.text(label));
 
-    testWidgets('a transaction waiting to be sent is listed with its state, next to the ones of the server', (tester) async {
-      onServer = [_serverRow(1)];
-      await store.insertTransaction(_unsent('Chưa gửi', SyncStatus.error), 1);
-      await store.insertTransaction(_unsent('Đang chờ', SyncStatus.pending), 1);
+    testWidgets(
+      'a transaction waiting to be sent is listed with its state, next to the ones of the server',
+      (tester) async {
+        onServer = [_serverRow(1)];
+        await store.insertTransaction(_unsent('Chưa gửi', SyncStatus.error), 1);
+        await store.insertTransaction(
+          _unsent('Đang chờ', SyncStatus.pending),
+          1,
+        );
 
-      await pump(tester, app);
+        await pump(tester, app);
 
-      expect(find.text('Giao dịch 1'), findsOneWidget);
-      expect(find.byType(SyncStatusBadge), findsNWidgets(2));
-      expect(inRow('Chưa gửi', _errorLabel), findsOneWidget);
-      expect(inRow('Đang chờ', _pendingLabel), findsOneWidget);
-      expect(find.descendant(of: rowOf('Giao dịch 1'), matching: find.byType(SyncStatusBadge)), findsNothing);
-      expect(find.text(_loadFailedNotice), findsNothing);
-    });
+        expect(find.text('Giao dịch 1'), findsOneWidget);
+        expect(find.byType(SyncStatusBadge), findsNWidgets(2));
+        expect(inRow('Chưa gửi', _errorLabel), findsOneWidget);
+        expect(inRow('Đang chờ', _pendingLabel), findsOneWidget);
+        expect(
+          find.descendant(
+            of: rowOf('Giao dịch 1'),
+            matching: find.byType(SyncStatusBadge),
+          ),
+          findsNothing,
+        );
+        expect(find.text(_loadFailedNotice), findsNothing);
+      },
+    );
 
-    testWidgets('a transaction the server has confirmed shows no sync state', (tester) async {
+    testWidgets('a transaction the server has confirmed shows no sync state', (
+      tester,
+    ) async {
       onServer = [_serverRow(1)];
       await store.insertTransaction(_unsent('Đã gửi', SyncStatus.synced), 1);
 
       await pump(tester, app);
 
-      expect(find.text('Đã gửi'), findsNothing, reason: 'the server list is the one that shows it');
+      expect(
+        find.text('Đã gửi'),
+        findsNothing,
+        reason: 'the server list is the one that shows it',
+      );
       expect(find.byType(SyncStatusBadge), findsNothing);
     });
 
-    testWidgets('when the server cannot be reached the unsent transactions are still listed, with a notice', (tester) {
-      return withCapturedLogs((logs) async {
-        backend.on('GET', _mine, _noNetwork);
+    testWidgets(
+      'when the server cannot be reached the unsent transactions are still listed, with a notice',
+      (tester) {
+        return withCapturedLogs((logs) async {
+          backend.on('GET', _mine, _noNetwork);
+          await store.insertTransaction(
+            _unsent('Chưa gửi', SyncStatus.error),
+            1,
+          );
+
+          await pump(tester, app);
+
+          expect(find.text('Chưa gửi'), findsOneWidget);
+          expect(inRow('Chưa gửi', _errorLabel), findsOneWidget);
+          expect(find.text(_loadFailedNotice), findsOneWidget);
+          expect(
+            logs.where((line) => line.contains('Lỗi tải giao dịch')),
+            isNotEmpty,
+          );
+          expect(tester.takeException(), isNull);
+        });
+      },
+    );
+
+    testWidgets(
+      'when the server cannot be reached and nothing is waiting, the ledger is empty with the notice',
+      (tester) {
+        return withCapturedLogs((logs) async {
+          backend.on('GET', _mine, _noNetwork);
+
+          await pump(tester, app);
+
+          expect(
+            find.byType(CircularProgressIndicator),
+            findsNothing,
+            reason: 'the spinner does not turn for ever',
+          );
+          expect(find.text(_loadFailedNotice), findsOneWidget);
+          expect(find.text('Không có giao dịch trong kỳ này.'), findsOneWidget);
+        });
+      },
+    );
+
+    testWidgets(
+      'the details of an unsent transaction offer to resend and to delete it, but not to edit it',
+      (tester) async {
         await store.insertTransaction(_unsent('Chưa gửi', SyncStatus.error), 1);
-
         await pump(tester, app);
 
-        expect(find.text('Chưa gửi'), findsOneWidget);
-        expect(inRow('Chưa gửi', _errorLabel), findsOneWidget);
-        expect(find.text(_loadFailedNotice), findsOneWidget);
-        expect(logs.where((line) => line.contains('Lỗi tải giao dịch')), isNotEmpty);
-        expect(tester.takeException(), isNull);
-      });
-    });
+        await tapText(tester, 'Chưa gửi');
 
-    testWidgets('when the server cannot be reached and nothing is waiting, the ledger is empty with the notice', (tester) {
-      return withCapturedLogs((logs) async {
-        backend.on('GET', _mine, _noNetwork);
+        expect(find.text('Đồng bộ:'), findsOneWidget);
+        expect(find.text(_resendLabel), findsOneWidget);
+        expect(
+          find.text(_editLabel),
+          findsNothing,
+          reason: 'the server has no copy to edit',
+        );
+        expect(find.text(_deleteLabel), findsOneWidget);
+      },
+    );
 
+    testWidgets(
+      'the details of a transaction of the server have no sync row and no resend button',
+      (tester) async {
+        onServer = [_serverRow(1)];
         await pump(tester, app);
 
-        expect(find.byType(CircularProgressIndicator), findsNothing, reason: 'the spinner does not turn for ever');
-        expect(find.text(_loadFailedNotice), findsOneWidget);
-        expect(find.text('Không có giao dịch trong kỳ này.'), findsOneWidget);
-      });
-    });
+        await tapText(tester, 'Giao dịch 1');
 
-    testWidgets('the details of an unsent transaction offer to resend and to delete it, but not to edit it', (tester) async {
-      await store.insertTransaction(_unsent('Chưa gửi', SyncStatus.error), 1);
-      await pump(tester, app);
+        expect(find.text('Đồng bộ:'), findsNothing);
+        expect(find.text(_resendLabel), findsNothing);
+        expect(find.text(_editLabel), findsOneWidget);
+      },
+    );
 
-      await tapText(tester, 'Chưa gửi');
-
-      expect(find.text('Đồng bộ:'), findsOneWidget);
-      expect(find.text(_resendLabel), findsOneWidget);
-      expect(find.text(_editLabel), findsNothing, reason: 'the server has no copy to edit');
-      expect(find.text(_deleteLabel), findsOneWidget);
-    });
-
-    testWidgets('the details of a transaction of the server have no sync row and no resend button', (tester) async {
-      onServer = [_serverRow(1)];
-      await pump(tester, app);
-
-      await tapText(tester, 'Giao dịch 1');
-
-      expect(find.text('Đồng bộ:'), findsNothing);
-      expect(find.text(_resendLabel), findsNothing);
-      expect(find.text(_editLabel), findsOneWidget);
-    });
-
-    testWidgets('resending posts the same clientId, flags the transaction synced and refreshes the list', (tester) async {
-      final unsent = _unsent('Chưa gửi', SyncStatus.error);
-      await store.insertTransaction(unsent, 1);
-      backend.on('POST', _checkout, (_) {
-        onServer = [_serverRow(7, title: 'Chưa gửi')]; // the server has it now
-        return okResponse({'transactionId': 7});
-      });
-      await pump(tester, app);
-      expect(inRow('Chưa gửi', _errorLabel), findsOneWidget);
-
-      await tapText(tester, 'Chưa gửi');
-      await tapText(tester, _resendLabel);
-
-      expect(checkoutPosts(), hasLength(1));
-      expect((checkoutPosts().single.data as Map)['clientId'], unsent.clientId);
-      expect(store.byClientId(unsent.clientId!)!.syncStatus, SyncStatus.synced);
-      expect(find.text('Đã gửi giao dịch lên máy chủ'), findsOneWidget);
-      expect(find.byType(SyncStatusBadge), findsNothing);
-      expect(find.text('Chưa gửi'), findsOneWidget, reason: 'listed once, from the server, and no longer twice');
-    });
-
-    testWidgets('when the resend fails again the user is told, and the transaction stays flagged', (tester) {
-      return withCapturedLogs((logs) async {
+    testWidgets(
+      'resending posts the same clientId, flags the transaction synced and refreshes the list',
+      (tester) async {
         final unsent = _unsent('Chưa gửi', SyncStatus.error);
         await store.insertTransaction(unsent, 1);
-        backend.on('POST', _checkout, _noNetwork);
+        backend.on('POST', _checkout, (_) {
+          onServer = [
+            _serverRow(7, title: 'Chưa gửi'),
+          ]; // the server has it now
+          return okResponse({'transactionId': 7});
+        });
         await pump(tester, app);
+        expect(inRow('Chưa gửi', _errorLabel), findsOneWidget);
 
         await tapText(tester, 'Chưa gửi');
         await tapText(tester, _resendLabel);
 
-        expect(find.text('Vẫn chưa gửi được'), findsOneWidget);
-        await tapText(tester, 'Đã hiểu');
-
-        expect(store.byClientId(unsent.clientId!)!.syncStatus, SyncStatus.error);
-        expect(inRow('Chưa gửi', _errorLabel), findsOneWidget);
         expect(checkoutPosts(), hasLength(1));
-      });
-    });
+        expect(
+          (checkoutPosts().single.data as Map)['clientId'],
+          unsent.clientId,
+        );
+        expect(
+          store.byClientId(unsent.clientId!)!.syncStatus,
+          SyncStatus.synced,
+        );
+        expect(find.text('Đã gửi giao dịch lên máy chủ'), findsOneWidget);
+        expect(find.byType(SyncStatusBadge), findsNothing);
+        expect(
+          find.text('Chưa gửi'),
+          findsOneWidget,
+          reason: 'listed once, from the server, and no longer twice',
+        );
+      },
+    );
 
-    testWidgets('a refusal of the server on a resend shows its reason and keeps the transaction', (tester) {
-      return withCapturedLogs((logs) async {
-        final unsent = _unsent('Chưa gửi', SyncStatus.error);
-        await store.insertTransaction(unsent, 1);
-        backend.on('POST', _checkout, (_) => jsonResponse(400, {'code': 400, 'message': 'Danh mục không tồn tại'}));
+    testWidgets(
+      'when the resend fails again the user is told, and the transaction stays flagged',
+      (tester) {
+        return withCapturedLogs((logs) async {
+          final unsent = _unsent('Chưa gửi', SyncStatus.error);
+          await store.insertTransaction(unsent, 1);
+          backend.on('POST', _checkout, _noNetwork);
+          await pump(tester, app);
+
+          await tapText(tester, 'Chưa gửi');
+          await tapText(tester, _resendLabel);
+
+          expect(find.text('Vẫn chưa gửi được'), findsOneWidget);
+          await tapText(tester, 'Đã hiểu');
+
+          expect(
+            store.byClientId(unsent.clientId!)!.syncStatus,
+            SyncStatus.error,
+          );
+          expect(inRow('Chưa gửi', _errorLabel), findsOneWidget);
+          expect(checkoutPosts(), hasLength(1));
+        });
+      },
+    );
+
+    testWidgets(
+      'a refusal of the server on a resend shows its reason and keeps the transaction',
+      (tester) {
+        return withCapturedLogs((logs) async {
+          final unsent = _unsent('Chưa gửi', SyncStatus.error);
+          await store.insertTransaction(unsent, 1);
+          backend.on(
+            'POST',
+            _checkout,
+            (_) => jsonResponse(400, {
+              'code': 400,
+              'message': 'Danh mục không tồn tại',
+            }),
+          );
+          await pump(tester, app);
+
+          await tapText(tester, 'Chưa gửi');
+          await tapText(tester, _resendLabel);
+
+          expect(find.text('Gửi lại thất bại'), findsOneWidget);
+          expect(find.text('Danh mục không tồn tại'), findsOneWidget);
+          await tapText(tester, 'Đã hiểu');
+
+          expect(
+            store.byClientId(unsent.clientId!)!.syncStatus,
+            SyncStatus.error,
+          );
+          expect(
+            find.text('Chưa gửi'),
+            findsOneWidget,
+            reason: 'still listed, so the user can delete it',
+          );
+        });
+      },
+    );
+
+    testWidgets(
+      'deleting an unsent transaction removes it from the device only, never on the server',
+      (tester) async {
+        onServer = [_serverRow(1)];
+        await store.insertTransaction(_unsent('Chưa gửi', SyncStatus.error), 1);
         await pump(tester, app);
 
         await tapText(tester, 'Chưa gửi');
-        await tapText(tester, _resendLabel);
+        await tapText(tester, _deleteLabel);
+        expect(find.text('Xóa giao dịch chưa gửi?'), findsOneWidget);
+        await tapText(tester, 'Xóa ngay');
 
-        expect(find.text('Gửi lại thất bại'), findsOneWidget);
-        expect(find.text('Danh mục không tồn tại'), findsOneWidget);
-        await tapText(tester, 'Đã hiểu');
-
-        expect(store.byClientId(unsent.clientId!)!.syncStatus, SyncStatus.error);
-        expect(find.text('Chưa gửi'), findsOneWidget, reason: 'still listed, so the user can delete it');
-      });
-    });
-
-    testWidgets('deleting an unsent transaction removes it from the device only, never on the server', (tester) async {
-      onServer = [_serverRow(1)];
-      await store.insertTransaction(_unsent('Chưa gửi', SyncStatus.error), 1);
-      await pump(tester, app);
-
-      await tapText(tester, 'Chưa gửi');
-      await tapText(tester, _deleteLabel);
-      expect(find.text('Xóa giao dịch chưa gửi?'), findsOneWidget);
-      await tapText(tester, 'Xóa ngay');
-
-      expect(store.rows, isEmpty);
-      expect(backend.requests.where((r) => r.method == 'DELETE'), isEmpty, reason: 'a local row number is not a server id');
-      expect(find.text('Chưa gửi'), findsNothing);
-      expect(find.text('Giao dịch 1'), findsOneWidget);
-      expect(find.text('Đã xóa giao dịch chưa gửi'), findsOneWidget);
-    });
+        expect(store.rows, isEmpty);
+        expect(
+          backend.requests.where((r) => r.method == 'DELETE'),
+          isEmpty,
+          reason: 'a local row number is not a server id',
+        );
+        expect(find.text('Chưa gửi'), findsNothing);
+        expect(find.text('Giao dịch 1'), findsOneWidget);
+        expect(find.text('Đã xóa giao dịch chưa gửi'), findsOneWidget);
+      },
+    );
 
     testWidgets('cancelling the delete keeps the transaction', (tester) async {
       await store.insertTransaction(_unsent('Chưa gửi', SyncStatus.error), 1);
@@ -283,16 +384,22 @@ void main() {
   });
 
   group('Dashboard', () {
-    testWidgets('the recent transactions carry the sync state of the ones waiting to be sent', (tester) async {
-      onServer = [_serverRow(1)];
-      await store.insertTransaction(_unsent('Chưa gửi', SyncStatus.error), 1);
+    testWidgets(
+      'the recent transactions carry the sync state of the ones waiting to be sent',
+      (tester) async {
+        onServer = [_serverRow(1)];
+        await store.insertTransaction(_unsent('Chưa gửi', SyncStatus.error), 1);
 
-      await pump(tester, const MaterialApp(home: Scaffold(body: DashboardPage())));
+        await pump(
+          tester,
+          const MaterialApp(home: Scaffold(body: DashboardPage())),
+        );
 
-      expect(find.text('Giao dịch 1'), findsOneWidget);
-      expect(find.text('Chưa gửi'), findsOneWidget);
-      expect(find.byType(SyncStatusBadge), findsOneWidget);
-      expect(find.text(_errorLabel), findsOneWidget);
-    });
+        expect(find.text('Giao dịch 1'), findsOneWidget);
+        expect(find.text('Chưa gửi'), findsOneWidget);
+        expect(find.byType(SyncStatusBadge), findsOneWidget);
+        expect(find.text(_errorLabel), findsOneWidget);
+      },
+    );
   });
 }

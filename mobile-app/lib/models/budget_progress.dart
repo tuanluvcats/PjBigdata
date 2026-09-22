@@ -17,7 +17,10 @@ class BudgetProgress {
 
   /// The expenses of [transactions] made during the period of [budget], both end days included and, when the budget
   /// has a category, only those of that category (names compare without case or surrounding spaces).
-  factory BudgetProgress.of(BudgetModel budget, Iterable<TransactionModel> transactions) {
+  factory BudgetProgress.of(
+    BudgetModel budget,
+    Iterable<TransactionModel> transactions,
+  ) {
     final start = budget.start;
     final end = budget.end;
     final categoryName = budget.categoryName;
@@ -26,9 +29,15 @@ class BudgetProgress {
     var spent = 0.0;
     for (final transaction in transactions) {
       if (!transaction.isExpense) continue;
-      final day = DateTime(transaction.date.year, transaction.date.month, transaction.date.day);
+      final day = DateTime(
+        transaction.date.year,
+        transaction.date.month,
+        transaction.date.day,
+      );
       if (day.isBefore(start) || day.isAfter(end)) continue;
-      if (category != null && _normalise(transaction.category) != category) continue;
+      if (category != null && _normalise(transaction.category) != category) {
+        continue;
+      }
       spent += transaction.amount;
     }
     return BudgetProgress(budget: budget, spent: spent);
@@ -39,11 +48,10 @@ class BudgetProgress {
     DateTime day,
     Iterable<BudgetModel> budgets,
     Iterable<TransactionModel> transactions,
-  ) =>
-      [
-        for (final budget in budgets)
-          if (budget.coversDay(day)) BudgetProgress.of(budget, transactions),
-      ];
+  ) => [
+    for (final budget in budgets)
+      if (budget.coversDay(day)) BudgetProgress.of(budget, transactions),
+  ];
 
   /// The progress of every budget whose period shares a day with [from]..[to].
   static List<BudgetProgress> overlapping(
@@ -51,11 +59,10 @@ class BudgetProgress {
     DateTime to,
     Iterable<BudgetModel> budgets,
     Iterable<TransactionModel> transactions,
-  ) =>
-      [
-        for (final budget in budgets)
-          if (budget.overlaps(from, to)) BudgetProgress.of(budget, transactions),
-      ];
+  ) => [
+    for (final budget in budgets)
+      if (budget.overlaps(from, to)) BudgetProgress.of(budget, transactions),
+  ];
 
   static String _normalise(String name) => name.trim().toLowerCase();
 
@@ -76,7 +83,9 @@ class BudgetProgress {
   BudgetAlertLevel get level {
     if (limit <= 0) return BudgetAlertLevel.none;
     // Multiplying instead of dividing keeps the comparison exact at the thresholds.
-    if (spent * 100 >= limit * exceededPercent) return BudgetAlertLevel.exceeded;
+    if (spent * 100 >= limit * exceededPercent) {
+      return BudgetAlertLevel.exceeded;
+    }
     if (spent * 100 >= limit * warningPercent) return BudgetAlertLevel.warning;
     return BudgetAlertLevel.none;
   }

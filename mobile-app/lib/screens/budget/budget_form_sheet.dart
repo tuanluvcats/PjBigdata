@@ -50,7 +50,9 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
 
   ({DateTime start, DateTime end}) get _range {
     final existing = widget.budget;
-    if (existing != null && _keepsDates) return (start: existing.start, end: existing.end);
+    if (existing != null && _keepsDates) {
+      return (start: existing.start, end: existing.end);
+    }
     return BudgetPeriodType.rangeContaining(_periodType, DateTime.now());
   }
 
@@ -62,7 +64,9 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
     if (existing != null) {
       _amountController.text = existing.amount.toStringAsFixed(0);
       final categoryId = existing.categoryId;
-      if (categoryId != null) _category = (id: categoryId, name: existing.categoryName ?? '');
+      if (categoryId != null) {
+        _category = (id: categoryId, name: existing.categoryName ?? '');
+      }
     }
     _loadCategories();
   }
@@ -84,7 +88,8 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
       await AppDialog.error(
         context,
         title: 'Không tải được danh mục',
-        message: 'Bạn vẫn có thể chọn "${BudgetModel.allCategoriesLabel}" hoặc thử lại sau.',
+        message:
+            'Bạn vẫn có thể chọn "${BudgetModel.allCategoriesLabel}" hoặc thử lại sau.',
       );
       return;
     }
@@ -98,7 +103,10 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
   /// Keeps the category of the edited budget selectable even when the loaded list does not contain it.
   List<BudgetCategory> _withSelected(List<BudgetCategory> loaded) {
     final selected = _category;
-    if (selected == null || loaded.any((category) => category.id == selected.id)) return loaded;
+    if (selected == null ||
+        loaded.any((category) => category.id == selected.id)) {
+      return loaded;
+    }
     return [selected, ...loaded];
   }
 
@@ -141,7 +149,11 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
     setState(() => _isSaving = false);
 
     if (error != null) {
-      await AppDialog.error(context, title: 'Không lưu được ngân sách', message: error);
+      await AppDialog.error(
+        context,
+        title: 'Không lưu được ngân sách',
+        message: error,
+      );
       return;
     }
     await AppDialog.success(
@@ -156,7 +168,9 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
         child: Column(
@@ -187,7 +201,8 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
                   _OptionChip(
                     label: BudgetPeriodType.label(type),
                     selected: _periodType == type,
-                    enabled: widget.weeklyEnabled || type != BudgetPeriodType.week,
+                    enabled:
+                        widget.weeklyEnabled || type != BudgetPeriodType.week,
                     onSelected: () => setState(() => _periodType = type),
                   ),
               ],
@@ -199,8 +214,8 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
               label: _keepsDates && _isEditing
                   ? 'Kỳ áp dụng'
                   : _periodType == BudgetPeriodType.week
-                      ? 'Tuần này'
-                      : 'Tháng này',
+                  ? 'Tuần này'
+                  : 'Tháng này',
               range: _range,
             ),
             const SizedBox(height: 20),
@@ -259,7 +274,10 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: const TextStyle(color: AppTheme.textGray, fontSize: 14));
+    return Text(
+      text,
+      style: const TextStyle(color: AppTheme.textGray, fontSize: 14),
+    );
   }
 }
 
@@ -272,7 +290,10 @@ class _Hint extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Text(text, style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+      child: Text(
+        text,
+        style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+      ),
     );
   }
 }
@@ -300,7 +321,9 @@ class _OptionChip extends StatelessWidget {
       selectedColor: AppTheme.mintAccent,
       backgroundColor: AppTheme.navyLight,
       side: BorderSide(color: AppTheme.textGray.withValues(alpha: 0.3)),
-      labelStyle: TextStyle(color: selected ? Colors.white : AppTheme.textWhite),
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : AppTheme.textWhite,
+      ),
     );
   }
 }

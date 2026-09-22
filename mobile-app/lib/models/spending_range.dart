@@ -9,7 +9,11 @@ class SpendingBucket {
   final DateTime start;
   final DateTime end;
 
-  const SpendingBucket({required this.label, required this.start, required this.end});
+  const SpendingBucket({
+    required this.label,
+    required this.start,
+    required this.end,
+  });
 
   /// Whether [date] is on one of the days of the bucket, whatever its time of day.
   bool contains(DateTime date) {
@@ -27,7 +31,15 @@ class SpendingRange {
   static const int maxFittedBuckets = 7;
 
   static const String _weekBucketPrefix = 'W';
-  static const List<String> _weekdayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+  static const List<String> _weekdayLabels = [
+    'T2',
+    'T3',
+    'T4',
+    'T5',
+    'T6',
+    'T7',
+    'CN',
+  ];
   static final DateFormat _dayMonth = DateFormat('dd/MM');
   static final DateFormat _fullDate = DateFormat('dd/MM/yyyy');
 
@@ -43,16 +55,24 @@ class SpendingRange {
 
   /// The Monday-to-Sunday week that contains [now], the same week the Ledger shows.
   factory SpendingRange.week(DateTime now) {
-    final monday = DateTime(now.year, now.month, now.day - (now.weekday - DateTime.monday));
-    return SpendingRange._(SpendingPeriod.week, monday, _shift(monday, DateTime.daysPerWeek - 1));
+    final monday = DateTime(
+      now.year,
+      now.month,
+      now.day - (now.weekday - DateTime.monday),
+    );
+    return SpendingRange._(
+      SpendingPeriod.week,
+      monday,
+      _shift(monday, DateTime.daysPerWeek - 1),
+    );
   }
 
   /// The calendar month that contains [now].
   factory SpendingRange.month(DateTime now) => SpendingRange._(
-        SpendingPeriod.month,
-        DateTime(now.year, now.month, 1),
-        DateTime(now.year, now.month + 1, 0),
-      );
+    SpendingPeriod.month,
+    DateTime(now.year, now.month, 1),
+    DateTime(now.year, now.month + 1, 0),
+  );
 
   /// The days from [from] to [to], both included. They may come in either order and at any time of day.
   factory SpendingRange.custom(DateTime from, DateTime to) {
@@ -65,7 +85,11 @@ class SpendingRange {
 
   /// The range of [period] as of [now]. [custom] is the range the user picked, which only [SpendingPeriod.custom] uses;
   /// without one the month is reported.
-  factory SpendingRange.of(SpendingPeriod period, DateTime now, {SpendingRange? custom}) {
+  factory SpendingRange.of(
+    SpendingPeriod period,
+    DateTime now, {
+    SpendingRange? custom,
+  }) {
     switch (period) {
       case SpendingPeriod.week:
         return SpendingRange.week(now);
@@ -78,9 +102,11 @@ class SpendingRange {
 
   /// How many days the range has. Counted between UTC dates, so a daylight saving change cannot skew it.
   int get days =>
-      DateTime.utc(end.year, end.month, end.day)
-          .difference(DateTime.utc(start.year, start.month, start.day))
-          .inDays +
+      DateTime.utc(
+        end.year,
+        end.month,
+        end.day,
+      ).difference(DateTime.utc(start.year, start.month, start.day)).inDays +
       1;
 
   /// The first and the last day as text, for example `21/09/2026 - 27/09/2026`.
@@ -93,7 +119,8 @@ class SpendingRange {
   }
 
   /// The bars of the chart, in order, with no gap between them; together they cover exactly the days of the range.
-  List<SpendingBucket> get buckets => period == SpendingPeriod.month ? _weeklyBuckets() : _fittedBuckets();
+  List<SpendingBucket> get buckets =>
+      period == SpendingPeriod.month ? _weeklyBuckets() : _fittedBuckets();
 
   /// Four weeks counted from the first day; the last one takes whatever days are left.
   List<SpendingBucket> _weeklyBuckets() {
@@ -118,18 +145,24 @@ class SpendingRange {
       final from = _shift(start, i * daysPerBucket);
       final to = _shift(from, daysPerBucket);
       return SpendingBucket(
-        label: daysPerBucket == 1 ? _weekdayLabels[from.weekday - DateTime.monday] : _dayMonth.format(from),
+        label: daysPerBucket == 1
+            ? _weekdayLabels[from.weekday - DateTime.monday]
+            : _dayMonth.format(from),
         start: from,
         end: to.isAfter(endExclusive) ? endExclusive : to,
       );
     });
   }
 
-  static DateTime _shift(DateTime day, int days) => DateTime(day.year, day.month, day.day + days);
+  static DateTime _shift(DateTime day, int days) =>
+      DateTime(day.year, day.month, day.day + days);
 
   @override
   bool operator ==(Object other) =>
-      other is SpendingRange && other.period == period && other.start == start && other.end == end;
+      other is SpendingRange &&
+      other.period == period &&
+      other.start == start &&
+      other.end == end;
 
   @override
   int get hashCode => Object.hash(period, start, end);

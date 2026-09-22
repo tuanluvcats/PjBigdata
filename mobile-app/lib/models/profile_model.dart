@@ -13,5 +13,9 @@ class UserProfile {
   final String email;
   final String avatarUrl;
 
-  UserProfile({required this.name, required this.email, required this.avatarUrl});
+  UserProfile({
+    required this.name,
+    required this.email,
+    required this.avatarUrl,
+  });
 }

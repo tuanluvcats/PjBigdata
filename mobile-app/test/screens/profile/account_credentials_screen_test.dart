@@ -31,7 +31,11 @@ void main() {
     await SessionService.clearSession();
     await SessionService.setCurrentUserId(1);
     // In full mode the app never learns the password of the user (see AppRepository.getCurrentUser).
-    backend.on('GET', '/api/users/me', (_) => okResponse({'id': 1, 'email': 'an@example.com'}));
+    backend.on(
+      'GET',
+      '/api/users/me',
+      (_) => okResponse({'id': 1, 'email': 'an@example.com'}),
+    );
     SharedPreferences.setMockInitialValues({});
   });
 
@@ -40,7 +44,9 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(const MaterialApp(home: AccountCredentialsScreen(userId: 1)));
+    await tester.pumpWidget(
+      const MaterialApp(home: AccountCredentialsScreen(userId: 1)),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mật khẩu'));
     await tester.pumpAndSettle();
@@ -52,9 +58,18 @@ void main() {
     String newPassword = _newPassword,
     String? confirmPassword,
   }) async {
-    await tester.enterText(find.widgetWithText(TextField, 'Mật khẩu cũ'), oldPassword);
-    await tester.enterText(find.widgetWithText(TextField, 'Mật khẩu mới'), newPassword);
-    await tester.enterText(find.widgetWithText(TextField, 'Xác nhận mật khẩu mới'), confirmPassword ?? newPassword);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Mật khẩu cũ'),
+      oldPassword,
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Mật khẩu mới'),
+      newPassword,
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Xác nhận mật khẩu mới'),
+      confirmPassword ?? newPassword,
+    );
   }
 
   Future<void> tapSave(WidgetTester tester) async {
@@ -67,127 +82,187 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  List<RequestOptions> changePasswordCalls() => backend.requests.where((r) => r.path == _changePasswordPath).toList();
+  List<RequestOptions> changePasswordCalls() =>
+      backend.requests.where((r) => r.path == _changePasswordPath).toList();
 
   group('the password row', () {
-    testWidgets('shows a hidden password although the server never sends it, and opens the form', (tester) async {
-      await openPasswordForm(tester);
+    testWidgets(
+      'shows a hidden password although the server never sends it, and opens the form',
+      (tester) async {
+        await openPasswordForm(tester);
 
-      expect(find.text('********'), findsOneWidget);
-      expect(find.widgetWithText(TextField, 'Mật khẩu cũ'), findsOneWidget);
-      expect(find.widgetWithText(TextField, 'Mật khẩu mới'), findsOneWidget);
-      expect(find.widgetWithText(TextField, 'Xác nhận mật khẩu mới'), findsOneWidget);
-    });
+        expect(find.text('********'), findsOneWidget);
+        expect(find.widgetWithText(TextField, 'Mật khẩu cũ'), findsOneWidget);
+        expect(find.widgetWithText(TextField, 'Mật khẩu mới'), findsOneWidget);
+        expect(
+          find.widgetWithText(TextField, 'Xác nhận mật khẩu mới'),
+          findsOneWidget,
+        );
+      },
+    );
   });
 
   group('changing the password on the server', () {
-    testWidgets('sends the old and the new password, nothing else, then confirms and closes the form', (tester) async {
-      backend.on('PUT', _changePasswordPath, (_) => okResponse(null, message: 'Đổi mật khẩu thành công!'));
-      await openPasswordForm(tester);
-      await fillForm(tester);
+    testWidgets(
+      'sends the old and the new password, nothing else, then confirms and closes the form',
+      (tester) async {
+        backend.on(
+          'PUT',
+          _changePasswordPath,
+          (_) => okResponse(null, message: 'Đổi mật khẩu thành công!'),
+        );
+        await openPasswordForm(tester);
+        await fillForm(tester);
 
-      await tapSave(tester);
+        await tapSave(tester);
 
-      final calls = changePasswordCalls();
-      expect(calls, hasLength(1));
-      expect(calls.single.method, 'PUT');
-      expect(calls.single.data, {'oldPassword': _oldPassword, 'newPassword': _newPassword});
-      expect(find.text('Đổi mật khẩu thành công'), findsOneWidget);
+        final calls = changePasswordCalls();
+        expect(calls, hasLength(1));
+        expect(calls.single.method, 'PUT');
+        expect(calls.single.data, {
+          'oldPassword': _oldPassword,
+          'newPassword': _newPassword,
+        });
+        expect(find.text('Đổi mật khẩu thành công'), findsOneWidget);
 
-      await dismissDialog(tester, 'OK');
+        await dismissDialog(tester, 'OK');
 
-      expect(find.byType(TextField), findsNothing);
-      expect(SessionService.currentUserId, 1);
-    });
+        expect(find.byType(TextField), findsNothing);
+        expect(SessionService.currentUserId, 1);
+      },
+    );
 
-    testWidgets('a wrong old password is shown with the message of the server, and the form keeps what was typed', (tester) async {
-      backend.on(
-        'PUT',
-        _changePasswordPath,
-        (_) => jsonResponse(400, {'code': 400, 'message': 'Mật khẩu cũ không chính xác'}),
-      );
-      await openPasswordForm(tester);
-      await fillForm(tester, oldPassword: 'WrongPass1');
+    testWidgets(
+      'a wrong old password is shown with the message of the server, and the form keeps what was typed',
+      (tester) async {
+        backend.on(
+          'PUT',
+          _changePasswordPath,
+          (_) => jsonResponse(400, {
+            'code': 400,
+            'message': 'Mật khẩu cũ không chính xác',
+          }),
+        );
+        await openPasswordForm(tester);
+        await fillForm(tester, oldPassword: 'WrongPass1');
 
-      await tapSave(tester);
+        await tapSave(tester);
 
-      expect(find.text('Đổi mật khẩu thất bại'), findsOneWidget);
-      expect(find.text('Mật khẩu cũ không chính xác'), findsOneWidget);
+        expect(find.text('Đổi mật khẩu thất bại'), findsOneWidget);
+        expect(find.text('Mật khẩu cũ không chính xác'), findsOneWidget);
 
-      await dismissDialog(tester, 'Đã hiểu');
+        await dismissDialog(tester, 'Đã hiểu');
 
-      final oldField = tester.widget<TextField>(find.widgetWithText(TextField, 'Mật khẩu cũ'));
-      expect(oldField.controller!.text, 'WrongPass1');
-      expect(SessionService.currentUserId, 1);
-    });
+        final oldField = tester.widget<TextField>(
+          find.widgetWithText(TextField, 'Mật khẩu cũ'),
+        );
+        expect(oldField.controller!.text, 'WrongPass1');
+        expect(SessionService.currentUserId, 1);
+      },
+    );
 
-    testWidgets('without a connection it says so instead of showing the raw error', (tester) async {
-      backend.on(
-        'PUT',
-        _changePasswordPath,
-        (options) => throw DioException.connectionError(requestOptions: options, reason: 'no network'),
-      );
-      await openPasswordForm(tester);
-      await fillForm(tester);
+    testWidgets(
+      'without a connection it says so instead of showing the raw error',
+      (tester) async {
+        backend.on(
+          'PUT',
+          _changePasswordPath,
+          (options) => throw DioException.connectionError(
+            requestOptions: options,
+            reason: 'no network',
+          ),
+        );
+        await openPasswordForm(tester);
+        await fillForm(tester);
 
-      await tapSave(tester);
+        await tapSave(tester);
 
-      expect(find.text('Đổi mật khẩu thất bại'), findsOneWidget);
-      expect(find.text('Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.'), findsOneWidget);
-    });
+        expect(find.text('Đổi mật khẩu thất bại'), findsOneWidget);
+        expect(
+          find.text(
+            'Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
-    testWidgets('a 403 (missing or invalid token) asks the user to sign in again', (tester) async {
-      backend.on('PUT', _changePasswordPath, (_) => jsonResponse(403, {'error': 'Forbidden'}));
-      await openPasswordForm(tester);
-      await fillForm(tester);
+    testWidgets(
+      'a 403 (missing or invalid token) asks the user to sign in again',
+      (tester) async {
+        backend.on(
+          'PUT',
+          _changePasswordPath,
+          (_) => jsonResponse(403, {'error': 'Forbidden'}),
+        );
+        await openPasswordForm(tester);
+        await fillForm(tester);
 
-      await tapSave(tester);
+        await tapSave(tester);
 
-      expect(find.text('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'), findsOneWidget);
-    });
+        expect(
+          find.text('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'),
+          findsOneWidget,
+        );
+      },
+    );
 
-    testWidgets('an answer that arrives after the screen was left changes nothing and throws nothing', (tester) async {
-      final answer = Completer<ResponseBody>();
-      backend.on('PUT', _changePasswordPath, (_) => answer.future);
-      await openPasswordForm(tester);
-      await fillForm(tester);
+    testWidgets(
+      'an answer that arrives after the screen was left changes nothing and throws nothing',
+      (tester) async {
+        final answer = Completer<ResponseBody>();
+        backend.on('PUT', _changePasswordPath, (_) => answer.future);
+        await openPasswordForm(tester);
+        await fillForm(tester);
 
-      await tester.tap(find.text('Lưu thay đổi'));
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(changePasswordCalls(), hasLength(1));
+        await tester.tap(find.text('Lưu thay đổi'));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(changePasswordCalls(), hasLength(1));
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      answer.complete(okResponse(null));
-      await tester.pump(const Duration(milliseconds: 100));
+        await tester.pumpWidget(const SizedBox.shrink());
+        answer.complete(okResponse(null));
+        await tester.pump(const Duration(milliseconds: 100));
 
-      expect(tester.takeException(), isNull);
-    });
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   group('input that is refused before anything is sent', () {
-    final refusals = <String, ({String oldPassword, String newPassword, String confirmPassword, String message})>{
-      'an empty old password': (
-        oldPassword: '',
-        newPassword: _newPassword,
-        confirmPassword: _newPassword,
-        message: 'Vui lòng nhập mật khẩu cũ.',
-      ),
-      'a new password that breaks the policy': (
-        oldPassword: _oldPassword,
-        newPassword: 'short',
-        confirmPassword: 'short',
-        message: PasswordPolicy.validate('short')!,
-      ),
-      'a confirmation that does not match': (
-        oldPassword: _oldPassword,
-        newPassword: _newPassword,
-        confirmPassword: 'Other789x',
-        message: 'Mật khẩu mới không khớp.',
-      ),
-    };
+    final refusals =
+        <
+          String,
+          ({
+            String oldPassword,
+            String newPassword,
+            String confirmPassword,
+            String message,
+          })
+        >{
+          'an empty old password': (
+            oldPassword: '',
+            newPassword: _newPassword,
+            confirmPassword: _newPassword,
+            message: 'Vui lòng nhập mật khẩu cũ.',
+          ),
+          'a new password that breaks the policy': (
+            oldPassword: _oldPassword,
+            newPassword: 'short',
+            confirmPassword: 'short',
+            message: PasswordPolicy.validate('short')!,
+          ),
+          'a confirmation that does not match': (
+            oldPassword: _oldPassword,
+            newPassword: _newPassword,
+            confirmPassword: 'Other789x',
+            message: 'Mật khẩu mới không khớp.',
+          ),
+        };
 
     for (final entry in refusals.entries) {
-      testWidgets('${entry.key} is reported and the server is not called', (tester) async {
+      testWidgets('${entry.key} is reported and the server is not called', (
+        tester,
+      ) async {
         await openPasswordForm(tester);
         await fillForm(
           tester,

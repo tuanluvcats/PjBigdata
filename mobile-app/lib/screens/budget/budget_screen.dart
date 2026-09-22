@@ -64,7 +64,11 @@ class _BudgetScreenState extends State<BudgetScreen> {
       debugPrint('Lỗi tải ngân sách: $e');
       if (!mounted) return;
       setState(() => _isLoading = false);
-      await AppDialog.error(context, title: 'Không tải được ngân sách', message: _messageOf(e));
+      await AppDialog.error(
+        context,
+        title: 'Không tải được ngân sách',
+        message: _messageOf(e),
+      );
       return;
     }
     if (!mounted) return;
@@ -99,7 +103,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
       builder: (_) => BudgetFormSheet(
         budget: budget,
         weeklyEnabled: AppConfig.isFull,
-        loadCategories: () => AppRepository.instance.getExpenseCategories(userId),
+        loadCategories: () =>
+            AppRepository.instance.getExpenseCategories(userId),
         onSubmit: (edited) => _submit(userId, edited),
       ),
     );
@@ -123,7 +128,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
     final confirmed = await AppDialog.confirm(
       context,
       title: 'Xóa ngân sách?',
-      message: 'Ngân sách "${budget.categoryName ?? BudgetModel.allCategoriesLabel}" sẽ bị xóa.',
+      message:
+          'Ngân sách "${budget.categoryName ?? BudgetModel.allCategoriesLabel}" sẽ bị xóa.',
       confirmText: 'Xóa',
       danger: true,
     );
@@ -134,7 +140,11 @@ class _BudgetScreenState extends State<BudgetScreen> {
     } catch (e) {
       debugPrint('Lỗi xóa ngân sách: $e');
       if (!mounted) return;
-      await AppDialog.error(context, title: 'Không xóa được ngân sách', message: _messageOf(e));
+      await AppDialog.error(
+        context,
+        title: 'Không xóa được ngân sách',
+        message: _messageOf(e),
+      );
       return;
     }
     if (!mounted) return;
@@ -174,8 +184,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                 children: [
-                  if (!AppConfig.isFull)
-                    const _OfflineNotice(),
+                  if (!AppConfig.isFull) const _OfflineNotice(),
                   if (_budgets.isEmpty)
                     _EmptyState(onCreate: _openForm)
                   else
@@ -228,9 +237,16 @@ class _EmptyState extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Icon(Icons.pie_chart_outline_rounded, color: AppTheme.textGray, size: 48),
+          const Icon(
+            Icons.pie_chart_outline_rounded,
+            color: AppTheme.textGray,
+            size: 48,
+          ),
           const SizedBox(height: 12),
-          const Text('Chưa có ngân sách nào.', style: TextStyle(color: AppTheme.textGray)),
+          const Text(
+            'Chưa có ngân sách nào.',
+            style: TextStyle(color: AppTheme.textGray),
+          ),
           const SizedBox(height: 4),
           const Text(
             'Đặt hạn mức chi tiêu theo tuần hoặc tháng để kiểm soát tốt hơn.',
@@ -301,7 +317,10 @@ class _BudgetCard extends StatelessWidget {
                     Text(
                       '${BudgetPeriodType.label(budget.periodType)} · '
                       '${_displayDate.format(budget.start)} – ${_displayDate.format(budget.end)}',
-                      style: const TextStyle(color: AppTheme.textGray, fontSize: 11),
+                      style: const TextStyle(
+                        color: AppTheme.textGray,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -315,7 +334,11 @@ class _BudgetCard extends StatelessWidget {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.dangerColor, size: 20),
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppTheme.dangerColor,
+                  size: 20,
+                ),
                 onPressed: onDelete,
               ),
             ],

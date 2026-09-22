@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  static final ValueNotifier<ThemeMode> themeNotifier =
-      ValueNotifier(ThemeMode.light);
+  static final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(
+    ThemeMode.light,
+  );
 
   static const Color primary = Color(0xFF4A2545);
   static const Color primaryDark = Color(0xFF2E1729);
@@ -35,18 +36,18 @@ class AppTheme {
   static const Color negative = Color(0xFFE0457B);
 
   static List<BoxShadow> get softShadow => [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.06),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
-        ),
-      ];
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.06),
+      blurRadius: 16,
+      offset: const Offset(0, 6),
+    ),
+  ];
 
   static BoxDecoration get card => BoxDecoration(
-        color: navyLight,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: softShadow,
-      );
+    color: navyLight,
+    borderRadius: BorderRadius.circular(20),
+    boxShadow: softShadow,
+  );
 
   static const LinearGradient purpleCardGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -66,23 +67,22 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: primary,
         brightness: Brightness.light,
-      ).copyWith(
-        primary: primary,
-        secondary: primary,
-        surface: Colors.white,
-      ),
+      ).copyWith(primary: primary, secondary: primary, surface: Colors.white),
       scaffoldBackgroundColor: bgLight,
     );
     return base.copyWith(
-      pageTransitionsTheme: const PageTransitionsTheme(builders: {
-        TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-        TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
-        TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
-        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-      }),
-      textTheme: GoogleFonts.poppinsTextTheme(base.textTheme)
-          .apply(bodyColor: textPrimary, displayColor: textPrimary),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
+      textTheme: GoogleFonts.poppinsTextTheme(
+        base.textTheme,
+      ).apply(bodyColor: textPrimary, displayColor: textPrimary),
       appBarTheme: const AppBarTheme(
         backgroundColor: bgLight,
         surfaceTintColor: Colors.transparent,
@@ -113,7 +113,9 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           elevation: 0,
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -134,8 +136,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: primary, width: 2),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
       ),
     );
   }

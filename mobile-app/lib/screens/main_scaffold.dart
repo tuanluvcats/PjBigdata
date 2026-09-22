@@ -22,7 +22,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   final _ledgerKey = GlobalKey<LedgerPageState>();
   final _dashboardKey = GlobalKey<DashboardPageState>();
 
-late final List<Widget> _pages = [
+  late final List<Widget> _pages = [
     DashboardPage(
       key: _dashboardKey,
       onNavigateToAI: () {
@@ -129,7 +129,6 @@ late final List<Widget> _pages = [
     ImageSource source,
   ) async {
     final ImagePicker picker = ImagePicker();
-    
 
     final XFile? image = await picker.pickImage(
       source: source,
@@ -239,15 +238,14 @@ late final List<Widget> _pages = [
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-       onTap: () {
+        onTap: () {
           if (_currentIndex == index) {
             if (index == 0) {
               _dashboardKey.currentState?.reload();
             } else if (index == 1) {
               _ledgerKey.currentState?.reload();
             }
-          } 
-          else {
+          } else {
             setState(() {
               _currentIndex = index;
             });

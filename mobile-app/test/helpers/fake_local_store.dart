@@ -23,7 +23,10 @@ class FakeLocalStore implements SqfliteHelper {
   void clear() => _rows.clear();
 
   @override
-  Future<int> insertTransaction(TransactionModel transaction, int userId) async {
+  Future<int> insertTransaction(
+    TransactionModel transaction,
+    int userId,
+  ) async {
     _rows.add((userId: userId, transaction: transaction));
     return _rows.length;
   }
@@ -37,12 +40,19 @@ class FakeLocalStore implements SqfliteHelper {
   }
 
   @override
-  Future<int> updateTransactionSyncStatus(int userId, String clientId, SyncStatus status) async {
+  Future<int> updateTransactionSyncStatus(
+    int userId,
+    String clientId,
+    SyncStatus status,
+  ) async {
     var changed = 0;
     for (var i = 0; i < _rows.length; i++) {
       final row = _rows[i];
       if (row.userId == userId && row.transaction.clientId == clientId) {
-        _rows[i] = (userId: row.userId, transaction: row.transaction.withSyncStatus(status));
+        _rows[i] = (
+          userId: row.userId,
+          transaction: row.transaction.withSyncStatus(status),
+        );
         changed++;
       }
     }
@@ -52,12 +62,16 @@ class FakeLocalStore implements SqfliteHelper {
   @override
   Future<int> deleteTransactionByClientId(int userId, String clientId) async {
     final before = _rows.length;
-    _rows.removeWhere((row) => row.userId == userId && row.transaction.clientId == clientId);
+    _rows.removeWhere(
+      (row) => row.userId == userId && row.transaction.clientId == clientId,
+    );
     return before - _rows.length;
   }
 
   @override
   dynamic noSuchMethod(Invocation invocation) {
-    throw UnimplementedError('FakeLocalStore does not fake ${invocation.memberName}');
+    throw UnimplementedError(
+      'FakeLocalStore does not fake ${invocation.memberName}',
+    );
   }
 }

@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 ///
 /// debugPrint is restored before [body] returns: flutter_test checks that at the end of the test body, before any
 /// addTearDown callback runs.
-Future<void> withCapturedLogs(Future<void> Function(List<String> logs) body) async {
+Future<void> withCapturedLogs(
+  Future<void> Function(List<String> logs) body,
+) async {
   final logs = <String>[];
   final original = debugPrint;
   debugPrint = (String? message, {int? wrapWidth}) => logs.add(message ?? '');

@@ -8,9 +8,14 @@ import 'package:dio/dio.dart';
 /// contract (ApiResponse with code, message and data).
 class FakeBackend implements HttpClientAdapter {
   final List<RequestOptions> requests = [];
-  final Map<String, FutureOr<ResponseBody> Function(RequestOptions)> _routes = {};
+  final Map<String, FutureOr<ResponseBody> Function(RequestOptions)> _routes =
+      {};
 
-  void on(String method, String path, FutureOr<ResponseBody> Function(RequestOptions) handler) {
+  void on(
+    String method,
+    String path,
+    FutureOr<ResponseBody> Function(RequestOptions) handler,
+  ) {
     _routes['$method $path'] = handler;
   }
 
@@ -19,7 +24,8 @@ class FakeBackend implements HttpClientAdapter {
     _routes.clear();
   }
 
-  List<String> get calls => requests.map((r) => '${r.method} ${r.path}').toList();
+  List<String> get calls =>
+      requests.map((r) => '${r.method} ${r.path}').toList();
 
   @override
   Future<ResponseBody> fetch(
@@ -29,7 +35,12 @@ class FakeBackend implements HttpClientAdapter {
   ) async {
     requests.add(options);
     final handler = _routes['${options.method} ${options.path}'];
-    if (handler == null) return jsonResponse(404, {'code': 404, 'message': 'No such route in the fake backend'});
+    if (handler == null) {
+      return jsonResponse(404, {
+        'code': 404,
+        'message': 'No such route in the fake backend',
+      });
+    }
     return handler(options);
   }
 
@@ -38,12 +49,15 @@ class FakeBackend implements HttpClientAdapter {
 }
 
 ResponseBody jsonResponse(int status, Object body) => ResponseBody.fromString(
-      jsonEncode(body),
-      status,
-      headers: {
-        Headers.contentTypeHeader: [Headers.jsonContentType],
-      },
-    );
+  jsonEncode(body),
+  status,
+  headers: {
+    Headers.contentTypeHeader: [Headers.jsonContentType],
+  },
+);
 
-ResponseBody okResponse(Object? data, {int status = 200, String message = 'OK'}) =>
-    jsonResponse(status, {'code': status, 'message': message, 'data': data});
+ResponseBody okResponse(
+  Object? data, {
+  int status = 200,
+  String message = 'OK',
+}) => jsonResponse(status, {'code': status, 'message': message, 'data': data});

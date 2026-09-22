@@ -53,13 +53,18 @@ class SpendingRangeFilter extends StatelessWidget {
         Wrap(
           spacing: _optionSpacing,
           runSpacing: _optionSpacing,
-          children: [for (final period in SpendingPeriod.values) _buildOption(period)],
+          children: [
+            for (final period in SpendingPeriod.values) _buildOption(period),
+          ],
         ),
         const SizedBox(height: 4),
         Row(
           children: [
             Expanded(
-              child: Text(range.label, style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+              child: Text(
+                range.label,
+                style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+              ),
             ),
             _buildRefreshButton(),
           ],
@@ -77,7 +82,11 @@ class SpendingRangeFilter extends StatelessWidget {
       showCheckmark: false,
       selectedColor: AppTheme.mintLight,
       backgroundColor: Colors.white,
-      side: BorderSide(color: selected ? AppTheme.primary : AppTheme.textGray.withValues(alpha: 0.3)),
+      side: BorderSide(
+        color: selected
+            ? AppTheme.primary
+            : AppTheme.textGray.withValues(alpha: 0.3),
+      ),
       shape: const StadiumBorder(),
       labelStyle: TextStyle(
         color: selected ? AppTheme.primary : AppTheme.textGray,
@@ -90,7 +99,10 @@ class SpendingRangeFilter extends StatelessWidget {
   Widget _buildRefreshButton() {
     return TextButton(
       onPressed: isRefreshing ? null : onRefresh,
-      style: TextButton.styleFrom(foregroundColor: AppTheme.primary, visualDensity: VisualDensity.compact),
+      style: TextButton.styleFrom(
+        foregroundColor: AppTheme.primary,
+        visualDensity: VisualDensity.compact,
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -98,11 +110,17 @@ class SpendingRangeFilter extends StatelessWidget {
               ? const SizedBox(
                   width: _refreshIconSize,
                   height: _refreshIconSize,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppTheme.primary,
+                  ),
                 )
               : const Icon(Icons.refresh_rounded, size: _refreshIconSize),
           const SizedBox(width: 6),
-          const Text(refreshLabel, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const Text(
+            refreshLabel,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );

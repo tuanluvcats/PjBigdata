@@ -1,5 +1,4 @@
 class CurrencyHelper {
-
   static String formatVND(double amount, {bool showSign = true}) {
     final isNegative = amount < 0;
     final abs = amount.abs();

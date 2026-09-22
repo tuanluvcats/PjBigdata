@@ -65,7 +65,10 @@ class BudgetSection extends StatelessWidget {
           _Note(emptyText)
         else ...[
           for (final progress in shown)
-            BudgetProgressCard(key: ValueKey(progress.budget.id), progress: progress),
+            BudgetProgressCard(
+              key: ValueKey(progress.budget.id),
+              progress: progress,
+            ),
           if (hidden > 0)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),

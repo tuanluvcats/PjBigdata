@@ -39,7 +39,8 @@ class AppRepository {
     HttpStatus.tooManyRequests,
   };
 
-  static const String _defaultRefusalMessage = 'Máy chủ từ chối giao dịch này. Vui lòng kiểm tra lại thông tin.';
+  static const String _defaultRefusalMessage =
+      'Máy chủ từ chối giao dịch này. Vui lòng kiểm tra lại thông tin.';
 
   /// Where the transactions that the server has not confirmed are kept; only tests replace it.
   SqfliteHelper _localStore = SqfliteHelper.instance;
@@ -51,7 +52,9 @@ class AppRepository {
   /// (see [getUnsyncedTransactions]), those first because they need the attention of the user. Throws when the server
   /// cannot be reached.
   Future<List<TransactionModel>> getTransactions(int userId) async {
-    if (!AppConfig.isFull) return SqfliteHelper.instance.getTransactionsByUserId(userId);
+    if (!AppConfig.isFull) {
+      return SqfliteHelper.instance.getTransactionsByUserId(userId);
+    }
     final onServer = await RemoteApiHelper.instance.fetchTransactions();
     return [...await getUnsyncedTransactions(userId), ...onServer];
   }
@@ -81,7 +84,9 @@ class AppRepository {
   Future<List<WalletModel>> getWallets(int userId) async {
     final txs = await getTransactions(userId);
     final bal = txs.fold<double>(
-        0.0, (s, t) => s + (t.isExpense ? -t.amount : t.amount));
+      0.0,
+      (s, t) => s + (t.isExpense ? -t.amount : t.amount),
+    );
     return [WalletModel(name: 'Ví chính', balance: bal, userId: userId)];
   }
 
@@ -95,14 +100,14 @@ class AppRepository {
     final txs = results[1] as List<TransactionModel>;
 
     final bal = txs.fold<double>(
-        0.0, (s, t) => s + (t.isExpense ? -t.amount : t.amount));
-    final wallets = [WalletModel(name: 'Ví chính', balance: bal, userId: userId)];
+      0.0,
+      (s, t) => s + (t.isExpense ? -t.amount : t.amount),
+    );
+    final wallets = [
+      WalletModel(name: 'Ví chính', balance: bal, userId: userId),
+    ];
 
-    return {
-      'user': user,
-      'transactions': txs,
-      'wallets': wallets,
-    };
+    return {'user': user, 'transactions': txs, 'wallets': wallets};
   }
 
   Future<void> addTransaction({
@@ -120,7 +125,7 @@ class AppRepository {
         'location': (note != null && note.isNotEmpty) ? note : category,
         'paymentMethod': 'Ví chính',
         'transactionDate': DateTime.now().toIso8601String(),
-        if (note != null) 'note': note,
+        'note': ?note,
       });
     } else {
       final tx = TransactionModel.draft(
@@ -142,13 +147,19 @@ class AppRepository {
   /// error): it stays on the device, flagged, until the user resends it. Throws [TransactionRefusedException] when the
   /// server refuses it, and keeps nothing then, because the user still has the form to correct. Without a server the row is
   /// simply stored.
-  Future<SyncStatus> createTransaction(int userId, TransactionModel draft) async {
+  Future<SyncStatus> createTransaction(
+    int userId,
+    TransactionModel draft,
+  ) async {
     if (!AppConfig.isFull) {
       await _localStore.insertTransaction(draft, userId);
       return SyncStatus.synced;
     }
     final clientId = _clientIdOf(draft);
-    await _localStore.insertTransaction(draft.withSyncStatus(SyncStatus.pending), userId);
+    await _localStore.insertTransaction(
+      draft.withSyncStatus(SyncStatus.pending),
+      userId,
+    );
     try {
       return await _send(userId, draft);
     } on TransactionRefusedException {
@@ -161,8 +172,15 @@ class AppRepository {
   /// and only the answer got lost, the server answers with the transaction it already has instead of creating a second
   /// one. The result is that of [createTransaction], except that a refusal keeps the transaction (flagged error), so the
   /// user can still delete it.
-  Future<SyncStatus> resendTransaction(int userId, TransactionModel transaction) async {
-    await _localStore.updateTransactionSyncStatus(userId, _clientIdOf(transaction), SyncStatus.pending);
+  Future<SyncStatus> resendTransaction(
+    int userId,
+    TransactionModel transaction,
+  ) async {
+    await _localStore.updateTransactionSyncStatus(
+      userId,
+      _clientIdOf(transaction),
+      SyncStatus.pending,
+    );
     return _send(userId, transaction);
   }
 
@@ -176,20 +194,34 @@ class AppRepository {
   Future<SyncStatus> _send(int userId, TransactionModel transaction) async {
     final clientId = _clientIdOf(transaction);
     try {
-      await RemoteApiHelper.instance.addTransaction(transaction.toCheckoutJson());
+      await RemoteApiHelper.instance.addTransaction(
+        transaction.toCheckoutJson(),
+      );
     } on DioException catch (e) {
       debugPrint('Lỗi gửi giao dịch $clientId: $e');
-      await _localStore.updateTransactionSyncStatus(userId, clientId, SyncStatus.error);
+      await _localStore.updateTransactionSyncStatus(
+        userId,
+        clientId,
+        SyncStatus.error,
+      );
       if (_isRefusal(e)) throw TransactionRefusedException(_refusalMessage(e));
       return SyncStatus.error;
     }
-    await _localStore.updateTransactionSyncStatus(userId, clientId, SyncStatus.synced);
+    await _localStore.updateTransactionSyncStatus(
+      userId,
+      clientId,
+      SyncStatus.synced,
+    );
     return SyncStatus.synced;
   }
 
   static String _clientIdOf(TransactionModel transaction) {
     return transaction.clientId ??
-        (throw ArgumentError.value(transaction, 'transaction', 'has no clientId, so it was not created on this device'));
+        (throw ArgumentError.value(
+          transaction,
+          'transaction',
+          'has no clientId, so it was not created on this device',
+        ));
   }
 
   /// True when the server answered and said no to the transaction. No answer at all (no network, a timeout) and a server
@@ -205,7 +237,9 @@ class AppRepository {
   static String _refusalMessage(DioException e) {
     final data = e.response?.data;
     final message = (data is Map ? data['message'] : null)?.toString().trim();
-    return (message == null || message.isEmpty) ? _defaultRefusalMessage : message;
+    return (message == null || message.isEmpty)
+        ? _defaultRefusalMessage
+        : message;
   }
 
   /// All the budgets of the user, newest first: from the server, or from the local table (which only stores monthly
@@ -257,10 +291,15 @@ class AppRepository {
       return [
         for (final category in categories)
           if (category['type'] == _serverExpenseType)
-            (id: (category['id'] as num).toInt(), name: category['name'].toString()),
+            (
+              id: (category['id'] as num).toInt(),
+              name: category['name'].toString(),
+            ),
       ];
     }
-    final categories = await SqfliteHelper.instance.getCategoriesByUserId(userId);
+    final categories = await SqfliteHelper.instance.getCategoriesByUserId(
+      userId,
+    );
     return [
       for (final category in categories)
         if (category.type == CategoryType.expense && category.id != null)

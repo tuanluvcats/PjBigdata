@@ -61,13 +61,16 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
     }
   }
 
-  void _snack(String m) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(m)));
+  void _snack(String m) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   String _fmt(dynamic v) {
     final n = (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0;
-    return NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0)
-        .format(n);
+    return NumberFormat.currency(
+      locale: 'vi_VN',
+      symbol: '₫',
+      decimalDigits: 0,
+    ).format(n);
   }
 
   String _date(dynamic iso) {
@@ -95,35 +98,46 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
       backgroundColor: AppTheme.navyDark,
       appBar: AppBar(
         backgroundColor: AppTheme.navyDark,
-        title: const Text('Lịch sử nạp/rút',
-            style: TextStyle(
-                color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Lịch sử nạp/rút',
+          style: TextStyle(
+            color: AppTheme.textWhite,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         iconTheme: const IconThemeData(color: AppTheme.textWhite),
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.mintAccent))
+              child: CircularProgressIndicator(color: AppTheme.mintAccent),
+            )
           : _error != null
-              ? Center(
-                  child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(_error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppTheme.textGray)),
-                ))
-              : _orders.isEmpty
-                  ? const Center(
-                      child: Text('Chưa có giao dịch nạp/rút.',
-                          style: TextStyle(color: AppTheme.textGray)))
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _orders.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _tile(_orders[i]),
-                      ),
-                    ),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppTheme.textGray),
+                ),
+              ),
+            )
+          : _orders.isEmpty
+          ? const Center(
+              child: Text(
+                'Chưa có giao dịch nạp/rút.',
+                style: TextStyle(color: AppTheme.textGray),
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: _orders.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (_, i) => _tile(_orders[i]),
+              ),
+            ),
     );
   }
 
@@ -151,54 +165,75 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                 size: 20,
               ),
               const SizedBox(width: 8),
-              Text(isDeposit ? 'Nạp tiền' : 'Rút tiền',
-                  style: const TextStyle(
-                      color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+              Text(
+                isDeposit ? 'Nạp tiền' : 'Rút tiền',
+                style: const TextStyle(
+                  color: AppTheme.textWhite,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const Spacer(),
-              Text('${isDeposit ? '+' : '-'}${_fmt(o['amount'])}',
-                  style: TextStyle(
-                      color: isDeposit ? Colors.green : Colors.orangeAccent,
-                      fontWeight: FontWeight.bold)),
+              Text(
+                '${isDeposit ? '+' : '-'}${_fmt(o['amount'])}',
+                style: TextStyle(
+                  color: isDeposit ? Colors.green : Colors.orangeAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
           Row(
             children: [
-              Text('${o['provider'] ?? ''}',
-                  style: const TextStyle(
-                      color: AppTheme.mintAccent, fontSize: 12)),
+              Text(
+                '${o['provider'] ?? ''}',
+                style: const TextStyle(
+                  color: AppTheme.mintAccent,
+                  fontSize: 12,
+                ),
+              ),
               const SizedBox(width: 10),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: _statusColor(status).withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(status,
-                    style: TextStyle(
-                        color: _statusColor(status),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600)),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    color: _statusColor(status),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
               const Spacer(),
-              Text(_date(o['createdAt']),
-                  style:
-                      const TextStyle(color: AppTheme.textGray, fontSize: 11)),
+              Text(
+                _date(o['createdAt']),
+                style: const TextStyle(color: AppTheme.textGray, fontSize: 11),
+              ),
             ],
           ),
-          Text('Mã: ${o['orderCode']}',
-              style: const TextStyle(color: AppTheme.textGray, fontSize: 11)),
+          Text(
+            'Mã: ${o['orderCode']}',
+            style: const TextStyle(color: AppTheme.textGray, fontSize: 11),
+          ),
           if (canCancel) ...[
             const SizedBox(height: 6),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
                 onPressed: () => _cancel('${o['orderCode']}'),
-                icon: const Icon(Icons.close_rounded,
-                    size: 16, color: Colors.redAccent),
-                label: const Text('Hủy đơn',
-                    style: TextStyle(color: Colors.redAccent)),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 16,
+                  color: Colors.redAccent,
+                ),
+                label: const Text(
+                  'Hủy đơn',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
               ),
             ),
           ],

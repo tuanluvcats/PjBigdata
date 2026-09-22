@@ -77,10 +77,14 @@ class _SetUserInfoScreenState extends State<SetUserInfoScreen> {
     final now = DateTime.now();
     DateTime initial = DateTime(now.year - 18, now.month, now.day);
     if (_isValidDob(_birthdateController.text.trim())) {
-      final m = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$')
-          .firstMatch(_birthdateController.text.trim())!;
-      initial = DateTime(int.parse(m.group(3)!), int.parse(m.group(2)!),
-          int.parse(m.group(1)!));
+      final m = RegExp(
+        r'^(\d{2})/(\d{2})/(\d{4})$',
+      ).firstMatch(_birthdateController.text.trim())!;
+      initial = DateTime(
+        int.parse(m.group(3)!),
+        int.parse(m.group(2)!),
+        int.parse(m.group(1)!),
+      );
     }
     final picked = await showDatePicker(
       context: context,
@@ -121,22 +125,26 @@ class _SetUserInfoScreenState extends State<SetUserInfoScreen> {
 
     if (email.isEmpty ||
         !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email không hợp lệ.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Email không hợp lệ.')));
       return;
     }
 
     if (birthdate.isNotEmpty && !_isValidDob(birthdate)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ngày sinh phải đúng định dạng DD/MM/YYYY.')),
+        const SnackBar(
+          content: Text('Ngày sinh phải đúng định dạng DD/MM/YYYY.'),
+        ),
       );
       return;
     }
 
     if (phone.isNotEmpty && !RegExp(r'^0[0-9]{9}$').hasMatch(phone)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Số điện thoại không hợp lệ (10 số, bắt đầu bằng 0).')),
+        const SnackBar(
+          content: Text('Số điện thoại không hợp lệ (10 số, bắt đầu bằng 0).'),
+        ),
       );
       return;
     }
@@ -206,8 +214,11 @@ class _SetUserInfoScreenState extends State<SetUserInfoScreen> {
                     label: 'Ngày sinh (DD/MM/YYYY) - không bắt buộc',
                     keyboardType: TextInputType.datetime,
                     suffixIcon: IconButton(
-                      icon: const Icon(Icons.calendar_today_rounded,
-                          color: AppTheme.mintAccent, size: 20),
+                      icon: const Icon(
+                        Icons.calendar_today_rounded,
+                        color: AppTheme.mintAccent,
+                        size: 20,
+                      ),
                       onPressed: _pickDob,
                     ),
                   ),

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
-import 'package:finance_ai_app/services/session_service.dart'; 
+import 'package:finance_ai_app/services/session_service.dart';
+
 class SavingsPage extends StatefulWidget {
   const SavingsPage({super.key});
 
@@ -14,16 +15,19 @@ class _SavingsPageState extends State<SavingsPage> {
   List<Map<String, dynamic>> _goals = [];
   bool _isLoading = true;
 
-  final _fmtCur = NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
+  final _fmtCur = NumberFormat.currency(
+    locale: 'vi_VN',
+    symbol: '₫',
+    decimalDigits: 0,
+  );
 
-@override
+  @override
   void initState() {
     super.initState();
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) _load();
     });
   }
-
 
   Future<void> _load() async {
     try {
@@ -47,7 +51,6 @@ class _SavingsPageState extends State<SavingsPage> {
   double get _totalTarget =>
       _goals.fold(0.0, (s, g) => s + ((g['target'] as num?) ?? 0).toDouble());
 
-
   void _addGoal() {
     final titleCtrl = TextEditingController();
     final targetCtrl = TextEditingController();
@@ -59,8 +62,13 @@ class _SavingsPageState extends State<SavingsPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.navyLight,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Thêm mục tiêu tiết kiệm',
-            style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Thêm mục tiêu tiết kiệm',
+          style: TextStyle(
+            color: AppTheme.textWhite,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -78,21 +86,33 @@ class _SavingsPageState extends State<SavingsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy', style: TextStyle(color: AppTheme.textGray)),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: AppTheme.textGray),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.mintAccent,
               foregroundColor: AppTheme.navyDark,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () async {
               final title = titleCtrl.text.trim();
-              final target = double.tryParse(targetCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+              final target =
+                  double.tryParse(
+                    targetCtrl.text.replaceAll(RegExp(r'[^\d]'), ''),
+                  ) ??
+                  0;
               if (title.isEmpty || target <= 0) return;
-              
-              final current = double.tryParse(currentCtrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
-              
+
+              final current =
+                  double.tryParse(
+                    currentCtrl.text.replaceAll(RegExp(r'[^\d]'), ''),
+                  ) ??
+                  0;
 
               await RemoteApiHelper.instance.addSaving({
                 'title': title,
@@ -112,33 +132,49 @@ class _SavingsPageState extends State<SavingsPage> {
     );
   }
 
-
   void _editAmount(int index) {
     final goal = _goals[index];
-    final ctrl = TextEditingController(text: ((goal['current'] as num?) ?? 0).toInt().toString());
+    final ctrl = TextEditingController(
+      text: ((goal['current'] as num?) ?? 0).toInt().toString(),
+    );
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.navyLight,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Cập nhật: ${goal['title']}',
-            style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+        title: Text(
+          'Cập nhật: ${goal['title']}',
+          style: const TextStyle(
+            color: AppTheme.textWhite,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: _field(ctrl, 'Số tiền đã tiết kiệm (₫)', TextInputType.number),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy', style: TextStyle(color: AppTheme.textGray)),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: AppTheme.textGray),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.mintAccent,
               foregroundColor: AppTheme.navyDark,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () async {
-              final val = double.tryParse(ctrl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
-              await RemoteApiHelper.instance.updateSavingCurrent(goal['id'].toString(), val);
+              final val =
+                  double.tryParse(ctrl.text.replaceAll(RegExp(r'[^\d]'), '')) ??
+                  0;
+              await RemoteApiHelper.instance.updateSavingCurrent(
+                goal['id'].toString(),
+                val,
+              );
               SessionService.needRefreshAI.value = true;
               _load();
               if (!ctx.mounted) return;
@@ -151,10 +187,9 @@ class _SavingsPageState extends State<SavingsPage> {
     );
   }
 
-
-Future<void> _deleteGoal(int index) async {
+  Future<void> _deleteGoal(int index) async {
     final removed = _goals[index];
-    setState(() => _goals.removeAt(index)); 
+    setState(() => _goals.removeAt(index));
     await RemoteApiHelper.instance.deleteSaving(removed['id'].toString());
     SessionService.needRefreshAI.value = true;
     if (mounted) {
@@ -164,7 +199,11 @@ Future<void> _deleteGoal(int index) async {
     }
   }
 
-  TextField _field(TextEditingController ctrl, String label, TextInputType type) {
+  TextField _field(
+    TextEditingController ctrl,
+    String label,
+    TextInputType type,
+  ) {
     return TextField(
       controller: ctrl,
       keyboardType: type,
@@ -190,8 +229,14 @@ Future<void> _deleteGoal(int index) async {
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: AppTheme.textWhite),
-        title: const Text('Sổ tiết kiệm',
-            style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 20)),
+        title: const Text(
+          'Sổ tiết kiệm',
+          style: TextStyle(
+            color: AppTheme.textWhite,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_rounded, color: AppTheme.mintAccent),
@@ -199,7 +244,7 @@ Future<void> _deleteGoal(int index) async {
           ),
         ],
       ),
-     body: _isLoading
+      body: _isLoading
           ? _buildSkeletonLoading()
           : RefreshIndicator(
               onRefresh: _load,
@@ -220,7 +265,9 @@ Future<void> _deleteGoal(int index) async {
   }
 
   Widget _buildSummaryCard() {
-    final progress = _totalTarget > 0 ? (_totalSaved / _totalTarget).clamp(0.0, 1.0) : 0.0;
+    final progress = _totalTarget > 0
+        ? (_totalSaved / _totalTarget).clamp(0.0, 1.0)
+        : 0.0;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -250,23 +297,37 @@ Future<void> _deleteGoal(int index) async {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Tổng đã tiết kiệm', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    const Text(
+                      'Tổng đã tiết kiệm',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       _fmtCur.format(_totalSaved),
-                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '${_goals.length} mục tiêu',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -275,10 +336,18 @@ Future<void> _deleteGoal(int index) async {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Mục tiêu: ${_fmtCur.format(_totalTarget)}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                Text('${(progress * 100).toStringAsFixed(0)}%',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                Text(
+                  'Mục tiêu: ${_fmtCur.format(_totalTarget)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                Text(
+                  '${(progress * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -300,9 +369,27 @@ Future<void> _deleteGoal(int index) async {
   Widget _buildActionGrid() {
     final actions = [
       (Icons.add_circle_rounded, 'Thêm\nmục tiêu', _addGoal),
-      (Icons.savings_rounded, 'Nạp tiền', () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt')))),
-      (Icons.account_balance_wallet_rounded, 'Rút tiền', () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt')))),
-      (Icons.share_rounded, 'Chia sẻ', () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt')))),
+      (
+        Icons.savings_rounded,
+        'Nạp tiền',
+        () => ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt'))),
+      ),
+      (
+        Icons.account_balance_wallet_rounded,
+        'Rút tiền',
+        () => ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt'))),
+      ),
+      (
+        Icons.share_rounded,
+        'Chia sẻ',
+        () => ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Tính năng sắp ra mắt'))),
+      ),
     ];
 
     return Padding(
@@ -310,28 +397,34 @@ Future<void> _deleteGoal(int index) async {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: actions
-            .map((a) => GestureDetector(
-                  onTap: a.$3,
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: AppTheme.navyLight,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Icon(a.$1, color: AppTheme.mintAccent, size: 28),
+            .map(
+              (a) => GestureDetector(
+                onTap: a.$3,
+                child: Column(
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: AppTheme.navyLight,
+                        borderRadius: BorderRadius.circular(18),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        a.$2,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: AppTheme.textGray, fontSize: 11, height: 1.3),
+                      child: Icon(a.$1, color: AppTheme.mintAccent, size: 28),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      a.$2,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppTheme.textGray,
+                        fontSize: 11,
+                        height: 1.3,
                       ),
-                    ],
-                  ),
-                ))
+                    ),
+                  ],
+                ),
+              ),
+            )
             .toList(),
       ),
     );
@@ -346,11 +439,22 @@ Future<void> _deleteGoal(int index) async {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Danh sách mục tiêu',
-                  style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                'Danh sách mục tiêu',
+                style: TextStyle(
+                  color: AppTheme.textWhite,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               if (_goals.isNotEmpty)
-                Text('${_goals.length} mục tiêu',
-                    style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+                Text(
+                  '${_goals.length} mục tiêu',
+                  style: const TextStyle(
+                    color: AppTheme.textGray,
+                    fontSize: 12,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -364,11 +468,21 @@ Future<void> _deleteGoal(int index) async {
               ),
               child: const Column(
                 children: [
-                  Icon(Icons.savings_outlined, color: AppTheme.textGray, size: 48),
+                  Icon(
+                    Icons.savings_outlined,
+                    color: AppTheme.textGray,
+                    size: 48,
+                  ),
                   SizedBox(height: 12),
-                  Text('Chưa có mục tiêu nào.', style: TextStyle(color: AppTheme.textGray)),
+                  Text(
+                    'Chưa có mục tiêu nào.',
+                    style: TextStyle(color: AppTheme.textGray),
+                  ),
                   SizedBox(height: 4),
-                  Text('Nhấn "+" để tạo mục tiêu tiết kiệm.', style: TextStyle(color: AppTheme.textGray, fontSize: 12)),
+                  Text(
+                    'Nhấn "+" để tạo mục tiêu tiết kiệm.',
+                    style: TextStyle(color: AppTheme.textGray, fontSize: 12),
+                  ),
                 ],
               ),
             )
@@ -377,7 +491,9 @@ Future<void> _deleteGoal(int index) async {
               final g = _goals[i];
               final target = ((g['target'] as num?) ?? 0).toDouble();
               final current = ((g['current'] as num?) ?? 0).toDouble();
-              final progress = target > 0 ? (current / target).clamp(0.0, 1.0) : 0.0;
+              final progress = target > 0
+                  ? (current / target).clamp(0.0, 1.0)
+                  : 0.0;
               final isComplete = progress >= 1.0;
               final pctText = '${(progress * 100).toStringAsFixed(0)}%';
               final goalId = g['id']?.toString() ?? '$i';
@@ -395,7 +511,10 @@ Future<void> _deleteGoal(int index) async {
                     ),
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 20),
-                    child: const Icon(Icons.delete_rounded, color: Colors.white),
+                    child: const Icon(
+                      Icons.delete_rounded,
+                      color: Colors.white,
+                    ),
                   ),
                   child: GestureDetector(
                     onTap: () => _editAmount(i),
@@ -413,11 +532,15 @@ Future<void> _deleteGoal(int index) async {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.mintAccent.withValues(alpha: 0.12),
+                                  color: AppTheme.mintAccent.withValues(
+                                    alpha: 0.12,
+                                  ),
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: Icon(
-                                  isComplete ? Icons.check_circle_rounded : Icons.savings_rounded,
+                                  isComplete
+                                      ? Icons.check_circle_rounded
+                                      : Icons.savings_rounded,
                                   color: AppTheme.mintAccent,
                                   size: 22,
                                 ),
@@ -429,12 +552,19 @@ Future<void> _deleteGoal(int index) async {
                                   children: [
                                     Text(
                                       g['title']?.toString() ?? '',
-                                      style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold),
+                                      style: const TextStyle(
+                                        color: AppTheme.textWhite,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
-                                    if ((g['deadline']?.toString() ?? '').isNotEmpty)
+                                    if ((g['deadline']?.toString() ?? '')
+                                        .isNotEmpty)
                                       Text(
                                         'Hạn: ${g['deadline']}',
-                                        style: const TextStyle(color: AppTheme.textGray, fontSize: 11),
+                                        style: const TextStyle(
+                                          color: AppTheme.textGray,
+                                          fontSize: 11,
+                                        ),
                                       ),
                                   ],
                                 ),
@@ -444,11 +574,21 @@ Future<void> _deleteGoal(int index) async {
                                 children: [
                                   Text(
                                     _fmtCur.format(current),
-                                    style: const TextStyle(color: AppTheme.mintAccent, fontWeight: FontWeight.bold, fontSize: 14),
+                                    style: const TextStyle(
+                                      color: AppTheme.mintAccent,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                   Text(
                                     pctText,
-                                    style: TextStyle(color: isComplete ? AppTheme.mintAccent : AppTheme.textGray, fontSize: 11, fontWeight: FontWeight.w600),
+                                    style: TextStyle(
+                                      color: isComplete
+                                          ? AppTheme.mintAccent
+                                          : AppTheme.textGray,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -462,20 +602,37 @@ Future<void> _deleteGoal(int index) async {
                                   borderRadius: BorderRadius.circular(4),
                                   child: LinearProgressIndicator(
                                     value: progress,
-                                    backgroundColor: AppTheme.textGray.withValues(alpha: 0.2),
-                                    valueColor: AlwaysStoppedAnimation(isComplete ? AppTheme.mintAccent : Colors.orangeAccent),
+                                    backgroundColor: AppTheme.textGray
+                                        .withValues(alpha: 0.2),
+                                    valueColor: AlwaysStoppedAnimation(
+                                      isComplete
+                                          ? AppTheme.mintAccent
+                                          : Colors.orangeAccent,
+                                    ),
                                     minHeight: 6,
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.mintAccent.withValues(alpha: 0.12),
+                                  color: AppTheme.mintAccent.withValues(
+                                    alpha: 0.12,
+                                  ),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Text('Cập nhật', style: TextStyle(color: AppTheme.mintAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                                child: const Text(
+                                  'Cập nhật',
+                                  style: TextStyle(
+                                    color: AppTheme.mintAccent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -483,8 +640,20 @@ Future<void> _deleteGoal(int index) async {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(_fmtCur.format(current), style: const TextStyle(color: AppTheme.textGray, fontSize: 11)),
-                              Text('/ ${_fmtCur.format(target)}', style: const TextStyle(color: AppTheme.textGray, fontSize: 11)),
+                              Text(
+                                _fmtCur.format(current),
+                                style: const TextStyle(
+                                  color: AppTheme.textGray,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              Text(
+                                '/ ${_fmtCur.format(target)}',
+                                style: const TextStyle(
+                                  color: AppTheme.textGray,
+                                  fontSize: 11,
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -498,24 +667,36 @@ Future<void> _deleteGoal(int index) async {
       ),
     );
   }
+
   Widget _buildSkeletonLoading() {
     return ListView(
       padding: const EdgeInsets.only(bottom: 32, top: 16),
-      physics: const NeverScrollableScrollPhysics(), 
+      physics: const NeverScrollableScrollPhysics(),
       children: [
-        _buildSkeletonBox(height: 180, margin: const EdgeInsets.symmetric(horizontal: 20)),
+        _buildSkeletonBox(
+          height: 180,
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+        ),
         const SizedBox(height: 24),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(4, (_) => Column(
-              children: [
-                _buildSkeletonBox(width: 64, height: 64, shape: BoxShape.rectangle, borderRadius: 18),
-                const SizedBox(height: 8),
-                _buildSkeletonBox(width: 40, height: 10, borderRadius: 4),
-              ],
-            )),
+            children: List.generate(
+              4,
+              (_) => Column(
+                children: [
+                  _buildSkeletonBox(
+                    width: 64,
+                    height: 64,
+                    shape: BoxShape.rectangle,
+                    borderRadius: 18,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildSkeletonBox(width: 40, height: 10, borderRadius: 4),
+                ],
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 32),
@@ -527,20 +708,23 @@ Future<void> _deleteGoal(int index) async {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
-            children: List.generate(3, (_) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildSkeletonBox(height: 90, borderRadius: 20),
-            )),
+            children: List.generate(
+              3,
+              (_) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildSkeletonBox(height: 90, borderRadius: 20),
+              ),
+            ),
           ),
-        )
+        ),
       ],
     );
   }
 
   Widget _buildSkeletonBox({
-    double? width, 
-    double? height, 
-    EdgeInsetsGeometry? margin, 
+    double? width,
+    double? height,
+    EdgeInsetsGeometry? margin,
     BoxShape shape = BoxShape.rectangle,
     double borderRadius = 20,
   }) {
@@ -549,9 +733,11 @@ Future<void> _deleteGoal(int index) async {
       height: height,
       margin: margin,
       decoration: BoxDecoration(
-        color: AppTheme.navyLight.withValues(alpha: 0.6), 
+        color: AppTheme.navyLight.withValues(alpha: 0.6),
         shape: shape,
-        borderRadius: shape == BoxShape.rectangle ? BorderRadius.circular(borderRadius) : null,
+        borderRadius: shape == BoxShape.rectangle
+            ? BorderRadius.circular(borderRadius)
+            : null,
       ),
     );
   }

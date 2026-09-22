@@ -106,10 +106,14 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
   static String _messageOf(Object error) {
     if (error is! DioException) return 'Đã xảy ra lỗi. Vui lòng thử lại.';
     final response = error.response;
-    if (response == null) return 'Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.';
+    if (response == null) {
+      return 'Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.';
+    }
 
     final data = response.data;
-    final serverMessage = (data is Map ? data['message'] : null)?.toString().trim();
+    final serverMessage = (data is Map ? data['message'] : null)
+        ?.toString()
+        .trim();
     if (serverMessage != null && serverMessage.isNotEmpty) return serverMessage;
 
     final status = response.statusCode;
@@ -135,7 +139,11 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
   Future<void> _save() async {
     if (!mounted) return;
     if (SessionService.currentUserId == null) {
-      await AppDialog.error(context, title: 'Phiên đăng nhập hết hạn', message: 'Vui lòng đăng nhập lại.');
+      await AppDialog.error(
+        context,
+        title: 'Phiên đăng nhập hết hạn',
+        message: 'Vui lòng đăng nhập lại.',
+      );
       return;
     }
     final id = _original.id;
@@ -149,7 +157,11 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
     }
     final amount = CurrencyHelper.parseAmount(_amountController.text);
     if (amount == null) {
-      await AppDialog.error(context, title: 'Số tiền không hợp lệ', message: 'Vui lòng nhập số tiền lớn hơn 0.');
+      await AppDialog.error(
+        context,
+        title: 'Số tiền không hợp lệ',
+        message: 'Vui lòng nhập số tiền lớn hơn 0.',
+      );
       return;
     }
     final changes = _changes(amount);
@@ -168,10 +180,18 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
     setState(() => _isSaving = false);
 
     if (failure != null) {
-      await AppDialog.error(context, title: 'Không lưu được giao dịch', message: failure);
+      await AppDialog.error(
+        context,
+        title: 'Không lưu được giao dịch',
+        message: failure,
+      );
       return;
     }
-    await AppDialog.success(context, title: 'Đã lưu thay đổi', message: 'Giao dịch đã được cập nhật.');
+    await AppDialog.success(
+      context,
+      title: 'Đã lưu thay đổi',
+      message: 'Giao dịch đã được cập nhật.',
+    );
     if (!mounted) return;
     Navigator.pop(context, true);
   }
@@ -180,7 +200,10 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sửa giao dịch', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Sửa giao dịch',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
           onPressed: () {
@@ -211,9 +234,14 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
               onSelected: (category) => setState(() => _category = category),
             ),
             if (_categoriesUnavailable)
-              const _Hint('Không tải được danh sách danh mục. Bạn vẫn có thể sửa số tiền và ghi chú.'),
+              const _Hint(
+                'Không tải được danh sách danh mục. Bạn vẫn có thể sửa số tiền và ghi chú.',
+              ),
             const SizedBox(height: 20),
-            CustomTextField(controller: _noteController, label: 'Ghi chú (tùy chọn)'),
+            CustomTextField(
+              controller: _noteController,
+              label: 'Ghi chú (tùy chọn)',
+            ),
             const SizedBox(height: 32),
             PrimaryButton(
               text: _isSaving ? 'Đang lưu...' : 'Lưu thay đổi',
@@ -257,12 +285,18 @@ class _Summary extends StatelessWidget {
               children: [
                 Text(
                   transaction.isExpense ? 'Khoản chi' : 'Khoản thu',
-                  style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   _displayDate.format(transaction.date),
-                  style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+                  style: const TextStyle(
+                    color: AppTheme.textGray,
+                    fontSize: 12,
+                  ),
                 ),
                 if (status != null) ...[
                   const SizedBox(height: 6),
@@ -306,7 +340,9 @@ class _CategoryChips extends StatelessWidget {
             selectedColor: AppTheme.mintAccent,
             backgroundColor: AppTheme.navyLight,
             side: BorderSide(color: AppTheme.textGray.withValues(alpha: 0.3)),
-            labelStyle: TextStyle(color: category == selected ? Colors.white : AppTheme.textWhite),
+            labelStyle: TextStyle(
+              color: category == selected ? Colors.white : AppTheme.textWhite,
+            ),
           ),
         if (isLoading)
           const SizedBox(
@@ -326,7 +362,10 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: const TextStyle(color: AppTheme.textGray, fontSize: 14));
+    return Text(
+      text,
+      style: const TextStyle(color: AppTheme.textGray, fontSize: 14),
+    );
   }
 }
 
@@ -339,7 +378,10 @@ class _Hint extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Text(text, style: const TextStyle(color: AppTheme.textGray, fontSize: 12)),
+      child: Text(
+        text,
+        style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+      ),
     );
   }
 }

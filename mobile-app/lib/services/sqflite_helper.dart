@@ -24,7 +24,8 @@ class SqfliteHelper {
   static const String budgetsTable = 'budgets';
 
   /// Column definitions of the sync state of a transaction (version 6). Rows that already exist count as synced.
-  static const String _clientIdColumnDef = '${TransactionModel.columnClientId} TEXT';
+  static const String _clientIdColumnDef =
+      '${TransactionModel.columnClientId} TEXT';
   static final String _syncStatusColumnDef =
       "${TransactionModel.columnSyncStatus} TEXT NOT NULL DEFAULT '${SyncStatus.synced.dbValue}'";
 
@@ -159,9 +160,7 @@ CREATE TABLE IF NOT EXISTS $budgetsTable (
           final columns = await db.rawQuery('PRAGMA table_info($usersTable)');
           final hasAddress = columns.any((c) => c['name'] == 'address');
           if (!hasAddress) {
-            await db.execute(
-              'ALTER TABLE $usersTable ADD COLUMN address TEXT',
-            );
+            await db.execute('ALTER TABLE $usersTable ADD COLUMN address TEXT');
           }
         }
 
@@ -196,8 +195,12 @@ CREATE TABLE IF NOT EXISTS $budgetsTable (
 
   Future<void> upsertUserWithId(UserModel user) async {
     final db = await database;
-    final existing = await db.query(usersTable,
-        where: 'id = ?', whereArgs: [user.id], limit: 1);
+    final existing = await db.query(
+      usersTable,
+      where: 'id = ?',
+      whereArgs: [user.id],
+      limit: 1,
+    );
     final map = user.toMap()..['id'] = user.id;
     if (existing.isNotEmpty) {
       final old = UserModel.fromMap(existing.first);
@@ -206,8 +209,11 @@ CREATE TABLE IF NOT EXISTS $budgetsTable (
       if (map['birthdate'] == null) map['birthdate'] = old.birthdate;
       if (map['address'] == null) map['address'] = old.address;
     }
-    await db.insert(usersTable, map,
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+      usersTable,
+      map,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<int> updateUser(UserModel user) async {
@@ -380,7 +386,12 @@ CREATE TABLE IF NOT EXISTS $budgetsTable (
 
   Future<int> updateBudget(BudgetModel budget) async {
     final db = await database;
-    return db.update(budgetsTable, budget.toMap(), where: 'id = ?', whereArgs: [budget.id]);
+    return db.update(
+      budgetsTable,
+      budget.toMap(),
+      where: 'id = ?',
+      whereArgs: [budget.id],
+    );
   }
 
   Future<List<BudgetModel>> getBudgetsByUserId(int userId) async {

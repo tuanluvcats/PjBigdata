@@ -1,5 +1,4 @@
 class DateHelper {
-
   static String formatTransactionDate(DateTime date) {
     final now = DateTime.now();
 

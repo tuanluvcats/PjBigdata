@@ -17,7 +17,11 @@ class BudgetAlertPresenter {
   static const String _warningTitle = 'Sắp chạm hạn mức ngân sách';
   static const String _exceededTitle = 'Đã vượt ngân sách';
 
-  static final NumberFormat _money = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ', decimalDigits: 0);
+  static final NumberFormat _money = NumberFormat.currency(
+    locale: 'vi_VN',
+    symbol: 'đ',
+    decimalDigits: 0,
+  );
 
   /// The last call in the queue; null while nobody has asked yet.
   static Future<void>? _previous;
@@ -38,7 +42,12 @@ class BudgetAlertPresenter {
     try {
       if (before != null) await before;
       if (!context.mounted) return;
-      await _show(context, userId, snapshot, tracker ?? BudgetAlertTracker.instance);
+      await _show(
+        context,
+        userId,
+        snapshot,
+        tracker ?? BudgetAlertTracker.instance,
+      );
     } catch (e) {
       debugPrint('Lỗi hiển thị cảnh báo ngân sách: $e');
     } finally {
@@ -75,10 +84,13 @@ class BudgetAlertPresenter {
     final budget = progress.budget;
     final name = budget.categoryName ?? BudgetModel.allCategoriesLabel;
     final period = BudgetPeriodType.label(budget.periodType).toLowerCase();
-    final amounts = '${_money.format(progress.spent)} / ${_money.format(progress.limit)}';
+    final amounts =
+        '${_money.format(progress.spent)} / ${_money.format(progress.limit)}';
     return switch (alert.level) {
-      BudgetAlertLevel.exceeded => '• $name (theo $period): đã vượt hạn mức — $amounts (${progress.percentLabel}%)',
-      _ => '• $name (theo $period): đã dùng ${progress.percentLabel}% hạn mức — $amounts',
+      BudgetAlertLevel.exceeded =>
+        '• $name (theo $period): đã vượt hạn mức — $amounts (${progress.percentLabel}%)',
+      _ =>
+        '• $name (theo $period): đã dùng ${progress.percentLabel}% hạn mức — $amounts',
     };
   }
 
