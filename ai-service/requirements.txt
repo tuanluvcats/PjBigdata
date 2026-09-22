@@ -14,3 +14,8 @@ pillow
 transformers
 sentencepiece
 scikit-learn
+
+# Testing
+pytest
+pytest-mock
+httpx
