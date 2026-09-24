@@ -1,4 +1,25 @@
 services:
+  # 0. DATABASE POSTGRESQL Local
+  db:
+    image: postgres:15-alpine
+    container_name: finance-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=finance_db
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d finance_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - finance-network
+
   # 1. CORE BACKEND (Spring Boot Java)
   core-api:
     build:
@@ -8,9 +29,9 @@ services:
     ports:
       - "8080:8080"
     env_file:           
-      - .env
+      - ${DEPLOY_ENV_FILE:-.env}
     environment:
-      - DB_URL=${DB_URL}
+      - DB_URL=jdbc:postgresql://db:5432/finance_db
       - DB_USERNAME=${DB_USERNAME}
       - DB_PASSWORD=${DB_PASSWORD}
       - SPRING_MAIL_HOST=smtp.gmail.com
@@ -24,10 +45,18 @@ services:
       - PAYMENT_WEBHOOK_URL=${PAYMENT_WEBHOOK_URL}
       - PAYMENT_VNPAY_SECRET=${VNPAY_SECRET}
       - PAYMENT_ZALOPAY_SECRET=${ZALOPAY_SECRET}
-      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
       - DATA_MINING_URL=http://data-mining-api:8000 
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     restart: unless-stopped
     depends_on:
+      db:
+        condition: service_healthy
       data-mining-api:
         condition: service_healthy
     deploy:
@@ -72,3 +101,6 @@ services:
 networks:
   finance-network:
     driver: bridge
+
+volumes:
+  postgres_data:

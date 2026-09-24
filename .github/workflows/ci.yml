@@ -64,3 +64,41 @@ jobs:
 
       - name: Run AI service tests
         run: cd ai-service && pip install -r requirements.txt && pytest test_main.py -v
+  deploy:
+    name: Deploy to AWS VPS
+    runs-on: ubuntu-latest
+    needs: [backend-ci, mobile-ci, ai-ci] 
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' 
+    steps:
+      - name: Deploy to AWS EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USERNAME }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            set -e
+
+            # 1. Kiểm tra tồn tại thư mục project và file cấu hình mật
+            cd ~/Deploy_Project || { echo "Lỗi: Thư mục Deploy_Project không tồn tại!"; exit 1; }
+            if [ ! -f .env ]; then echo "Lỗi: Không tìm thấy file .env chứa biến môi trường!"; exit 1; fi
+            
+            # 2. Xóa sạch rác local và ép đồng bộ nhánh main
+            git fetch --all
+            git checkout -f main
+            git reset --hard origin/main
+          
+            # 3. [TỐI ƯU TỐC ĐỘ] Build Image mới ngầm trong khi ứng dụng cũ vẫn chạy
+            echo "Bắt đầu build Image mới..."
+            sudo env DOCKER_BUILDKIT=1 docker compose build
+            
+            # 4. [MINIMAL DOWNTIME & NATIVE HEALTHCHECK] 
+            # Cờ --wait tự động khóa luồng cho đến khi mọi service khởi động thành công và passing healthcheck.
+            echo "Tráo đổi Container cũ sang mới và chờ hệ thống ổn định..."
+            sudo docker compose up -d --wait --remove-orphans
+            
+            # 5. Dọn dẹp Image rác và Build Cache ngầm để bảo vệ tuyệt đối dung lượng AWS
+            sudo docker image prune -f
+            sudo docker builder prune -f
+            
+            echo "TOÀN BỘ HỆ THỐNG ĐÃ LÊN LIVE THÀNH CÔNG!"

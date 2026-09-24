@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/config/app_config.dart';
+import 'package:finance_ai_app/cubits/language_cubit.dart';
+import 'package:finance_ai_app/cubits/theme_cubit.dart';
+import 'package:finance_ai_app/di/injection_container.dart';
+import 'package:finance_ai_app/l10n/app_localizations.dart';
+import 'package:finance_ai_app/models/app_language.dart';
+import 'package:finance_ai_app/repositories/settings_repository.dart';
 import 'package:finance_ai_app/screens/auth/login_page.dart';
 import 'package:finance_ai_app/screens/main_scaffold.dart';
 import 'package:finance_ai_app/services/session_service.dart';
@@ -13,14 +20,10 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('vi_VN', null);
+  await configureDependencies();
   await SessionService.init();
+  await initializeDateFormatting('vi_VN', null);
   RemoteApiHelper.instance.init();
-  final prefs = await SharedPreferences.getInstance();
-  final saved = prefs.getString('app_theme') ?? 'light';
-  AppTheme.themeNotifier.value = saved == 'dark'
-      ? ThemeMode.dark
-      : ThemeMode.light;
   runApp(const DonutPayApp());
 }
 
@@ -63,15 +66,12 @@ class _DonutPayAppState extends State<DonutPayApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: AppTheme.themeNotifier,
-      builder: (_, themeMode, _) => MaterialApp(
-        navigatorKey: navigatorKey,
-        title: 'Donut Pay',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: themeMode,
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (_) => ThemeCubit(sl<SettingsRepository>())),
+        BlocProvider(create: (_) => LanguageCubit(sl<SettingsRepository>())),
+      ],
+      child: _DonutPayMaterialApp(
         home: _loading
             ? Scaffold(
                 backgroundColor: AppTheme.navyDark,
@@ -83,6 +83,42 @@ class _DonutPayAppState extends State<DonutPayApp> {
             ? const MainScaffold()
             : const LoginScreen(),
       ),
+    );
+  }
+}
+
+class _DonutPayMaterialApp extends StatelessWidget {
+  const _DonutPayMaterialApp({required this.home});
+
+  final Widget home;
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocSelector<ThemeCubit, ThemeState, ThemeMode>(
+      selector: (state) => state.themeMode,
+      builder: (context, themeMode) =>
+          BlocSelector<LanguageCubit, LanguageState, AppLanguage>(
+            selector: (state) => state.language,
+            builder: (context, language) => MaterialApp(
+              navigatorKey: navigatorKey,
+              title: 'Donut Pay',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.lightTheme,
+              darkTheme: AppTheme.darkTheme,
+              themeMode: themeMode,
+              locale: language.locale,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              builder: (context, child) =>
+                  AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: AppTheme.overlayStyleFor(
+                      Theme.of(context).brightness,
+                    ),
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+              home: home,
+            ),
+          ),
     );
   }
 }

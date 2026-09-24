@@ -1,12 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  static final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(
-    ThemeMode.light,
-  );
-
   static const Color primary = Color(0xFF4A2545);
   static const Color primaryDark = Color(0xFF2E1729);
   static const Color gradientStart = Color(0xFF5C2E54);
@@ -35,6 +32,55 @@ class AppTheme {
   static const Color positive = Color(0xFF3DBE8B);
   static const Color negative = Color(0xFFE0457B);
 
+  static const Color _lightBorder = Color(0xFFE7E7EC);
+  static const Color _darkBackground = Color(0xFF141117);
+  static const Color _darkSurface = Color(0xFF1F1B24);
+  static const Color _darkTextPrimary = Color(0xFFF4F4F6);
+  static const Color _darkBorder = Color(0xFF3A3440);
+
+  static const SystemUiOverlayStyle lightOverlayStyle = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+    statusBarBrightness: Brightness.light,
+    systemNavigationBarColor: Colors.white,
+    systemNavigationBarIconBrightness: Brightness.dark,
+    systemNavigationBarDividerColor: Colors.transparent,
+  );
+
+  static const SystemUiOverlayStyle darkOverlayStyle = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    statusBarBrightness: Brightness.dark,
+    systemNavigationBarColor: _darkSurface,
+    systemNavigationBarIconBrightness: Brightness.light,
+    systemNavigationBarDividerColor: Colors.transparent,
+  );
+
+  static SystemUiOverlayStyle overlayStyleFor(Brightness brightness) =>
+      brightness == Brightness.dark ? darkOverlayStyle : lightOverlayStyle;
+
+  static const TextStyle _tabularFigures = TextStyle(
+    fontFeatures: [FontFeature.tabularFigures()],
+  );
+
+  static const TextTheme _tabularTypography = TextTheme(
+    displayLarge: _tabularFigures,
+    displayMedium: _tabularFigures,
+    displaySmall: _tabularFigures,
+    headlineLarge: _tabularFigures,
+    headlineMedium: _tabularFigures,
+    headlineSmall: _tabularFigures,
+    titleLarge: _tabularFigures,
+    titleMedium: _tabularFigures,
+    titleSmall: _tabularFigures,
+    bodyLarge: _tabularFigures,
+    bodyMedium: _tabularFigures,
+    bodySmall: _tabularFigures,
+    labelLarge: _tabularFigures,
+    labelMedium: _tabularFigures,
+    labelSmall: _tabularFigures,
+  );
+
   static List<BoxShadow> get softShadow => [
     BoxShadow(
       color: Colors.black.withValues(alpha: 0.06),
@@ -61,14 +107,46 @@ class AppTheme {
     colors: [cardDarkGradStart, cardDarkGradEnd],
   );
 
-  static ThemeData get lightTheme {
+  static final ThemeData lightTheme = _buildTheme(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: primary,
+      brightness: Brightness.light,
+    ).copyWith(primary: primary, secondary: primary, surface: Colors.white),
+    background: bgLight,
+    text: textPrimary,
+    secondaryText: textSecondary,
+    border: _lightBorder,
+    overlayStyle: lightOverlayStyle,
+    semanticColors: SemanticColors.light,
+  );
+
+  static final ThemeData darkTheme = _buildTheme(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: primary,
+      brightness: Brightness.dark,
+    ).copyWith(surface: _darkSurface),
+    background: _darkBackground,
+    text: _darkTextPrimary,
+    secondaryText: textSecondary,
+    border: _darkBorder,
+    overlayStyle: darkOverlayStyle,
+    semanticColors: SemanticColors.dark,
+  );
+
+  static ThemeData _buildTheme({
+    required ColorScheme colorScheme,
+    required Color background,
+    required Color text,
+    required Color secondaryText,
+    required Color border,
+    required SystemUiOverlayStyle overlayStyle,
+    required SemanticColors semanticColors,
+  }) {
     final base = ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primary,
-        brightness: Brightness.light,
-      ).copyWith(primary: primary, secondary: primary, surface: Colors.white),
-      scaffoldBackgroundColor: bgLight,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: background,
+      extensions: [semanticColors],
     );
     return base.copyWith(
       pageTransitionsTheme: const PageTransitionsTheme(
@@ -82,37 +160,39 @@ class AppTheme {
       ),
       textTheme: GoogleFonts.poppinsTextTheme(
         base.textTheme,
-      ).apply(bodyColor: textPrimary, displayColor: textPrimary),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: bgLight,
+      ).apply(bodyColor: text, displayColor: text).merge(_tabularTypography),
+      primaryTextTheme: base.primaryTextTheme.merge(_tabularTypography),
+      appBarTheme: AppBarTheme(
+        backgroundColor: background,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        iconTheme: IconThemeData(color: textPrimary),
+        systemOverlayStyle: overlayStyle,
+        iconTheme: IconThemeData(color: text),
         titleTextStyle: TextStyle(
-          color: textPrimary,
+          color: text,
           fontSize: 18,
           fontWeight: FontWeight.w600,
         ),
       ),
       cardTheme: CardThemeData(
-        color: Colors.white,
+        color: colorScheme.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         margin: EdgeInsets.zero,
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: Colors.white,
-        selectedItemColor: primary,
-        unselectedItemColor: textSecondary,
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: colorScheme.surface,
+        selectedItemColor: colorScheme.primary,
+        unselectedItemColor: secondaryText,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
         showUnselectedLabels: true,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: primary,
-          foregroundColor: Colors.white,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -123,18 +203,18 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: colorScheme.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE7E7EC)),
+          borderSide: BorderSide(color: border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE7E7EC)),
+          borderSide: BorderSide(color: border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: primary, width: 2),
+          borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -143,6 +223,51 @@ class AppTheme {
       ),
     );
   }
+}
 
-  static ThemeData get darkTheme => lightTheme;
+class SemanticColors extends ThemeExtension<SemanticColors> {
+  const SemanticColors({required this.incomeColor, required this.expenseColor});
+
+  static const SemanticColors light = SemanticColors(
+    incomeColor: AppTheme.positive,
+    expenseColor: AppTheme.negative,
+  );
+
+  static const SemanticColors dark = SemanticColors(
+    incomeColor: Color(0xFF5CD6A4),
+    expenseColor: Color(0xFFFF7AA2),
+  );
+
+  final Color incomeColor;
+  final Color expenseColor;
+
+  @override
+  SemanticColors copyWith({Color? incomeColor, Color? expenseColor}) {
+    return SemanticColors(
+      incomeColor: incomeColor ?? this.incomeColor,
+      expenseColor: expenseColor ?? this.expenseColor,
+    );
+  }
+
+  @override
+  SemanticColors lerp(
+    covariant ThemeExtension<SemanticColors>? other,
+    double t,
+  ) {
+    if (other is! SemanticColors) return this;
+    return SemanticColors(
+      incomeColor: Color.lerp(incomeColor, other.incomeColor, t)!,
+      expenseColor: Color.lerp(expenseColor, other.expenseColor, t)!,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SemanticColors &&
+          other.incomeColor == incomeColor &&
+          other.expenseColor == expenseColor;
+
+  @override
+  int get hashCode => Object.hash(incomeColor, expenseColor);
 }

@@ -1,15 +1,27 @@
+# Python Caches & Testing
 **/__pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+.coverage
 
+# Virtual Environments
 venv/
 env/
 .venv/
 
-# IDE
+# Security 
+.env
+*.pem
+*.key
+
+# IDEs & Git
 .idea/
 .vscode/
-
-# Git
 .git/
+.gitignore
+
+# Logs
+*.log
+logs/

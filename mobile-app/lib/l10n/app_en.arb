@@ -1,0 +1,43 @@
+{
+  "@@locale": "en",
+  "settings": "Settings",
+  "@settings": {
+    "description": "Title of the settings screen."
+  },
+  "language": "Language",
+  "@language": {
+    "description": "Label of the language setting."
+  },
+  "theme": "Theme",
+  "@theme": {
+    "description": "Label of the theme setting."
+  },
+  "dark": "Dark",
+  "@dark": {
+    "description": "Dark theme option."
+  },
+  "light": "Light",
+  "@light": {
+    "description": "Light theme option."
+  },
+  "system": "System",
+  "@system": {
+    "description": "Theme option that follows the device setting."
+  },
+  "systemThemeDescription": "Follows your device setting",
+  "@systemThemeDescription": {
+    "description": "Subtitle of the System theme option."
+  },
+  "english": "English",
+  "@english": {
+    "description": "Name of the English language, written in English in every locale so that its speakers can find it."
+  },
+  "vietnamese": "Tiếng Việt",
+  "@vietnamese": {
+    "description": "Name of the Vietnamese language, written in Vietnamese in every locale so that its speakers can find it."
+  },
+  "settingsSaveFailed": "Couldn't save this setting. The change applies until you close the app.",
+  "@settingsSaveFailed": {
+    "description": "Snackbar shown when a theme or language choice could not be written to the device."
+  }
+}

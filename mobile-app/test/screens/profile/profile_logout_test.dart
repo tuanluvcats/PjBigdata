@@ -13,6 +13,7 @@ import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/services/social_auth_service.dart';
 
+import '../../helpers/app_settings_scope.dart';
 import '../../helpers/fake_backend.dart';
 import '../../helpers/fake_local_store.dart';
 
@@ -75,7 +76,8 @@ void main() {
     addTearDown(tester.view.reset);
     addTearDown(() => AppConfig.mode = AppMode.full);
 
-    await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
+    // ProfilePage shows the theme and language choices, so it needs the cubits and localizations DonutPayApp provides.
+    await tester.pumpWidget(withAppSettings(const ProfilePage()));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Đăng xuất'), findsOneWidget);

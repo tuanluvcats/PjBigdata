@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:finance_ai_app/config/app_config.dart';
+import 'package:finance_ai_app/di/injection_container.dart';
+import 'package:finance_ai_app/repositories/settings_repository.dart';
+import 'package:finance_ai_app/services/language_interceptor.dart';
 import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/models/budget_model.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
@@ -18,12 +21,21 @@ class RemoteApiHelper {
   late final Dio _mlDio;
 
   bool _initialized = false;
+  bool _languageInterceptorAttached = false;
   final ValueNotifier<int> dataChangedNotifier = ValueNotifier(0);
 
   /// [httpClientAdapter] replaces the real network layer of the core API, of the AI service and of the token refresh; only
   /// tests pass it, the app calls init() with no arguments.
-  void init({HttpClientAdapter? httpClientAdapter}) {
-    if (_initialized) return;
+  /// [settingsRepository] is for tests as well: the app registers it in GetIt (configureDependencies) before init().
+  /// Calling init() again only attaches the language interceptor if the first call could not, never a second time.
+  void init({
+    HttpClientAdapter? httpClientAdapter,
+    SettingsRepository? settingsRepository,
+  }) {
+    if (_initialized) {
+      _attachLanguageInterceptor(settingsRepository);
+      return;
+    }
     _initialized = true;
 
     _dio = Dio(
@@ -110,6 +122,26 @@ class RemoteApiHelper {
       ),
     );
     if (httpClientAdapter != null) _mlDio.httpClientAdapter = httpClientAdapter;
+    _attachLanguageInterceptor(settingsRepository);
+  }
+
+  void _attachLanguageInterceptor(SettingsRepository? settingsRepository) {
+    if (_languageInterceptorAttached) return;
+    final settings =
+        settingsRepository ??
+        (sl.isRegistered<SettingsRepository>()
+            ? sl<SettingsRepository>()
+            : null);
+    if (settings == null) {
+      debugPrint(
+        'RemoteApiHelper: SettingsRepository is not registered, requests go out without Accept-Language.',
+      );
+      return;
+    }
+    final interceptor = LanguageInterceptor(settings);
+    _dio.interceptors.add(interceptor);
+    _mlDio.interceptors.add(interceptor);
+    _languageInterceptorAttached = true;
   }
 
   Future<Map<String, dynamic>> login(String email, String password) async {

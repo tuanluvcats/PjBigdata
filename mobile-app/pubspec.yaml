@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   # State & DI
   provider: ^6.1.2
   flutter_bloc: ^8.1.5
@@ -50,6 +52,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  generate: true
   assets:
     - assets/payment/
     - assets/images/

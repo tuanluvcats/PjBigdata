@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/cubits/language_cubit.dart';
+import 'package:finance_ai_app/cubits/theme_cubit.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/models/wallet_model.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/screens/budget/budget_screen.dart';
 import 'package:finance_ai_app/screens/profile/account_info_screen.dart';
 import 'package:finance_ai_app/screens/profile/savings_page.dart';
+import 'package:finance_ai_app/screens/profile/settings_screen.dart';
 import 'package:finance_ai_app/screens/linked/linked_services_page.dart';
 import 'package:finance_ai_app/screens/auth/login_page.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
@@ -101,6 +106,13 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -109,6 +121,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
     final name = _user?.fullName ?? 'Người dùng';
     final email = _user?.email ?? '';
+    final loc = context.loc;
+    final themeMode = context.select(
+      (ThemeCubit cubit) => cubit.state.themeMode,
+    );
+    final language = context.select(
+      (LanguageCubit cubit) => cubit.state.language,
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -192,10 +211,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       items: [
                         _SectionItem(
                           icon: Icons.language_rounded,
-                          label: 'Ngôn ngữ',
-                          subtitle: 'Tiếng Việt',
-                          onTap: () =>
-                              ProfileBottomSheets.showLanguagePicker(context),
+                          label: loc.language,
+                          subtitle: loc.languageLabel(language),
+                          onTap: _openSettings,
                         ),
                         _SectionItem(
                           icon: Icons.notifications_rounded,
@@ -215,15 +233,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                         _SectionItem(
                           icon: Icons.palette_rounded,
-                          label: 'Giao diện',
-                          subtitle:
-                              AppTheme.themeNotifier.value == ThemeMode.light
-                              ? 'Sáng'
-                              : 'Tối',
-                          onTap: () => ProfileBottomSheets.showThemePicker(
-                            context,
-                            () => setState(() {}),
-                          ),
+                          label: loc.theme,
+                          subtitle: loc.themeModeLabel(themeMode),
+                          onTap: _openSettings,
                         ),
                       ],
                     ),

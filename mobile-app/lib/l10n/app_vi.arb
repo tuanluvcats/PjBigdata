@@ -1,0 +1,13 @@
+{
+  "@@locale": "vi",
+  "settings": "Cài đặt",
+  "language": "Ngôn ngữ",
+  "theme": "Giao diện",
+  "dark": "Tối",
+  "light": "Sáng",
+  "system": "Theo hệ thống",
+  "systemThemeDescription": "Tự đổi theo cài đặt của thiết bị",
+  "english": "English",
+  "vietnamese": "Tiếng Việt",
+  "settingsSaveFailed": "Không lưu được cài đặt. Thay đổi chỉ có hiệu lực đến khi đóng ứng dụng."
+}
