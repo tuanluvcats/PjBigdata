@@ -71,11 +71,27 @@ void main() {
   });
 
   testWidgets(
-    'context.colors fails an assert in debug builds when the theme has no SemanticColors',
+    'context.colors falls back to the default palette of the theme brightness when the theme has no SemanticColors',
     (tester) async {
       await tester.pumpWidget(app(theme: ThemeData()));
+      expect(captured.colors, const SemanticColors.defaultLight());
 
-      expect(() => captured.colors, throwsAssertionError);
+      await tester.pumpWidget(
+        app(theme: ThemeData(brightness: Brightness.dark)),
+      );
+      await tester.pumpAndSettle();
+      expect(captured.colors, const SemanticColors.defaultDark());
     },
   );
+
+  testWidgets('context.colors gives the AppTheme palette in light and dark', (
+    tester,
+  ) async {
+    await tester.pumpWidget(app(theme: AppTheme.lightTheme));
+    expect(captured.colors, SemanticColors.light);
+
+    await tester.pumpWidget(app(theme: AppTheme.darkTheme));
+    await tester.pumpAndSettle();
+    expect(captured.colors, SemanticColors.dark);
+  });
 }

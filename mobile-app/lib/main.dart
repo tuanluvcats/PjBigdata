@@ -73,16 +73,25 @@ class _DonutPayAppState extends State<DonutPayApp> {
       ],
       child: _DonutPayMaterialApp(
         home: _loading
-            ? Scaffold(
-                backgroundColor: AppTheme.navyDark,
-                body: const Center(
-                  child: CircularProgressIndicator(color: AppTheme.mintAccent),
-                ),
-              )
+            ? const _StartupLoadingScreen()
             : _loggedIn
             ? const MainScaffold()
             : const LoginScreen(),
       ),
+    );
+  }
+}
+
+/// Shown while the session is checked. It is built under the MaterialApp, so it already has the saved light or dark
+/// theme; the spinner takes the primary colour from the theme.
+class _StartupLoadingScreen extends StatelessWidget {
+  const _StartupLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      body: const Center(child: CircularProgressIndicator()),
     );
   }
 }

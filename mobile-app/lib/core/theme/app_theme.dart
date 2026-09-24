@@ -32,17 +32,29 @@ class AppTheme {
   static const Color positive = Color(0xFF3DBE8B);
   static const Color negative = Color(0xFFE0457B);
 
+  static const Color _lightSurface = Colors.white;
   static const Color _lightBorder = Color(0xFFE7E7EC);
+
+  // Dark mode has its own tones and never falls back on the light-only colours above.
   static const Color _darkBackground = Color(0xFF141117);
   static const Color _darkSurface = Color(0xFF1F1B24);
   static const Color _darkTextPrimary = Color(0xFFF4F4F6);
-  static const Color _darkBorder = Color(0xFF3A3440);
+  static const Color _darkTextSecondary = Color(0xFFB3ADB9);
+  static const Color _darkBorder = Color(0xFF4A4351);
+  static const Color _darkPrimary = Color(0xFFF2B3E5);
+  static const Color _darkOnPrimary = Color(0xFF4C1F48);
+  static const Color _darkPrimaryContainer = Color(0xFF66355F);
+  static const Color _darkOnPrimaryContainer = Color(0xFFFFD7F4);
+  static const Color _darkPositive = Color(0xFF5CD6A4);
+  static const Color _darkNegative = Color(0xFFFF7AA2);
+  static const Color _darkOnNegative = Color(0xFF4A0A24);
+  static const Color _darkWarning = Color(0xFFFFB74D);
 
   static const SystemUiOverlayStyle lightOverlayStyle = SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
     statusBarBrightness: Brightness.light,
-    systemNavigationBarColor: Colors.white,
+    systemNavigationBarColor: _lightSurface,
     systemNavigationBarIconBrightness: Brightness.dark,
     systemNavigationBarDividerColor: Colors.transparent,
   );
@@ -107,28 +119,60 @@ class AppTheme {
     colors: [cardDarkGradStart, cardDarkGradEnd],
   );
 
+  /// Theme-aware version of [card]. The soft shadow is what separates a white card from the light background; a dark
+  /// card stands out through its lighter surface instead, since a black shadow does not show on a dark background.
+  static BoxDecoration cardDecoration(ColorScheme colors) => BoxDecoration(
+    color: colors.surface,
+    borderRadius: BorderRadius.circular(20),
+    boxShadow: colors.brightness == Brightness.light ? softShadow : null,
+  );
+
+  // The light roles repeat the legacy constants, so a screen moved from AppTheme.* to the colour scheme looks the same
+  // in light mode.
   static final ThemeData lightTheme = _buildTheme(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: primary,
-      brightness: Brightness.light,
-    ).copyWith(primary: primary, secondary: primary, surface: Colors.white),
+    colorScheme:
+        ColorScheme.fromSeed(
+          seedColor: primary,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: primary,
+          onPrimary: Colors.white,
+          primaryContainer: mintLight,
+          onPrimaryContainer: primary,
+          secondary: primary,
+          onSecondary: Colors.white,
+          surface: _lightSurface,
+          onSurface: textPrimary,
+          onSurfaceVariant: textSecondary,
+          outlineVariant: _lightBorder,
+          error: dangerColor,
+          onError: Colors.white,
+        ),
     background: bgLight,
-    text: textPrimary,
-    secondaryText: textSecondary,
-    border: _lightBorder,
     overlayStyle: lightOverlayStyle,
     semanticColors: SemanticColors.light,
   );
 
   static final ThemeData darkTheme = _buildTheme(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: primary,
-      brightness: Brightness.dark,
-    ).copyWith(surface: _darkSurface),
+    colorScheme:
+        ColorScheme.fromSeed(
+          seedColor: primary,
+          brightness: Brightness.dark,
+        ).copyWith(
+          primary: _darkPrimary,
+          onPrimary: _darkOnPrimary,
+          primaryContainer: _darkPrimaryContainer,
+          onPrimaryContainer: _darkOnPrimaryContainer,
+          secondary: _darkPrimary,
+          onSecondary: _darkOnPrimary,
+          surface: _darkSurface,
+          onSurface: _darkTextPrimary,
+          onSurfaceVariant: _darkTextSecondary,
+          outlineVariant: _darkBorder,
+          error: _darkNegative,
+          onError: _darkOnNegative,
+        ),
     background: _darkBackground,
-    text: _darkTextPrimary,
-    secondaryText: textSecondary,
-    border: _darkBorder,
     overlayStyle: darkOverlayStyle,
     semanticColors: SemanticColors.dark,
   );
@@ -136,9 +180,6 @@ class AppTheme {
   static ThemeData _buildTheme({
     required ColorScheme colorScheme,
     required Color background,
-    required Color text,
-    required Color secondaryText,
-    required Color border,
     required SystemUiOverlayStyle overlayStyle,
     required SemanticColors semanticColors,
   }) {
@@ -148,6 +189,8 @@ class AppTheme {
       scaffoldBackgroundColor: background,
       extensions: [semanticColors],
     );
+    final text = colorScheme.onSurface;
+    final border = BorderSide(color: colorScheme.outlineVariant);
     return base.copyWith(
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
@@ -162,6 +205,7 @@ class AppTheme {
         base.textTheme,
       ).apply(bodyColor: text, displayColor: text).merge(_tabularTypography),
       primaryTextTheme: base.primaryTextTheme.merge(_tabularTypography),
+      iconTheme: IconThemeData(color: text),
       appBarTheme: AppBarTheme(
         backgroundColor: background,
         surfaceTintColor: Colors.transparent,
@@ -181,10 +225,35 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         margin: EdgeInsets.zero,
       ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: colorScheme.surface,
+        modalBackgroundColor: colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
+      dividerTheme: DividerThemeData(
+        color: colorScheme.outlineVariant,
+        thickness: 1,
+      ),
+      bottomAppBarTheme: BottomAppBarThemeData(
+        color: colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
+      ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: colorScheme.surface,
         selectedItemColor: colorScheme.primary,
-        unselectedItemColor: secondaryText,
+        unselectedItemColor: colorScheme.onSurfaceVariant,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
         showUnselectedLabels: true,
@@ -206,11 +275,11 @@ class AppTheme {
         fillColor: colorScheme.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: border),
+          borderSide: border,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: border),
+          borderSide: border,
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -225,27 +294,49 @@ class AppTheme {
   }
 }
 
+/// Fintech colours that the [ColorScheme] has no role for. Errors use [ColorScheme.error].
 class SemanticColors extends ThemeExtension<SemanticColors> {
-  const SemanticColors({required this.incomeColor, required this.expenseColor});
+  /// [successColor] and [warningColor] default to the light palette, so that two-colour instances keep compiling.
+  const SemanticColors({
+    required this.incomeColor,
+    required this.expenseColor,
+    this.successColor = AppTheme.positive,
+    this.warningColor = AppTheme.warningColor,
+  });
 
-  static const SemanticColors light = SemanticColors(
-    incomeColor: AppTheme.positive,
-    expenseColor: AppTheme.negative,
-  );
+  const SemanticColors.defaultLight()
+    : incomeColor = AppTheme.positive,
+      expenseColor = AppTheme.negative,
+      successColor = AppTheme.positive,
+      warningColor = AppTheme.warningColor;
 
-  static const SemanticColors dark = SemanticColors(
-    incomeColor: Color(0xFF5CD6A4),
-    expenseColor: Color(0xFFFF7AA2),
-  );
+  const SemanticColors.defaultDark()
+    : incomeColor = AppTheme._darkPositive,
+      expenseColor = AppTheme._darkNegative,
+      successColor = AppTheme._darkPositive,
+      warningColor = AppTheme._darkWarning;
+
+  static const SemanticColors light = SemanticColors.defaultLight();
+
+  static const SemanticColors dark = SemanticColors.defaultDark();
 
   final Color incomeColor;
   final Color expenseColor;
+  final Color successColor;
+  final Color warningColor;
 
   @override
-  SemanticColors copyWith({Color? incomeColor, Color? expenseColor}) {
+  SemanticColors copyWith({
+    Color? incomeColor,
+    Color? expenseColor,
+    Color? successColor,
+    Color? warningColor,
+  }) {
     return SemanticColors(
       incomeColor: incomeColor ?? this.incomeColor,
       expenseColor: expenseColor ?? this.expenseColor,
+      successColor: successColor ?? this.successColor,
+      warningColor: warningColor ?? this.warningColor,
     );
   }
 
@@ -258,6 +349,8 @@ class SemanticColors extends ThemeExtension<SemanticColors> {
     return SemanticColors(
       incomeColor: Color.lerp(incomeColor, other.incomeColor, t)!,
       expenseColor: Color.lerp(expenseColor, other.expenseColor, t)!,
+      successColor: Color.lerp(successColor, other.successColor, t)!,
+      warningColor: Color.lerp(warningColor, other.warningColor, t)!,
     );
   }
 
@@ -266,8 +359,11 @@ class SemanticColors extends ThemeExtension<SemanticColors> {
       identical(this, other) ||
       other is SemanticColors &&
           other.incomeColor == incomeColor &&
-          other.expenseColor == expenseColor;
+          other.expenseColor == expenseColor &&
+          other.successColor == successColor &&
+          other.warningColor == warningColor;
 
   @override
-  int get hashCode => Object.hash(incomeColor, expenseColor);
+  int get hashCode =>
+      Object.hash(incomeColor, expenseColor, successColor, warningColor);
 }

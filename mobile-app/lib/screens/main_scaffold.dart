@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/screens/dashboard/dashboard_page.dart';
 import 'package:finance_ai_app/screens/ledger/ledger_page.dart';
 import 'package:finance_ai_app/screens/ai/ai_tab_page.dart';
@@ -39,11 +38,11 @@ class _MainScaffoldState extends State<MainScaffold> {
   void _showScannerOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppTheme.navyLight,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
+        final colors = Theme.of(context).colorScheme;
         return Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -53,31 +52,27 @@ class _MainScaffoldState extends State<MainScaffold> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppTheme.textGray.withValues(alpha: 0.3),
+                  color: colors.onSurfaceVariant.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
               const SizedBox(height: 24),
               const Text(
                 'Quét hóa đơn bằng AI',
-                style: TextStyle(
-                  color: AppTheme.textWhite,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _buildScanOptionBtn(
-                    context,
+                    colors,
                     Icons.document_scanner_rounded,
                     'Quét AI',
                     () => _startAutoScanner(context),
                   ),
                   _buildScanOptionBtn(
-                    context,
+                    colors,
                     Icons.photo_library_rounded,
                     'Từ thư viện',
                     () => _pickImageAndScan(context, ImageSource.gallery),
@@ -153,7 +148,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Widget _buildScanOptionBtn(
-    BuildContext context,
+    ColorScheme colors,
     IconData icon,
     String label,
     VoidCallback onTap,
@@ -166,16 +161,13 @@ class _MainScaffoldState extends State<MainScaffold> {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.10),
+              color: colors.primary.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: AppTheme.primary, size: 32),
+            child: Icon(icon, color: colors.primary, size: 32),
           ),
           const SizedBox(height: 12),
-          Text(
-            label,
-            style: const TextStyle(color: AppTheme.textWhite, fontSize: 14),
-          ),
+          Text(label, style: const TextStyle(fontSize: 14)),
         ],
       ),
     );
@@ -183,6 +175,7 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _pages),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
@@ -191,8 +184,9 @@ class _MainScaffoldState extends State<MainScaffold> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           boxShadow: [
+            // Brand glow around the scan button, not an elevation shadow: it takes the primary of each theme.
             BoxShadow(
-              color: AppTheme.primary.withValues(alpha: 0.35),
+              color: colors.primary.withValues(alpha: 0.35),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -200,31 +194,24 @@ class _MainScaffoldState extends State<MainScaffold> {
         ),
         child: FloatingActionButton(
           onPressed: () => _showScannerOptions(context),
-          backgroundColor: AppTheme.primary,
           elevation: 0,
-          child: const Icon(
-            Icons.document_scanner_rounded,
-            color: Colors.white,
-            size: 28,
-          ),
+          child: const Icon(Icons.document_scanner_rounded, size: 28),
         ),
       ),
       bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
         shape: const CircularNotchedRectangle(),
         notchMargin: 8,
         elevation: 0,
-        shadowColor: Colors.black12,
         child: SizedBox(
           height: 60,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(Icons.home_rounded, 'Trang chủ', 0),
-              _buildNavItem(Icons.bar_chart_rounded, 'Thống kê', 1),
+              _buildNavItem(colors, Icons.home_rounded, 'Trang chủ', 0),
+              _buildNavItem(colors, Icons.bar_chart_rounded, 'Thống kê', 1),
               const SizedBox(width: 48),
-              _buildNavItem(Icons.auto_awesome_rounded, 'AI', 2),
-              _buildNavItem(Icons.person_rounded, 'Cá nhân', 3),
+              _buildNavItem(colors, Icons.auto_awesome_rounded, 'AI', 2),
+              _buildNavItem(colors, Icons.person_rounded, 'Cá nhân', 3),
             ],
           ),
         ),
@@ -232,9 +219,14 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
-  Widget _buildNavItem(IconData icon, String label, int index) {
+  Widget _buildNavItem(
+    ColorScheme colors,
+    IconData icon,
+    String label,
+    int index,
+  ) {
     final isSelected = _currentIndex == index;
-    final color = isSelected ? AppTheme.primary : AppTheme.textGray;
+    final color = isSelected ? colors.primary : colors.onSurfaceVariant;
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),

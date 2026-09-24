@@ -72,8 +72,8 @@ void main() {
       ]) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
-      expect(tileOf(tester, 'Theo hệ thống').selected, isTrue);
-      expect(tileOf(tester, 'Sáng').selected, isFalse);
+      expect(tileOf(tester, 'Theo hệ thống').selected, isFalse);
+      expect(tileOf(tester, 'Sáng').selected, isTrue);
       expect(tileOf(tester, 'Tối').selected, isFalse);
       expect(tileOf(tester, 'Tiếng Việt').selected, isTrue);
       expect(tileOf(tester, 'English').selected, isFalse);
@@ -106,6 +106,15 @@ void main() {
         tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
         addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
         await openSettings(tester);
+        expect(
+          screenBrightness(tester),
+          Brightness.light,
+          reason:
+              'with nothing saved the app starts light, whatever the device uses',
+        );
+
+        await tester.tap(find.text('Theo hệ thống'));
+        await tester.pumpAndSettle();
         expect(screenBrightness(tester), Brightness.dark);
 
         await tester.tap(find.text('Sáng'));

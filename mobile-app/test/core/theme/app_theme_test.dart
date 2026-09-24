@@ -1,7 +1,33 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_ai_app/core/theme/app_theme.dart';
+
+/// WCAG contrast ratio of two opaque colours: 4.5 is the minimum for body text.
+double _contrast(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+}
+
+Color? _textColor(WidgetTester tester, String text) => tester
+    .widget<RichText>(
+      find.descendant(of: find.text(text), matching: find.byType(RichText)),
+    )
+    .text
+    .style
+    ?.color;
+
+Color? _materialColor(WidgetTester tester, Type owner) => tester
+    .widget<Material>(
+      find
+          .descendant(of: find.byType(owner), matching: find.byType(Material))
+          .first,
+    )
+    .color;
 
 List<TextStyle?> _allStyles(TextTheme theme) => [
   theme.displayLarge,
@@ -74,6 +100,305 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the light colour scheme repeats the legacy colours, so migrated screens look the same in light mode',
+    (tester) async {
+      final light = AppTheme.lightTheme;
+      final scheme = light.colorScheme;
+
+      expect(scheme.primary, AppTheme.mintAccent);
+      expect(scheme.onPrimary, AppTheme.navyDark);
+      expect(scheme.primaryContainer, AppTheme.mintLight);
+      expect(scheme.onPrimaryContainer, AppTheme.primary);
+      expect(scheme.surface, AppTheme.navyLight);
+      expect(scheme.onSurface, AppTheme.textWhite);
+      expect(scheme.onSurfaceVariant, AppTheme.textGray);
+      expect(scheme.error, AppTheme.dangerColor);
+      expect(scheme.outlineVariant, const Color(0xFFE7E7EC));
+      expect(light.scaffoldBackgroundColor, AppTheme.bgLight);
+      expect(
+        AppTheme.cardDecoration(scheme),
+        AppTheme.card,
+        reason: 'same white card with the same soft shadow',
+      );
+    },
+  );
+
+  testWidgets(
+    'the dark theme has its own palette instead of the light-only legacy colours',
+    (tester) async {
+      final dark = AppTheme.darkTheme;
+      final scheme = dark.colorScheme;
+      // Compared role by role: the dark surface may share its value with the old dark *text* colour.
+      const lightBackgrounds = [
+        AppTheme.navyDark,
+        AppTheme.navyLight,
+        AppTheme.bgLight,
+        AppTheme.mintLight,
+      ];
+      const lightForegrounds = [
+        AppTheme.textWhite,
+        AppTheme.textGray,
+        AppTheme.mintAccent,
+        AppTheme.dangerColor,
+        AppTheme.positive,
+      ];
+
+      for (final background in [
+        dark.scaffoldBackgroundColor,
+        scheme.surface,
+        scheme.primaryContainer,
+      ]) {
+        expect(lightBackgrounds, isNot(contains(background)));
+      }
+      for (final foreground in [
+        scheme.onSurface,
+        scheme.onSurfaceVariant,
+        scheme.primary,
+        scheme.outlineVariant,
+        scheme.error,
+      ]) {
+        expect(lightForegrounds, isNot(contains(foreground)));
+      }
+      expect(AppTheme.cardDecoration(scheme).color, scheme.surface);
+      expect(
+        AppTheme.cardDecoration(scheme).boxShadow,
+        isNull,
+        reason: 'a black shadow does not show on a dark background',
+      );
+    },
+  );
+
+  testWidgets(
+    'dark text, accents and money colours reach 4.5:1 on every dark background',
+    (tester) async {
+      final dark = AppTheme.darkTheme;
+      final scheme = dark.colorScheme;
+      final colors = dark.extension<SemanticColors>()!;
+      final backgrounds = {
+        'surface': scheme.surface,
+        'scaffold': dark.scaffoldBackgroundColor,
+        'surfaceContainerHighest': scheme.surfaceContainerHighest,
+      };
+      final foregrounds = {
+        'onSurface': scheme.onSurface,
+        'onSurfaceVariant': scheme.onSurfaceVariant,
+        'primary': scheme.primary,
+        'error': scheme.error,
+        'income': colors.incomeColor,
+        'expense': colors.expenseColor,
+        'success': colors.successColor,
+        'warning': colors.warningColor,
+      };
+
+      for (final background in backgrounds.entries) {
+        for (final foreground in foregrounds.entries) {
+          expect(
+            _contrast(foreground.value, background.value),
+            greaterThanOrEqualTo(4.5),
+            reason: '${foreground.key} on ${background.key}',
+          );
+        }
+      }
+      expect(
+        _contrast(scheme.onSurface, scheme.surface),
+        greaterThanOrEqualTo(7),
+      );
+    },
+  );
+
+  testWidgets(
+    'every on-colour is readable on its own background in both themes',
+    (tester) async {
+      for (final theme in [AppTheme.lightTheme, AppTheme.darkTheme]) {
+        final scheme = theme.colorScheme;
+        final pairs = {
+          'onSurface/surface': (scheme.onSurface, scheme.surface),
+          'onSurface/scaffold': (
+            scheme.onSurface,
+            theme.scaffoldBackgroundColor,
+          ),
+          'primary/surface': (scheme.primary, scheme.surface),
+          'onPrimary/primary': (scheme.onPrimary, scheme.primary),
+          'onPrimaryContainer/primaryContainer': (
+            scheme.onPrimaryContainer,
+            scheme.primaryContainer,
+          ),
+          'onInverseSurface/inverseSurface (snack bars)': (
+            scheme.onInverseSurface,
+            scheme.inverseSurface,
+          ),
+        };
+        for (final pair in pairs.entries) {
+          expect(
+            _contrast(pair.value.$1, pair.value.$2),
+            greaterThanOrEqualTo(4.5),
+            reason: '${theme.brightness.name} ${pair.key}',
+          );
+        }
+      }
+      final dark = AppTheme.darkTheme.colorScheme;
+      expect(_contrast(dark.onError, dark.error), greaterThanOrEqualTo(4.5));
+    },
+  );
+
+  testWidgets(
+    'dialogs, sheets, dividers, inputs, bars and icons take their colours from the colour scheme',
+    (tester) async {
+      for (final theme in [AppTheme.lightTheme, AppTheme.darkTheme]) {
+        final scheme = theme.colorScheme;
+        final mode = theme.brightness.name;
+
+        expect(theme.dialogTheme.backgroundColor, scheme.surface, reason: mode);
+        expect(theme.bottomSheetTheme.backgroundColor, scheme.surface);
+        expect(theme.bottomSheetTheme.modalBackgroundColor, scheme.surface);
+        expect(theme.dividerTheme.color, scheme.outlineVariant, reason: mode);
+        expect(theme.bottomAppBarTheme.color, scheme.surface, reason: mode);
+        expect(theme.floatingActionButtonTheme.backgroundColor, scheme.primary);
+        expect(
+          theme.floatingActionButtonTheme.foregroundColor,
+          scheme.onPrimary,
+        );
+        expect(theme.cardTheme.color, scheme.surface, reason: mode);
+        expect(theme.iconTheme.color, scheme.onSurface, reason: mode);
+        expect(theme.textTheme.bodyMedium?.color, scheme.onSurface);
+        expect(theme.textTheme.headlineSmall?.color, scheme.onSurface);
+        expect(
+          theme.appBarTheme.backgroundColor,
+          theme.scaffoldBackgroundColor,
+        );
+        expect(theme.appBarTheme.iconTheme?.color, scheme.onSurface);
+        expect(theme.appBarTheme.titleTextStyle?.color, scheme.onSurface);
+        expect(
+          theme.bottomNavigationBarTheme.selectedItemColor,
+          scheme.primary,
+        );
+        expect(
+          theme.bottomNavigationBarTheme.unselectedItemColor,
+          scheme.onSurfaceVariant,
+        );
+        final inputs = theme.inputDecorationTheme;
+        expect(inputs.fillColor, scheme.surface, reason: mode);
+        expect(inputs.enabledBorder?.borderSide.color, scheme.outlineVariant);
+        expect(inputs.focusedBorder?.borderSide.color, scheme.primary);
+        expect(
+          AppTheme.overlayStyleFor(theme.brightness).systemNavigationBarColor,
+          scheme.surface,
+          reason: 'the system navigation bar continues the bottom bar',
+        );
+      }
+    },
+  );
+
+  group('rendered with AppTheme', () {
+    late BuildContext bodyContext;
+
+    Future<ThemeData> pumpApp(WidgetTester tester, ThemeMode mode) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: mode,
+          home: Scaffold(
+            appBar: AppBar(title: const Text('Tiêu đề')),
+            body: Builder(
+              builder: (context) {
+                bodyContext = context;
+                return const Column(
+                  children: [
+                    Text('Nội dung'),
+                    Divider(),
+                    TextField(decoration: InputDecoration(hintText: 'Gợi ý')),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      return Theme.of(bodyContext);
+    }
+
+    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+      testWidgets(
+        '${mode.name}: the page, its text, a divider, a hint and the system bars follow the theme',
+        (tester) async {
+          final theme = await pumpApp(tester, mode);
+          final scheme = theme.colorScheme;
+          final divider =
+              tester
+                      .widget<Container>(
+                        find.descendant(
+                          of: find.byType(Divider),
+                          matching: find.byType(Container),
+                        ),
+                      )
+                      .decoration!
+                  as BoxDecoration;
+
+          expect(
+            theme.brightness,
+            mode == ThemeMode.dark ? Brightness.dark : Brightness.light,
+          );
+          expect(
+            _materialColor(tester, Scaffold),
+            theme.scaffoldBackgroundColor,
+          );
+          expect(_textColor(tester, 'Tiêu đề'), scheme.onSurface);
+          expect(_textColor(tester, 'Nội dung'), scheme.onSurface);
+          expect(_textColor(tester, 'Gợi ý'), scheme.onSurfaceVariant);
+          expect(
+            (divider.border! as Border).bottom.color,
+            scheme.outlineVariant,
+          );
+          expect(
+            SystemChrome.latestStyle,
+            AppTheme.overlayStyleFor(theme.brightness),
+            reason: 'the app bar applies the system bars of its theme',
+          );
+        },
+      );
+
+      testWidgets(
+        '${mode.name}: dialogs, bottom sheets and snack bars are readable',
+        (tester) async {
+          final scheme = (await pumpApp(tester, mode)).colorScheme;
+
+          showDialog<void>(
+            context: bodyContext,
+            builder: (_) => const AlertDialog(
+              title: Text('Hộp thoại'),
+              content: Text('Nội dung hộp thoại'),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(_materialColor(tester, AlertDialog), scheme.surface);
+          expect(_textColor(tester, 'Hộp thoại'), scheme.onSurface);
+          expect(_textColor(tester, 'Nội dung hộp thoại'), scheme.onSurface);
+          Navigator.of(bodyContext).pop();
+          await tester.pumpAndSettle();
+
+          showModalBottomSheet<void>(
+            context: bodyContext,
+            builder: (_) => const Text('Trang dưới'),
+          );
+          await tester.pumpAndSettle();
+          expect(_materialColor(tester, BottomSheet), scheme.surface);
+          expect(_textColor(tester, 'Trang dưới'), scheme.onSurface);
+          Navigator.of(bodyContext).pop();
+          await tester.pumpAndSettle();
+
+          ScaffoldMessenger.of(
+            bodyContext,
+          ).showSnackBar(const SnackBar(content: Text('Thông báo')));
+          await tester.pumpAndSettle();
+          expect(_materialColor(tester, SnackBar), scheme.inverseSurface);
+          expect(_textColor(tester, 'Thông báo'), scheme.onInverseSurface);
+        },
+      );
+    }
+  });
+
   testWidgets('every text style uses tabular figures so that amounts line up', (
     tester,
   ) async {
@@ -126,5 +451,59 @@ void main() {
         colors.hashCode,
       );
     });
+
+    test(
+      'defaultLight keeps the colours the screens used, and both defaults are the palettes the themes register',
+      () {
+        const light = SemanticColors.defaultLight();
+
+        expect(light.incomeColor, AppTheme.positive);
+        expect(light.expenseColor, AppTheme.negative);
+        expect(light.successColor, AppTheme.positive);
+        expect(light.warningColor, AppTheme.warningColor);
+        expect(light, SemanticColors.light);
+        expect(const SemanticColors.defaultDark(), SemanticColors.dark);
+        expect(SemanticColors.dark, isNot(SemanticColors.light));
+      },
+    );
+
+    test(
+      'a two-colour instance gets the light success and warning colours',
+      () {
+        expect(colors.successColor, AppTheme.positive);
+        expect(colors.warningColor, AppTheme.warningColor);
+      },
+    );
+
+    test(
+      'copyWith, lerp and equality cover the success and warning colours',
+      () {
+        const blue = Color(0xFF0000FF);
+        const full = SemanticColors(
+          incomeColor: green,
+          expenseColor: red,
+          successColor: green,
+          warningColor: red,
+        );
+
+        expect(
+          full.copyWith(successColor: blue, warningColor: blue),
+          const SemanticColors(
+            incomeColor: green,
+            expenseColor: red,
+            successColor: blue,
+            warningColor: blue,
+          ),
+        );
+        final half = full.lerp(
+          full.copyWith(successColor: blue, warningColor: blue),
+          0.5,
+        );
+        expect(half.successColor, Color.lerp(green, blue, 0.5));
+        expect(half.warningColor, Color.lerp(red, blue, 0.5));
+        expect(full.copyWith(successColor: blue), isNot(full));
+        expect(full.copyWith(warningColor: blue), isNot(full));
+      },
+    );
   });
 }
