@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
-
 class PrimaryButton extends StatelessWidget {
   final String text;
   final VoidCallback? onPressed;
@@ -13,10 +11,9 @@ class PrimaryButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       height: 56,
+      // The colours come from the theme's elevatedButtonTheme: primary with the onPrimary label.
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.mintAccent,
-          foregroundColor: AppTheme.navyDark,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),

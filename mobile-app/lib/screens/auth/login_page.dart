@@ -144,88 +144,88 @@ class _LoginScreenState extends State<LoginScreen> {
     final emailCtrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Quên mật khẩu',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontWeight: FontWeight.bold,
+      builder: (ctx) {
+        final colors = Theme.of(ctx).colorScheme;
+        // The dialog takes the surface colour of the theme, the field its text and hint colours.
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Nhập email để nhận liên kết đặt lại mật khẩu.',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              style: const TextStyle(color: AppTheme.textPrimary),
-              decoration: InputDecoration(
-                hintText: 'email@example.com',
-                hintStyle: const TextStyle(color: AppTheme.textSecondary),
-                filled: true,
-                fillColor: AppTheme.bgLight,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+          title: const Text(
+            'Quên mật khẩu',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Nhập email để nhận liên kết đặt lại mật khẩu.',
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  hintText: 'email@example.com',
+                  filled: true,
+                  fillColor: colors.surfaceContainer,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Hủy',
-              style: TextStyle(color: AppTheme.textSecondary),
-            ),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Hủy',
+                style: TextStyle(color: colors.onSurfaceVariant),
               ),
             ),
-            onPressed: () async {
-              final email = emailCtrl.text.trim();
-              if (email.isEmpty) return;
-              Navigator.pop(ctx);
-              if (AppConfig.isFull) {
-                try {
-                  await RemoteApiHelper.instance.forgotPassword(email: email);
-                  if (!context.mounted) return;
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () async {
+                final email = emailCtrl.text.trim();
+                if (email.isEmpty) return;
+                Navigator.pop(ctx);
+                if (AppConfig.isFull) {
+                  try {
+                    await RemoteApiHelper.instance.forgotPassword(email: email);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Đã gửi email đặt lại mật khẩu!'),
+                      ),
+                    );
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+                  }
+                } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Đã gửi email đặt lại mật khẩu!'),
+                      content: Text(
+                        'Tính năng chỉ khả dụng khi kết nối server.',
+                      ),
                     ),
                   );
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
                 }
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Tính năng chỉ khả dụng khi kết nối server.'),
-                  ),
-                );
-              }
-            },
-            child: const Text('Gửi'),
-          ),
-        ],
-      ),
+              },
+              child: const Text('Gửi'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -281,8 +281,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    // The Scaffold takes the page colour of the theme; labels and fields keep the text colours it gives.
     return Scaffold(
-      backgroundColor: AppTheme.bgLight,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16),
@@ -290,22 +292,22 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 16),
-              Center(child: _logoPlaceholder()),
+              Center(child: _logoPlaceholder(colors)),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Ledgermind App',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AppTheme.primary,
+                  color: colors.primary,
                   fontSize: 26,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Quản lý tài chính thông minh',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
               ),
               const SizedBox(height: 36),
               _label('Email'),
@@ -325,7 +327,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     _obscure
                         ? Icons.visibility_off_outlined
                         : Icons.visibility_outlined,
-                    color: AppTheme.textGray,
+                    color: colors.onSurfaceVariant,
                     size: 20,
                   ),
                   onPressed: () => setState(() => _obscure = !_obscure),
@@ -337,11 +339,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(
                     width: 24,
                     height: 24,
+                    // Checked, the box takes the primary colour of the theme.
                     child: Checkbox(
                       value: _rememberMe,
                       onChanged: (v) =>
                           setState(() => _rememberMe = v ?? false),
-                      activeColor: AppTheme.primary,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(6),
@@ -349,20 +351,20 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Ghi nhớ đăng nhập',
                     style: TextStyle(
-                      color: AppTheme.textSecondary,
+                      color: colors.onSurfaceVariant,
                       fontSize: 13,
                     ),
                   ),
                   const Spacer(),
                   GestureDetector(
                     onTap: () => _showForgotPassword(context),
-                    child: const Text(
+                    child: Text(
                       'Quên mật khẩu?',
                       style: TextStyle(
-                        color: AppTheme.primary,
+                        color: colors.primary,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -391,17 +393,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     MaterialPageRoute(builder: (_) => const RegisterScreen()),
                   ),
                   child: RichText(
-                    text: const TextSpan(
+                    text: TextSpan(
                       text: 'Chưa có tài khoản? ',
                       style: TextStyle(
-                        color: AppTheme.textSecondary,
+                        color: colors.onSurfaceVariant,
                         fontSize: 14,
                       ),
                       children: [
                         TextSpan(
                           text: 'Đăng ký ngay',
                           style: TextStyle(
-                            color: AppTheme.primary,
+                            color: colors.primary,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -411,12 +413,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              _orDivider('Hoặc đăng nhập với'),
+              _orDivider(colors, 'Hoặc đăng nhập với'),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   _socialBtn(
+                    colors,
                     Icons.g_mobiledata_rounded,
                     const Color(0xFFDB4437),
                     () => _handleSocial(
@@ -425,6 +428,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(width: 20),
                   _socialBtn(
+                    colors,
                     Icons.facebook,
                     const Color(0xFF1877F2),
                     () => _handleSocial(
@@ -441,21 +445,21 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _logoPlaceholder() {
+  Widget _logoPlaceholder(ColorScheme colors) {
     return Container(
       width: 88,
       height: 88,
       decoration: BoxDecoration(
-        color: AppTheme.mintLight,
+        color: colors.primaryContainer,
         borderRadius: BorderRadius.circular(24),
       ),
       clipBehavior: Clip.antiAlias,
       child: Image.asset(
         'assets/images/logo.png',
         fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => const Icon(
+        errorBuilder: (_, _, _) => Icon(
           Icons.add_photo_alternate_outlined,
-          color: AppTheme.primary,
+          color: colors.onPrimaryContainer,
           size: 36,
         ),
       ),
@@ -469,16 +473,13 @@ class _LoginScreenState extends State<LoginScreen> {
         alignment: Alignment.centerLeft,
         child: Text(
           text,
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),
       ),
     );
   }
 
+  /// Text, hint, fill and outline come from the theme: onSurface, onSurfaceVariant and the inputDecorationTheme.
   Widget _input({
     required TextEditingController controller,
     required String hint,
@@ -490,36 +491,34 @@ class _LoginScreenState extends State<LoginScreen> {
       controller: controller,
       obscureText: obscure,
       keyboardType: keyboardType,
-      style: const TextStyle(color: AppTheme.textPrimary),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: AppTheme.textGray),
-        suffixIcon: suffix,
-      ),
+      decoration: InputDecoration(hintText: hint, suffixIcon: suffix),
     );
   }
 
-  Widget _orDivider(String text) {
+  Widget _orDivider(ColorScheme colors, String text) {
+    final line = colors.onSurfaceVariant.withValues(alpha: 0.3);
     return Row(
       children: [
-        Expanded(
-          child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
-        ),
+        Expanded(child: Divider(color: line)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
             text,
-            style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
           ),
         ),
-        Expanded(
-          child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
-        ),
+        Expanded(child: Divider(color: line)),
       ],
     );
   }
 
-  Widget _socialBtn(IconData icon, Color color, VoidCallback onTap) {
+  /// A round button on the surface colour; the brand colour of the icon stays at 3:1 or more on it in both themes.
+  Widget _socialBtn(
+    ColorScheme colors,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return InkWell(
       onTap: _isSocialLoading ? null : onTap,
       borderRadius: BorderRadius.circular(30),
@@ -527,9 +526,9 @@ class _LoginScreenState extends State<LoginScreen> {
         width: 56,
         height: 56,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.surface,
           shape: BoxShape.circle,
-          boxShadow: AppTheme.softShadow,
+          boxShadow: AppTheme.softShadowFor(colors),
         ),
         child: Icon(icon, color: color, size: 30),
       ),

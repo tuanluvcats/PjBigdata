@@ -687,7 +687,11 @@ void main() {
     (tester) async {
       await show(tester, const LedgerPage(), ThemeMode.light);
 
-      expect(boxDecoration(tester, find.text('Thu nhập')), AppTheme.card);
+      // Same white card; since batch 5 cards have no shadow (see AppTheme.cardDecoration).
+      final statCard = boxDecoration(tester, find.text('Thu nhập'));
+      expect(statCard.color, AppTheme.card.color);
+      expect(statCard.borderRadius, AppTheme.card.borderRadius);
+      expect(statCard.boxShadow, isNull);
       expect(paintedColor(tester, find.text('Thu nhập')), AppTheme.textGray);
       expect(
         paintedColor(tester, find.text('+ ${_money.format(5000000)}')),

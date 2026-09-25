@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
+
+/// What a dialog tells the user; its accent colour is read from the theme when the dialog is built.
+enum _Tone { success, error, warning, info }
 
 class AppDialog {
   static Future<void> success(
@@ -11,7 +14,7 @@ class AppDialog {
   }) => _show(
     context,
     icon: Icons.check_circle_rounded,
-    accent: AppTheme.positive,
+    tone: _Tone.success,
     title: title,
     message: message,
     confirmText: buttonText,
@@ -25,7 +28,7 @@ class AppDialog {
   }) => _show(
     context,
     icon: Icons.error_rounded,
-    accent: AppTheme.dangerColor,
+    tone: _Tone.error,
     title: title,
     message: message,
     confirmText: buttonText,
@@ -39,7 +42,7 @@ class AppDialog {
   }) => _show(
     context,
     icon: Icons.warning_amber_rounded,
-    accent: AppTheme.warningColor,
+    tone: _Tone.warning,
     title: title,
     message: message,
     confirmText: buttonText,
@@ -53,7 +56,7 @@ class AppDialog {
   }) => _show(
     context,
     icon: Icons.info_rounded,
-    accent: AppTheme.primary,
+    tone: _Tone.info,
     title: title,
     message: message,
     confirmText: buttonText,
@@ -70,7 +73,7 @@ class AppDialog {
     final r = await _show(
       context,
       icon: danger ? Icons.warning_amber_rounded : Icons.help_outline_rounded,
-      accent: danger ? AppTheme.dangerColor : AppTheme.primary,
+      tone: danger ? _Tone.error : _Tone.info,
       title: title,
       message: message,
       confirmText: confirmText,
@@ -79,10 +82,17 @@ class AppDialog {
     return r == true;
   }
 
+  static Color _accentOf(_Tone tone, ThemeData theme) => switch (tone) {
+    _Tone.success => theme.semanticColors.successColor,
+    _Tone.error => theme.colorScheme.error,
+    _Tone.warning => theme.semanticColors.warningColor,
+    _Tone.info => theme.colorScheme.primary,
+  };
+
   static Future<bool?> _show(
     BuildContext context, {
     required IconData icon,
-    required Color accent,
+    required _Tone tone,
     required String title,
     String? message,
     required String confirmText,
@@ -104,90 +114,96 @@ class AppDialog {
           ),
         );
       },
-      pageBuilder: (ctx, _, _) => Dialog(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
+      pageBuilder: (ctx, _, _) {
+        final theme = Theme.of(ctx);
+        final colors = theme.colorScheme;
+        final accent = _accentOf(tone, theme);
+        // The dialog takes the surface colour of the theme; the title keeps the text colour it gives.
+        return Dialog(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: accent, size: 34),
                 ),
-                child: Icon(icon, color: accent, size: 34),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (message != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 18),
                 Text(
-                  message,
+                  title,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 14,
-                    height: 1.4,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ],
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  if (cancelText != null) ...[
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.textSecondary,
-                          side: BorderSide(
-                            color: AppTheme.textGray.withValues(alpha: 0.4),
+                if (message != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    if (cancelText != null) ...[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: colors.onSurfaceVariant,
+                            side: BorderSide(color: colors.outlineVariant),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
+                          child: Text(cancelText),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        // The label takes the dialog's surface colour: white in light mode as before, dark on the
+                        // light accents of the dark theme, which keeps them at 4.5:1 or more against that surface.
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: accent,
+                          foregroundColor: colors.surface,
+                          elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        child: Text(cancelText),
+                        child: Text(confirmText),
                       ),
                     ),
-                    const SizedBox(width: 12),
                   ],
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: accent,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: Text(confirmText),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

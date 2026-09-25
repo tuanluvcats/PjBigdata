@@ -248,7 +248,11 @@ void main() {
       await start(tester, ThemeMode.light);
       await tester.pumpAndSettle();
 
-      expect(boxDecoration(tester, find.text('Ăn uống')), AppTheme.card);
+      // Same white card; since batch 5 cards have no shadow (see AppTheme.cardDecoration).
+      final card = boxDecoration(tester, find.text('Ăn uống'));
+      expect(card.color, AppTheme.card.color);
+      expect(card.borderRadius, AppTheme.card.borderRadius);
+      expect(card.boxShadow, isNull);
       expect(paintedColor(tester, find.text('Ăn uống')), AppTheme.textWhite);
       expect(
         paintedColor(tester, find.textContaining('Tháng ·')),

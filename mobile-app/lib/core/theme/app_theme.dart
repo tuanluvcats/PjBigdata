@@ -129,12 +129,11 @@ class AppTheme {
     colors: [cardDarkGradStart, cardDarkGradEnd],
   );
 
-  /// Theme-aware version of [card]. The soft shadow is what separates a white card from the light background; a dark
-  /// card stands out through its lighter surface instead, since a black shadow does not show on a dark background.
+  /// Theme-aware version of [card], without its shadow: the surface colour alone sets the card apart, white on the
+  /// grey light background and lighter than the dark one. Every caller is a plain Container, so the colour stays.
   static BoxDecoration cardDecoration(ColorScheme colors) => BoxDecoration(
     color: colors.surface,
     borderRadius: BorderRadius.circular(20),
-    boxShadow: softShadowFor(colors),
   );
 
   // The light roles repeat the legacy constants, so a screen moved from AppTheme.* to the colour scheme looks the same

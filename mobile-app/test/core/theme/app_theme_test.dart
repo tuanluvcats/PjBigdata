@@ -117,10 +117,34 @@ void main() {
       expect(scheme.outlineVariant, const Color(0xFFE7E7EC));
       expect(light.scaffoldBackgroundColor, AppTheme.bgLight);
       expect(
-        AppTheme.cardDecoration(scheme),
-        AppTheme.card,
-        reason: 'same white card with the same soft shadow',
+        AppTheme.cardDecoration(scheme).color,
+        AppTheme.card.color,
+        reason: 'the same white card',
       );
+      expect(
+        AppTheme.cardDecoration(scheme).borderRadius,
+        AppTheme.card.borderRadius,
+      );
+    },
+  );
+
+  testWidgets(
+    'cards carry no shadow in either theme: their surface colour sets them apart from the page',
+    (tester) async {
+      for (final theme in [AppTheme.lightTheme, AppTheme.darkTheme]) {
+        final scheme = theme.colorScheme;
+        final card = AppTheme.cardDecoration(scheme);
+        final mode = theme.brightness.name;
+
+        expect(card.boxShadow, isNull, reason: mode);
+        expect(card.color, scheme.surface, reason: mode);
+        expect(card.borderRadius, BorderRadius.circular(20), reason: mode);
+        expect(
+          scheme.surface.computeLuminance(),
+          greaterThan(theme.scaffoldBackgroundColor.computeLuminance()),
+          reason: '$mode: the card is lighter than the page behind it',
+        );
+      }
     },
   );
 

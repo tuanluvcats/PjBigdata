@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/core/utils/password_policy.dart';
 import 'package:finance_ai_app/config/app_config.dart';
@@ -200,8 +201,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final semantic = theme.semanticColors;
+    // The Scaffold and its app bar take the page colour of the theme; labels and fields keep the text colours it gives.
     return Scaffold(
-      backgroundColor: AppTheme.bgLight,
       appBar: AppBar(title: const Text('Đăng ký')),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -212,16 +216,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 8),
               const Text(
                 'Tạo tài khoản',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Điền thông tin để bắt đầu quản lý tài chính.',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
               ),
               const SizedBox(height: 28),
               _label('Họ và tên'),
@@ -253,7 +253,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     _obscure
                         ? Icons.visibility_off_outlined
                         : Icons.visibility_outlined,
-                    color: AppTheme.textGray,
+                    color: colors.onSurfaceVariant,
                     size: 20,
                   ),
                   onPressed: () => setState(() => _obscure = !_obscure),
@@ -263,18 +263,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeInOut,
                 child: _passwordFocus.hasFocus
-                    ? _buildChecklist()
+                    ? _buildChecklist(colors, semantic)
                     : const SizedBox(width: double.infinity),
               ),
               const SizedBox(height: 28),
               PrimaryButton(text: 'Tạo tài khoản', onPressed: _handleRegister),
               const SizedBox(height: 24),
-              _orDivider('Hoặc đăng ký với'),
+              _orDivider(colors, 'Hoặc đăng ký với'),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   _socialBtn(
+                    colors,
                     Icons.g_mobiledata_rounded,
                     const Color(0xFFDB4437),
                     () => _handleSocial(
@@ -283,6 +284,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   const SizedBox(width: 20),
                   _socialBtn(
+                    colors,
                     Icons.facebook,
                     const Color(0xFF1877F2),
                     () => _handleSocial(
@@ -292,25 +294,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ],
               ),
               const SizedBox(height: 24),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Text.rich(
                   TextSpan(
                     text: 'Bằng việc đăng ký, bạn đồng ý với ',
-                    style: TextStyle(color: AppTheme.textGray, fontSize: 12),
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
                     children: [
                       TextSpan(
                         text: 'Điều khoản',
                         style: TextStyle(
-                          color: AppTheme.primary,
+                          color: colors.primary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      TextSpan(text: ' và '),
+                      const TextSpan(text: ' và '),
                       TextSpan(
                         text: 'Điều kiện sử dụng',
                         style: TextStyle(
-                          color: AppTheme.primary,
+                          color: colors.primary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -327,51 +332,67 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildChecklist() {
+  /// The password rules on a theme card (surface colour, no shadow).
+  Widget _buildChecklist(ColorScheme colors, SemanticColors semantic) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(16),
-      decoration: AppTheme.card,
+      decoration: AppTheme.cardDecoration(colors),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'Mật khẩu cần:',
-            style: TextStyle(
-              color: AppTheme.textPrimary,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           _conditionRow(
+            colors,
+            semantic,
             'Ít nhất ${PasswordPolicy.minLength} ký tự',
             _hasMinLength,
           ),
-          _conditionRow('Chữ viết hoa (A-Z)', _hasUppercase),
-          _conditionRow('Chữ viết thường (a-z)', _hasLowercase),
-          _conditionRow('Chữ số (0-9)', _hasNumber),
-          _conditionRow('Ký tự đặc biệt (!@#...)', _hasSpecialChar),
+          _conditionRow(colors, semantic, 'Chữ viết hoa (A-Z)', _hasUppercase),
+          _conditionRow(
+            colors,
+            semantic,
+            'Chữ viết thường (a-z)',
+            _hasLowercase,
+          ),
+          _conditionRow(colors, semantic, 'Chữ số (0-9)', _hasNumber),
+          _conditionRow(
+            colors,
+            semantic,
+            'Ký tự đặc biệt (!@#...)',
+            _hasSpecialChar,
+          ),
         ],
       ),
     );
   }
 
-  Widget _conditionRow(String text, bool isMet) {
+  /// A met rule shows the success colour and the text colour; an open one stays in the secondary text colour.
+  Widget _conditionRow(
+    ColorScheme colors,
+    SemanticColors semantic,
+    String text,
+    bool isMet,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         children: [
           Icon(
             isMet ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: isMet ? AppTheme.positive : AppTheme.textGray,
+            color: isMet ? semantic.successColor : colors.onSurfaceVariant,
             size: 20,
           ),
           const SizedBox(width: 8),
           Text(
             text,
             style: TextStyle(
-              color: isMet ? AppTheme.textPrimary : AppTheme.textGray,
+              color: isMet ? colors.onSurface : colors.onSurfaceVariant,
               fontSize: 13,
             ),
           ),
@@ -387,16 +408,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         alignment: Alignment.centerLeft,
         child: Text(
           text,
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),
       ),
     );
   }
 
+  /// Text, hint, fill and outline come from the theme: onSurface, onSurfaceVariant and the inputDecorationTheme.
   Widget _input({
     required TextEditingController controller,
     required String hint,
@@ -412,36 +430,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
       obscureText: obscure,
       keyboardType: keyboardType,
       onChanged: onChanged,
-      style: const TextStyle(color: AppTheme.textPrimary),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: AppTheme.textGray),
-        suffixIcon: suffix,
-      ),
+      decoration: InputDecoration(hintText: hint, suffixIcon: suffix),
     );
   }
 
-  Widget _orDivider(String text) {
+  Widget _orDivider(ColorScheme colors, String text) {
+    final line = colors.onSurfaceVariant.withValues(alpha: 0.3);
     return Row(
       children: [
-        Expanded(
-          child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
-        ),
+        Expanded(child: Divider(color: line)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
             text,
-            style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
           ),
         ),
-        Expanded(
-          child: Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
-        ),
+        Expanded(child: Divider(color: line)),
       ],
     );
   }
 
-  Widget _socialBtn(IconData icon, Color color, VoidCallback onTap) {
+  /// A round button on the surface colour; the brand colour of the icon stays at 3:1 or more on it in both themes.
+  Widget _socialBtn(
+    ColorScheme colors,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(30),
@@ -449,9 +465,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         width: 56,
         height: 56,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.surface,
           shape: BoxShape.circle,
-          boxShadow: AppTheme.softShadow,
+          boxShadow: AppTheme.softShadowFor(colors),
         ),
         child: Icon(icon, color: color, size: 30),
       ),

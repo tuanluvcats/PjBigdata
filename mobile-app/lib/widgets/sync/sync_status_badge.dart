@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
 import 'package:finance_ai_app/models/sync_status.dart';
 
 /// Small pill telling whether the server has a transaction that was created on this device. Callers show it only for a
@@ -10,10 +10,10 @@ class SyncStatusBadge extends StatelessWidget {
 
   const SyncStatusBadge({super.key, required this.status});
 
-  Color get _color => switch (status) {
-    SyncStatus.pending => AppTheme.warningColor,
-    SyncStatus.synced => AppTheme.positive,
-    SyncStatus.error => AppTheme.dangerColor,
+  Color _colorOf(ThemeData theme) => switch (status) {
+    SyncStatus.pending => theme.semanticColors.warningColor,
+    SyncStatus.synced => theme.semanticColors.successColor,
+    SyncStatus.error => theme.colorScheme.error,
   };
 
   IconData get _icon => switch (status) {
@@ -24,7 +24,7 @@ class SyncStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _color;
+    final color = _colorOf(Theme.of(context));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
