@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/budget_model.dart';
 import 'package:finance_ai_app/models/budget_progress.dart';
@@ -19,11 +20,12 @@ class BudgetProgressCard extends StatelessWidget {
 
   const BudgetProgressCard({super.key, required this.progress});
 
-  Color get _accent => switch (progress.level) {
-    BudgetAlertLevel.exceeded => AppTheme.dangerColor,
-    BudgetAlertLevel.warning => AppTheme.warningColor,
-    BudgetAlertLevel.none => AppTheme.primary,
-  };
+  Color _accentOf(ColorScheme colors, SemanticColors semantic) =>
+      switch (progress.level) {
+        BudgetAlertLevel.exceeded => colors.error,
+        BudgetAlertLevel.warning => semantic.warningColor,
+        BudgetAlertLevel.none => colors.primary,
+      };
 
   String get _status {
     final left = _money.format(progress.remaining);
@@ -37,11 +39,16 @@ class BudgetProgressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final semantic = theme.semanticColors;
+    final accent = _accentOf(colors, semantic);
+    final detailStyle = TextStyle(color: colors.onSurfaceVariant, fontSize: 12);
     final budget = progress.budget;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration: AppTheme.card,
+      decoration: AppTheme.cardDecoration(colors),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -52,31 +59,28 @@ class BudgetProgressCard extends StatelessWidget {
                 child: Text(
                   budget.categoryName ?? BudgetModel.allCategoriesLabel,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(width: 8),
               Text(
                 '${_money.format(progress.spent)} / ${_money.format(progress.limit)}',
-                style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+                style: detailStyle,
               ),
             ],
           ),
           const SizedBox(height: 4),
           Text(
             '${BudgetPeriodType.label(budget.periodType)} · ${_day.format(budget.start)} – ${_day.format(budget.end)}',
-            style: const TextStyle(color: AppTheme.textGray, fontSize: 11),
+            style: detailStyle.copyWith(fontSize: 11),
           ),
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: progress.barValue,
-              backgroundColor: AppTheme.textGray.withValues(alpha: 0.2),
-              valueColor: AlwaysStoppedAnimation(_accent),
+              backgroundColor: colors.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation(accent),
               minHeight: 8,
             ),
           ),
@@ -89,8 +93,8 @@ class BudgetProgressCard extends StatelessWidget {
                   _status,
                   style: TextStyle(
                     color: progress.level == BudgetAlertLevel.none
-                        ? AppTheme.positive
-                        : _accent,
+                        ? semantic.successColor
+                        : accent,
                     fontSize: 12,
                   ),
                 ),
@@ -98,7 +102,7 @@ class BudgetProgressCard extends StatelessWidget {
               Text(
                 '${progress.percentLabel}%',
                 style: TextStyle(
-                  color: _accent,
+                  color: accent,
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),

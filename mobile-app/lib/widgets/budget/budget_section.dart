@@ -35,6 +35,7 @@ class BudgetSection extends StatelessWidget {
     final limit = maxItems;
     final shown = limit == null ? progresses : progresses.take(limit).toList();
     final hidden = progresses.length - shown.length;
+    final colors = Theme.of(context).colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -45,17 +46,12 @@ class BudgetSection extends StatelessWidget {
             Text(
               'Ngân sách',
               style: TextStyle(
-                color: AppTheme.textPrimary,
                 fontWeight: FontWeight.bold,
                 fontSize: titleSize,
               ),
             ),
             if (onManage != null)
-              TextButton(
-                onPressed: onManage,
-                style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-                child: const Text('Quản lý'),
-              ),
+              TextButton(onPressed: onManage, child: const Text('Quản lý')),
           ],
         ),
         const SizedBox(height: 12),
@@ -74,7 +70,7 @@ class BudgetSection extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
                 '+$hidden ngân sách khác',
-                style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
               ),
             ),
         ],
@@ -90,11 +86,12 @@ class _Note extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: AppTheme.card,
-      child: Text(text, style: const TextStyle(color: AppTheme.textGray)),
+      decoration: AppTheme.cardDecoration(colors),
+      child: Text(text, style: TextStyle(color: colors.onSurfaceVariant)),
     );
   }
 }

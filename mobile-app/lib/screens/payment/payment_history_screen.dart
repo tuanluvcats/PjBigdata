@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
 
@@ -79,38 +80,37 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
     return DateFormat('dd/MM/yyyy HH:mm').format(d);
   }
 
-  Color _statusColor(String s) {
+  /// Success, failure and pending take the status colours of the theme; a cancelled order is neutral.
+  Color _statusColor(ColorScheme colors, SemanticColors semantic, String s) {
     switch (s) {
       case 'SUCCESS':
-        return Colors.green;
+        return semantic.successColor;
       case 'FAILED':
-        return Colors.redAccent;
+        return colors.error;
       case 'CANCELLED':
-        return Colors.grey;
+        return colors.onSurfaceVariant;
       default:
-        return Colors.orangeAccent;
+        return semantic.warningColor;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final semantic = theme.semanticColors;
     return Scaffold(
-      backgroundColor: AppTheme.navyDark,
+      backgroundColor: colors.surface,
+      // The back arrow takes the app bar theme.
       appBar: AppBar(
-        backgroundColor: AppTheme.navyDark,
+        backgroundColor: colors.surface,
         title: const Text(
           'Lịch sử nạp/rút',
-          style: TextStyle(
-            color: AppTheme.textWhite,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        iconTheme: const IconThemeData(color: AppTheme.textWhite),
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.mintAccent),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? Center(
               child: Padding(
@@ -118,15 +118,15 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                 child: Text(
                   _error!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppTheme.textGray),
+                  style: TextStyle(color: colors.onSurfaceVariant),
                 ),
               ),
             )
           : _orders.isEmpty
-          ? const Center(
+          ? Center(
               child: Text(
                 'Chưa có giao dịch nạp/rút.',
-                style: TextStyle(color: AppTheme.textGray),
+                style: TextStyle(color: colors.onSurfaceVariant),
               ),
             )
           : RefreshIndicator(
@@ -135,21 +135,30 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                 padding: const EdgeInsets.all(16),
                 itemCount: _orders.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (_, i) => _tile(_orders[i]),
+                // The tokens come from this build: nothing looks up the theme per row.
+                itemBuilder: (_, i) => _tile(colors, semantic, _orders[i]),
               ),
             ),
     );
   }
 
-  Widget _tile(Map<String, dynamic> o) {
+  /// A deposit is money coming in (the income colour), a withdrawal money going out (the warning colour).
+  Widget _tile(
+    ColorScheme colors,
+    SemanticColors semantic,
+    Map<String, dynamic> o,
+  ) {
     final type = '${o['type']}';
     final status = '${o['status']}';
     final isDeposit = type == 'DEPOSIT';
     final canCancel = status == 'PENDING';
+    final flow = isDeposit ? semantic.incomeColor : semantic.warningColor;
+    final statusColor = _statusColor(colors, semantic, status);
+    final detailStyle = TextStyle(color: colors.onSurfaceVariant, fontSize: 11);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -161,24 +170,18 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                 isDeposit
                     ? Icons.arrow_downward_rounded
                     : Icons.arrow_upward_rounded,
-                color: isDeposit ? Colors.green : Colors.orangeAccent,
+                color: flow,
                 size: 20,
               ),
               const SizedBox(width: 8),
               Text(
                 isDeposit ? 'Nạp tiền' : 'Rút tiền',
-                style: const TextStyle(
-                  color: AppTheme.textWhite,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const Spacer(),
               Text(
                 '${isDeposit ? '+' : '-'}${_fmt(o['amount'])}',
-                style: TextStyle(
-                  color: isDeposit ? Colors.green : Colors.orangeAccent,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(color: flow, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -187,53 +190,38 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
             children: [
               Text(
                 '${o['provider'] ?? ''}',
-                style: const TextStyle(
-                  color: AppTheme.mintAccent,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: colors.primary, fontSize: 12),
               ),
               const SizedBox(width: 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: _statusColor(status).withValues(alpha: 0.18),
+                  color: statusColor.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   status,
                   style: TextStyle(
-                    color: _statusColor(status),
+                    color: statusColor,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
               const Spacer(),
-              Text(
-                _date(o['createdAt']),
-                style: const TextStyle(color: AppTheme.textGray, fontSize: 11),
-              ),
+              Text(_date(o['createdAt']), style: detailStyle),
             ],
           ),
-          Text(
-            'Mã: ${o['orderCode']}',
-            style: const TextStyle(color: AppTheme.textGray, fontSize: 11),
-          ),
+          Text('Mã: ${o['orderCode']}', style: detailStyle),
           if (canCancel) ...[
             const SizedBox(height: 6),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
                 onPressed: () => _cancel('${o['orderCode']}'),
-                icon: const Icon(
-                  Icons.close_rounded,
-                  size: 16,
-                  color: Colors.redAccent,
-                ),
-                label: const Text(
-                  'Hủy đơn',
-                  style: TextStyle(color: Colors.redAccent),
-                ),
+                style: TextButton.styleFrom(foregroundColor: colors.error),
+                icon: const Icon(Icons.close_rounded, size: 16),
+                label: const Text('Hủy đơn'),
               ),
             ),
           ],

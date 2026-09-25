@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:finance_ai_app/core/constants/transaction_categories.dart';
-import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
 import 'package:finance_ai_app/models/sync_status.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
@@ -92,11 +92,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
     final picked = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: AppTheme.navyLight,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
+        final colors = Theme.of(context).colorScheme;
         return SafeArea(
           child: ListView(
             shrinkWrap: true,
@@ -107,7 +107,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 child: Text(
                   _isExpense ? 'Chọn danh mục chi' : 'Chọn danh mục thu',
                   style: const TextStyle(
-                    color: AppTheme.textWhite,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -118,22 +117,21 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 return ListTile(
                   leading: Icon(
                     TransactionCategories.iconFor(category),
-                    color: selected ? AppTheme.mintAccent : AppTheme.textGray,
+                    color: selected ? colors.primary : colors.onSurfaceVariant,
                   ),
                   title: Text(
                     category,
                     style: TextStyle(
-                      color: selected ? AppTheme.textWhite : AppTheme.textGray,
+                      color: selected
+                          ? colors.onSurface
+                          : colors.onSurfaceVariant,
                       fontWeight: selected
                           ? FontWeight.w700
                           : FontWeight.normal,
                     ),
                   ),
                   trailing: selected
-                      ? const Icon(
-                          Icons.check_rounded,
-                          color: AppTheme.mintAccent,
-                        )
+                      ? Icon(Icons.check_rounded, color: colors.primary)
                       : null,
                   onTap: () => Navigator.pop(context, category),
                 );
@@ -271,6 +269,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final semantic = theme.semanticColors;
+    final labelStyle = TextStyle(color: colors.onSurfaceVariant, fontSize: 14);
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -287,47 +289,38 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildTypeToggle(),
+            _buildTypeToggle(colors),
             const SizedBox(height: 32),
-            const Text(
-              'Số tiền',
-              style: TextStyle(color: AppTheme.textGray, fontSize: 14),
-            ),
+            Text('Số tiền', style: labelStyle),
             TextField(
               controller: _amountController,
               keyboardType: TextInputType.number,
               style: TextStyle(
-                color: _isExpense ? AppTheme.dangerColor : AppTheme.mintAccent,
+                color: _isExpense ? semantic.expenseColor : colors.primary,
                 fontSize: 40,
                 fontWeight: FontWeight.bold,
               ),
               decoration: InputDecoration(
                 hintText: '0',
                 hintStyle: TextStyle(
-                  color: AppTheme.textGray.withValues(alpha: 0.3),
+                  color: colors.onSurfaceVariant.withValues(alpha: 0.3),
                   fontSize: 40,
                 ),
                 suffixText: 'đ',
-                suffixStyle: const TextStyle(
-                  color: AppTheme.textWhite,
-                  fontSize: 24,
-                ),
+                suffixStyle: TextStyle(color: colors.onSurface, fontSize: 24),
                 border: InputBorder.none,
               ),
             ),
-            Divider(color: AppTheme.textGray.withValues(alpha: 0.3)),
+            Divider(color: colors.onSurfaceVariant.withValues(alpha: 0.3)),
             const SizedBox(height: 24),
-            const Text(
-              'Danh mục',
-              style: TextStyle(color: AppTheme.textGray, fontSize: 14),
-            ),
+            Text('Danh mục', style: labelStyle),
             const SizedBox(height: 8),
             InkWell(
               onTap: _pickCategory,
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppTheme.navyLight,
+                  color: colors.surface,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
@@ -335,27 +328,24 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppTheme.mintAccent.withValues(alpha: 0.15),
+                        color: colors.primary.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
                         TransactionCategories.iconFor(_selectedCategory),
-                        color: AppTheme.mintAccent,
+                        color: colors.primary,
                       ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Text(
                         _selectedCategory,
-                        style: const TextStyle(
-                          color: AppTheme.textWhite,
-                          fontSize: 16,
-                        ),
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
-                    const Icon(
+                    Icon(
                       Icons.chevron_right_rounded,
-                      color: AppTheme.textGray,
+                      color: colors.onSurfaceVariant,
                     ),
                   ],
                 ),
@@ -368,13 +358,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Ngày giao dịch',
-                        style: TextStyle(
-                          color: AppTheme.textGray,
-                          fontSize: 14,
-                        ),
-                      ),
+                      Text('Ngày giao dịch', style: labelStyle),
                       const SizedBox(height: 8),
                       InkWell(
                         onTap: _pickDate,
@@ -382,27 +366,22 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                         child: Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppTheme.navyLight,
+                            color: colors.surface,
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.calendar_today_rounded,
-                                color: AppTheme.textGray,
+                                color: colors.onSurfaceVariant,
                                 size: 20,
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                _formatDate(_selectedDate),
-                                style: const TextStyle(
-                                  color: AppTheme.textWhite,
-                                ),
-                              ),
+                              Text(_formatDate(_selectedDate)),
                               const Spacer(),
-                              const Icon(
+                              Icon(
                                 Icons.chevron_right_rounded,
-                                color: AppTheme.textGray,
+                                color: colors.onSurfaceVariant,
                               ),
                             ],
                           ),
@@ -414,19 +393,14 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               ],
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Ghi chú (Tùy chọn)',
-              style: TextStyle(color: AppTheme.textGray, fontSize: 14),
-            ),
+            Text('Ghi chú (Tùy chọn)', style: labelStyle),
             const SizedBox(height: 8),
+            // Text, hint and fill come from the theme: onSurface, onSurfaceVariant and the surface colour.
             TextField(
               controller: _noteController,
-              style: const TextStyle(color: AppTheme.textWhite),
               decoration: InputDecoration(
                 hintText: 'VD: Mua cafe Highlands',
-                hintStyle: const TextStyle(color: AppTheme.textGray),
                 filled: true,
-                fillColor: AppTheme.navyLight,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none,
@@ -439,8 +413,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               height: 56,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.mintAccent,
-                  foregroundColor: AppTheme.navyDark,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -458,11 +430,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     );
   }
 
-  Widget _buildTypeToggle() {
+  Widget _buildTypeToggle(ColorScheme colors) {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -473,14 +445,16 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: _isExpense ? AppTheme.dangerColor : Colors.transparent,
+                  color: _isExpense ? colors.error : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Center(
                   child: Text(
                     'Tiền chi',
                     style: TextStyle(
-                      color: _isExpense ? Colors.white : AppTheme.textGray,
+                      color: _isExpense
+                          ? colors.onError
+                          : colors.onSurfaceVariant,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -494,7 +468,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: !_isExpense ? AppTheme.mintAccent : Colors.transparent,
+                  color: !_isExpense ? colors.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Center(
@@ -502,8 +476,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                     'Tiền thu',
                     style: TextStyle(
                       color: !_isExpense
-                          ? AppTheme.navyDark
-                          : AppTheme.textGray,
+                          ? colors.onPrimary
+                          : colors.onSurfaceVariant,
                       fontWeight: FontWeight.bold,
                     ),
                   ),

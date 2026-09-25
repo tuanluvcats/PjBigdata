@@ -35,11 +35,25 @@ BudgetProgress _progress(
   spent: spent,
 );
 
-Future<void> _pump(WidgetTester tester, Widget child) => tester.pumpWidget(
+/// The card takes its colours from the app theme; in light mode they are the colours it had before the themes.
+Future<void> _pump(
+  WidgetTester tester,
+  Widget child, {
+  ThemeMode mode = ThemeMode.light,
+}) => tester.pumpWidget(
   MaterialApp(
+    theme: AppTheme.lightTheme,
+    darkTheme: AppTheme.darkTheme,
+    themeMode: mode,
     home: Scaffold(body: SingleChildScrollView(child: child)),
   ),
 );
+
+double _contrast(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  return ((la > lb ? la : lb) + 0.05) / ((la > lb ? lb : la) + 0.05);
+}
 
 LinearProgressIndicator _bar(WidgetTester tester) => tester
     .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator));
@@ -122,6 +136,85 @@ void main() {
 
         expect(find.text('Tất cả danh mục'), findsOneWidget);
         expect(find.text('Tuần · 14/09/2026 – 20/09/2026'), findsOneWidget);
+      },
+    );
+  });
+
+  group('BudgetProgressCard in both themes', () {
+    testWidgets(
+      'the track is the neutral container colour: the old grey in light, a raised tone in dark',
+      (tester) async {
+        await _pump(tester, BudgetProgressCard(progress: _progress(500000)));
+        expect(_bar(tester).backgroundColor, const Color(0xFFEBEBEC));
+
+        await _pump(
+          tester,
+          BudgetProgressCard(progress: _progress(500000)),
+          mode: ThemeMode.dark,
+        );
+        await tester.pumpAndSettle();
+        expect(
+          _bar(tester).backgroundColor,
+          AppTheme.darkTheme.colorScheme.surfaceContainerHighest,
+        );
+      },
+    );
+
+    testWidgets(
+      'in dark mode the bar, the status and the card take the dark palette at every level',
+      (tester) async {
+        final colors = AppTheme.darkTheme.colorScheme;
+        final semantic = AppTheme.darkTheme.extension<SemanticColors>()!;
+        for (final (spent, status, bar, statusColor) in [
+          (
+            500000.0,
+            'Còn lại: ${_money.format(500000)}',
+            colors.primary,
+            semantic.successColor,
+          ),
+          (
+            850000.0,
+            'Sắp chạm hạn mức · Còn lại: ${_money.format(150000)}',
+            semantic.warningColor,
+            semantic.warningColor,
+          ),
+          (
+            1150000.0,
+            'Đã vượt hạn mức: ${_money.format(150000)}',
+            colors.error,
+            colors.error,
+          ),
+        ]) {
+          await _pump(
+            tester,
+            BudgetProgressCard(progress: _progress(spent)),
+            mode: ThemeMode.dark,
+          );
+          await tester.pumpAndSettle();
+
+          expect(_barColor(tester), bar, reason: status);
+          expect(
+            tester.widget<Text>(find.text(status)).style?.color,
+            statusColor,
+          );
+          final card =
+              tester
+                      .widget<Container>(
+                        find
+                            .ancestor(
+                              of: find.text('Ăn uống'),
+                              matching: find.byType(Container),
+                            )
+                            .first,
+                      )
+                      .decoration!
+                  as BoxDecoration;
+          expect(card, AppTheme.cardDecoration(colors));
+          // Readable on the card: text colours at 4.5:1, the bar against its track at 3:1.
+          final track = colors.surfaceContainerHighest;
+          expect(_contrast(statusColor, colors.surface), greaterThan(4.5));
+          expect(_contrast(bar, track), greaterThan(3));
+        }
       },
     );
   });

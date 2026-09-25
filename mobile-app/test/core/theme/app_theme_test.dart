@@ -286,9 +286,58 @@ void main() {
           scheme.surface,
           reason: 'the system navigation bar continues the bottom bar',
         );
+        expect(theme.datePickerTheme.backgroundColor, scheme.surface);
+        expect(theme.datePickerTheme.headerForegroundColor, scheme.onSurface);
       }
     },
   );
+
+  testWidgets(
+    'the light container roles are neutral greys, from the surface down to the old track colour',
+    (tester) async {
+      final scheme = AppTheme.lightTheme.colorScheme;
+      final containers = [
+        scheme.surfaceContainerLowest,
+        scheme.surfaceContainerLow,
+        scheme.surfaceContainer,
+        scheme.surfaceContainerHigh,
+        scheme.surfaceContainerHighest,
+      ];
+      final oldTrack = Color.alphaBlend(
+        AppTheme.textGray.withValues(alpha: 0.2),
+        Colors.white,
+      );
+
+      expect(scheme.surfaceContainerLowest, scheme.surface);
+      expect(scheme.surfaceContainer, AppTheme.bgLight);
+      expect(scheme.surfaceContainerHighest.toARGB32(), oldTrack.toARGB32());
+      for (final color in containers) {
+        final argb = color.toARGB32();
+        final channels = [(argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF];
+        expect(
+          channels.reduce(math.max) - channels.reduce(math.min),
+          lessThanOrEqualTo(2),
+          reason: 'no tint in $color',
+        );
+      }
+      for (var i = 1; i < containers.length; i++) {
+        expect(
+          containers[i].computeLuminance(),
+          lessThan(containers[i - 1].computeLuminance()),
+        );
+      }
+    },
+  );
+
+  testWidgets('the soft shadow is kept for light surfaces only', (
+    tester,
+  ) async {
+    expect(
+      AppTheme.softShadowFor(AppTheme.lightTheme.colorScheme),
+      AppTheme.softShadow,
+    );
+    expect(AppTheme.softShadowFor(AppTheme.darkTheme.colorScheme), isNull);
+  });
 
   group('rendered with AppTheme', () {
     late BuildContext bodyContext;

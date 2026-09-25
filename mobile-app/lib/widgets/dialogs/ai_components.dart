@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 
+/// Sections of the AI tab. Each builder takes the colour scheme that the calling screen read once in its build.
+///
+/// Amber marks the money-allocation advice, blue and orange the needs and wants of the 50/30/20 rule: identity
+/// colours that stay the same in both themes, like chart series, and are bright enough on the dark surface.
 class AiComponents {
   static String _fmt(double amount) => NumberFormat.currency(
     locale: 'vi_VN',
@@ -43,10 +46,32 @@ class AiComponents {
 
   /// [hasError] is true when the last analysis failed; it replaces the "not enough data" message, which would be wrong then.
   static Widget buildSpadeSection(
+    ColorScheme colors,
     List<Map<String, dynamic>> spadePatterns,
     bool isLoading, {
     bool hasError = false,
   }) {
+    // Made once for the whole list rather than once per pattern.
+    final cardDecoration = BoxDecoration(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: colors.primary.withValues(alpha: 0.2)),
+    );
+    final indexDecoration = BoxDecoration(
+      color: colors.primaryContainer,
+      borderRadius: BorderRadius.circular(10),
+    );
+    final indexStyle = TextStyle(
+      color: colors.onPrimaryContainer,
+      fontWeight: FontWeight.bold,
+      fontSize: 13,
+    );
+    final detailStyle = TextStyle(
+      color: colors.primary,
+      fontSize: 12,
+      fontStyle: FontStyle.italic,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -54,26 +79,22 @@ class AiComponents {
           children: [
             const Text(
               'Mẫu Chi Tiêu Tuần Tự',
-              style: TextStyle(
-                color: AppTheme.textWhite,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.2),
+                color: colors.primaryContainer,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: AppTheme.primary.withValues(alpha: 0.4),
+                  color: colors.primary.withValues(alpha: 0.4),
                 ),
               ),
-              child: const Text(
+              child: Text(
                 'WCM-SPADE',
                 style: TextStyle(
-                  color: AppTheme.primary,
+                  color: colors.onPrimaryContainer,
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
@@ -82,23 +103,23 @@ class AiComponents {
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Hành vi chi tiêu tuần tự thường gặp của bạn',
-          style: TextStyle(color: AppTheme.textGray, fontSize: 13),
+          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
         ),
         const SizedBox(height: 16),
         if (isLoading)
-          const Center(
-            child: CircularProgressIndicator(color: AppTheme.primary),
-          )
+          const Center(child: CircularProgressIndicator())
         else if (hasError)
           _buildSpadeMessageCard(
+            colors,
             icon: Icons.cloud_off_rounded,
             title: 'Không tải được phân tích',
             message: 'Kiểm tra kết nối rồi làm mới để thử lại.',
           )
         else if (spadePatterns.isEmpty)
           _buildSpadeMessageCard(
+            colors,
             icon: Icons.auto_graph_rounded,
             title: 'Chưa đủ dữ liệu',
             message: 'Thêm ít nhất 3 giao dịch để xem mẫu chi tiêu tuần tự.',
@@ -110,31 +131,15 @@ class AiComponents {
               padding: const EdgeInsets.only(bottom: 12),
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppTheme.navyLight,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppTheme.primary.withValues(alpha: 0.2),
-                  ),
-                ),
+                decoration: cardDecoration,
                 child: Row(
                   children: [
                     Container(
                       width: 36,
                       height: 36,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                      decoration: indexDecoration,
                       child: Center(
-                        child: Text(
-                          '#${i + 1}',
-                          style: const TextStyle(
-                            color: AppTheme.primary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
+                        child: Text('#${i + 1}', style: indexStyle),
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -145,7 +150,6 @@ class AiComponents {
                           Text(
                             formatAiPattern(p['pattern']?.toString() ?? ''),
                             style: const TextStyle(
-                              color: AppTheme.textWhite,
                               fontWeight: FontWeight.w500,
                               fontSize: 15,
                             ),
@@ -153,11 +157,7 @@ class AiComponents {
                           const SizedBox(height: 4),
                           Text(
                             'Tần suất: ${p['count']} lần  ·  Độ hỗ trợ (W-Sup): ${p['wsupport']}',
-                            style: const TextStyle(
-                              color: AppTheme.mintAccent,
-                              fontSize: 12,
-                              fontStyle: FontStyle.italic,
-                            ),
+                            style: detailStyle,
                           ),
                         ],
                       ),
@@ -171,7 +171,8 @@ class AiComponents {
     );
   }
 
-  static Widget _buildSpadeMessageCard({
+  static Widget _buildSpadeMessageCard(
+    ColorScheme colors, {
     required IconData icon,
     required String title,
     required String message,
@@ -179,7 +180,7 @@ class AiComponents {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -187,10 +188,10 @@ class AiComponents {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.15),
+              color: colors.primaryContainer,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(icon, color: AppTheme.primary, size: 28),
+            child: Icon(icon, color: colors.onPrimaryContainer, size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -200,7 +201,6 @@ class AiComponents {
                 Text(
                   title,
                   style: const TextStyle(
-                    color: AppTheme.textWhite,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
@@ -208,8 +208,8 @@ class AiComponents {
                 const SizedBox(height: 4),
                 Text(
                   message,
-                  style: const TextStyle(
-                    color: AppTheme.textGray,
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
                     fontSize: 13,
                   ),
                 ),
@@ -222,13 +222,12 @@ class AiComponents {
   }
 
   static Widget buildBudgetAdviceSection(
+    ColorScheme colors,
     Map<String, dynamic>? budgetAdvice,
     bool isLoading,
   ) {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppTheme.primary),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
     if (budgetAdvice == null) return const SizedBox.shrink();
 
@@ -239,6 +238,15 @@ class AiComponents {
 
     if (summary.isEmpty && recs.isEmpty) return const SizedBox.shrink();
 
+    // A cut is shown in the error colour, a keep or a raise in the primary colour.
+    final cutColor = colors.error;
+    final keepColor = colors.primary;
+    final amountsStyle = TextStyle(
+      color: colors.onSurfaceVariant,
+      fontSize: 13,
+    );
+    final reasonStyle = TextStyle(color: colors.onSurfaceVariant, fontSize: 12);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -246,11 +254,7 @@ class AiComponents {
           children: [
             const Text(
               'Gợi ý phân bổ tiền',
-              style: TextStyle(
-                color: AppTheme.textWhite,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(width: 8),
             Container(
@@ -272,16 +276,16 @@ class AiComponents {
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Đề xuất cắt/giữ từng mục để đạt mục tiêu tiết kiệm',
-          style: TextStyle(color: AppTheme.textGray, fontSize: 13),
+          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
         ),
         const SizedBox(height: 16),
         if (summary.isNotEmpty)
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppTheme.navyLight,
+              color: colors.surface,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.amber.withValues(alpha: 0.25)),
             ),
@@ -296,11 +300,7 @@ class AiComponents {
                 Expanded(
                   child: Text(
                     summary,
-                    style: const TextStyle(
-                      color: AppTheme.textWhite,
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
+                    style: const TextStyle(fontSize: 13, height: 1.4),
                   ),
                 ),
               ],
@@ -310,17 +310,15 @@ class AiComponents {
         ...recs.map((r) {
           final m = Map<String, dynamic>.from(r as Map);
           final isCut = ((m['delta'] as num?) ?? 0).toDouble() < 0;
+          final accent = isCut ? cutColor : keepColor;
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.navyLight,
+                color: colors.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: (isCut ? Colors.redAccent : AppTheme.mintAccent)
-                      .withValues(alpha: 0.25),
-                ),
+                border: Border.all(color: accent.withValues(alpha: 0.25)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,7 +329,7 @@ class AiComponents {
                         isCut
                             ? Icons.trending_down_rounded
                             : Icons.trending_up_rounded,
-                        color: isCut ? Colors.redAccent : AppTheme.mintAccent,
+                        color: accent,
                         size: 22,
                       ),
                       const SizedBox(width: 10),
@@ -339,7 +337,6 @@ class AiComponents {
                         child: Text(
                           '${m['action']} · ${m['tag']}',
                           style: const TextStyle(
-                            color: AppTheme.textWhite,
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
                           ),
@@ -348,7 +345,7 @@ class AiComponents {
                       Text(
                         '${isCut ? '' : '+'}${_fmt(((m['delta'] as num?) ?? 0).toDouble())}',
                         style: TextStyle(
-                          color: isCut ? Colors.redAccent : AppTheme.mintAccent,
+                          color: accent,
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -358,20 +355,11 @@ class AiComponents {
                   const SizedBox(height: 6),
                   Text(
                     '${_fmt(((m['current'] as num?) ?? 0).toDouble())} → ${_fmt(((m['suggested'] as num?) ?? 0).toDouble())} / tháng',
-                    style: const TextStyle(
-                      color: AppTheme.textGray,
-                      fontSize: 13,
-                    ),
+                    style: amountsStyle,
                   ),
                   if ((m['reason']?.toString() ?? '').isNotEmpty) ...[
                     const SizedBox(height: 4),
-                    Text(
-                      m['reason'].toString(),
-                      style: const TextStyle(
-                        color: AppTheme.textGray,
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text(m['reason'].toString(), style: reasonStyle),
                   ],
                 ],
               ),
@@ -383,6 +371,7 @@ class AiComponents {
   }
 
   static Widget buildBudgetGuardSection(
+    ColorScheme colors,
     List<Map<String, dynamic>> spadePatterns,
     List<TransactionModel> transactions,
   ) {
@@ -393,6 +382,18 @@ class AiComponents {
         .toSet();
     final spadeWarnings = <Widget>[];
     final warnedCons = <String>{};
+
+    // Made once for all the warnings rather than once per warning.
+    final warningDecoration = BoxDecoration(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: colors.primary.withValues(alpha: 0.35)),
+    );
+    final headingStyle = TextStyle(
+      color: colors.primary,
+      fontSize: 12,
+      fontWeight: FontWeight.bold,
+    );
 
     for (final p in spadePatterns) {
       if (spadeWarnings.length >= 2) break;
@@ -423,19 +424,13 @@ class AiComponents {
           padding: const EdgeInsets.only(bottom: 10),
           child: Container(
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppTheme.navyLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppTheme.primary.withValues(alpha: 0.35),
-              ),
-            ),
+            decoration: warningDecoration,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
+                Icon(
                   Icons.psychology_alt_rounded,
-                  color: AppTheme.primary,
+                  color: colors.primary,
                   size: 28,
                 ),
                 const SizedBox(width: 12),
@@ -443,22 +438,14 @@ class AiComponents {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Dự báo hành vi · Khai phá chuỗi',
-                        style: TextStyle(
-                          color: AppTheme.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: headingStyle,
                       ),
                       const SizedBox(height: 6),
                       Text(
                         txt,
-                        style: const TextStyle(
-                          color: AppTheme.textWhite,
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
+                        style: const TextStyle(fontSize: 13, height: 1.4),
                       ),
                     ],
                   ),
@@ -477,16 +464,12 @@ class AiComponents {
       children: [
         const Text(
           'Cảnh báo thói quen tương lai',
-          style: TextStyle(
-            color: AppTheme.textWhite,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'AI dự đoán các khoản chi sắp tới dựa trên lịch sử tuần tự của bạn.',
-          style: TextStyle(color: AppTheme.textGray, fontSize: 13),
+          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
         ),
         const SizedBox(height: 16),
         ...spadeWarnings,
@@ -495,6 +478,7 @@ class AiComponents {
   }
 
   static Widget build503020Card(
+    ColorScheme colors,
     List<TransactionModel> monthTxs,
     double monthIncome,
     double monthExpense,
@@ -518,6 +502,7 @@ class AiComponents {
         wantsPct = wants / monthIncome * 100,
         savePct = (monthIncome - monthExpense) / monthIncome * 100;
 
+    // Past its target, a share turns to the error colour; the track is the neutral container colour.
     Widget row(
       String lbl,
       double pct,
@@ -526,6 +511,7 @@ class AiComponents {
       bool atLeast = false,
     }) {
       final over = atLeast ? pct < target : pct > target;
+      final color = over ? colors.error : c;
       return Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Column(
@@ -534,18 +520,12 @@ class AiComponents {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    lbl,
-                    style: const TextStyle(
-                      color: AppTheme.textWhite,
-                      fontSize: 13,
-                    ),
-                  ),
+                  child: Text(lbl, style: const TextStyle(fontSize: 13)),
                 ),
                 Text(
                   '${pct.toStringAsFixed(0)}% / ${atLeast ? '≥' : '≤'}${target.toStringAsFixed(0)}%',
                   style: TextStyle(
-                    color: over ? Colors.redAccent : c,
+                    color: color,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
@@ -558,8 +538,8 @@ class AiComponents {
               child: LinearProgressIndicator(
                 value: (pct / 100).clamp(0.0, 1.0),
                 minHeight: 6,
-                backgroundColor: AppTheme.navyDark,
-                valueColor: AlwaysStoppedAnimation(over ? Colors.redAccent : c),
+                backgroundColor: colors.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation(color),
               ),
             ),
           ],
@@ -583,7 +563,7 @@ class AiComponents {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.25)),
       ),
@@ -592,16 +572,12 @@ class AiComponents {
         children: [
           const Text(
             'Sức khỏe chi tiêu — quy tắc 50/30/20',
-            style: TextStyle(
-              color: AppTheme.textWhite,
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Thiết yếu: Ăn uống, Di chuyển, Siêu thị, Sinh hoạt · Mong muốn: Giải trí, Khác',
-            style: TextStyle(color: AppTheme.textGray, fontSize: 11),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 11),
           ),
           const SizedBox(height: 12),
           row('Thiết yếu', needsPct, 50, Colors.blueAccent),
@@ -610,14 +586,14 @@ class AiComponents {
             'Tiết kiệm (phần dư)',
             savePct,
             20,
-            AppTheme.mintAccent,
+            colors.primary,
             atLeast: true,
           ),
           const SizedBox(height: 2),
           Text(
             advice,
-            style: const TextStyle(
-              color: AppTheme.textGray,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
               fontSize: 12,
               height: 1.4,
             ),

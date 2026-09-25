@@ -144,18 +144,18 @@ class DashboardPageState extends State<DashboardPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final colors = Theme.of(context).colorScheme;
     if (_isLoading) {
-      return _buildLoadingScreen();
+      return _buildLoadingScreen(colors);
     }
 
     return Stack(
       children: [
-        _buildBackgroundGlow(),
+        _buildBackgroundGlow(colors),
         SafeArea(
+          // No colours of its own: the spinner takes the primary colour and the surface of the theme.
           child: RefreshIndicator(
             onRefresh: _load,
-            color: AppTheme.mintAccent,
-            backgroundColor: AppTheme.navyLight,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
@@ -163,7 +163,7 @@ class DashboardPageState extends State<DashboardPage>
                   padding: const EdgeInsets.only(bottom: 100),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      _buildHeader(),
+                      _buildHeader(colors),
                       if (_budgetProgress.isNotEmpty || _budgetsFailed)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -176,9 +176,9 @@ class DashboardPageState extends State<DashboardPage>
                           ),
                         ),
                       const SizedBox(height: 24),
-                      _buildUtilityGrid(),
+                      _buildUtilityGrid(colors),
                       const SizedBox(height: 24),
-                      _buildRecentTransactions(),
+                      _buildRecentTransactions(colors),
                     ]),
                   ),
                 ),
@@ -190,10 +190,11 @@ class DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildLoadingScreen() {
+  Widget _buildLoadingScreen(ColorScheme colors) {
+    final skeleton = colors.onSurfaceVariant.withValues(alpha: 0.15);
     return Stack(
       children: [
-        _buildBackgroundGlow(),
+        _buildBackgroundGlow(colors),
         SafeArea(
           child: TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0.3, end: 0.8),
@@ -218,12 +219,14 @@ class DashboardPageState extends State<DashboardPage>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildSkeletonBox(
+                            skeleton,
                             width: 80,
                             height: 14,
                             borderRadius: 4,
                           ),
                           const SizedBox(height: 8),
                           _buildSkeletonBox(
+                            skeleton,
                             width: 150,
                             height: 22,
                             borderRadius: 6,
@@ -231,6 +234,7 @@ class DashboardPageState extends State<DashboardPage>
                         ],
                       ),
                       _buildSkeletonBox(
+                        skeleton,
                         width: 48,
                         height: 48,
                         shape: BoxShape.circle,
@@ -241,6 +245,7 @@ class DashboardPageState extends State<DashboardPage>
                 const SizedBox(height: 24),
 
                 _buildSkeletonBox(
+                  skeleton,
                   height: 180,
                   margin: const EdgeInsets.symmetric(horizontal: 20),
                   borderRadius: 24,
@@ -253,6 +258,7 @@ class DashboardPageState extends State<DashboardPage>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildSkeletonBox(
+                        skeleton,
                         width: 100,
                         height: 20,
                         borderRadius: 6,
@@ -265,12 +271,14 @@ class DashboardPageState extends State<DashboardPage>
                           (_) => Column(
                             children: [
                               _buildSkeletonBox(
+                                skeleton,
                                 width: 56,
                                 height: 56,
                                 borderRadius: 16,
                               ),
                               const SizedBox(height: 8),
                               _buildSkeletonBox(
+                                skeleton,
                                 width: 50,
                                 height: 12,
                                 borderRadius: 4,
@@ -290,6 +298,7 @@ class DashboardPageState extends State<DashboardPage>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildSkeletonBox(
+                        skeleton,
                         width: 160,
                         height: 20,
                         borderRadius: 6,
@@ -302,6 +311,7 @@ class DashboardPageState extends State<DashboardPage>
                           child: Row(
                             children: [
                               _buildSkeletonBox(
+                                skeleton,
                                 width: 48,
                                 height: 48,
                                 borderRadius: 16,
@@ -312,12 +322,14 @@ class DashboardPageState extends State<DashboardPage>
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     _buildSkeletonBox(
+                                      skeleton,
                                       width: double.infinity,
                                       height: 16,
                                       borderRadius: 4,
                                     ),
                                     const SizedBox(height: 8),
                                     _buildSkeletonBox(
+                                      skeleton,
                                       width: 100,
                                       height: 12,
                                       borderRadius: 4,
@@ -327,6 +339,7 @@ class DashboardPageState extends State<DashboardPage>
                               ),
                               const SizedBox(width: 16),
                               _buildSkeletonBox(
+                                skeleton,
                                 width: 80,
                                 height: 20,
                                 borderRadius: 4,
@@ -346,7 +359,8 @@ class DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildSkeletonBox({
+  Widget _buildSkeletonBox(
+    Color color, {
     double? width,
     double? height,
     EdgeInsetsGeometry? margin,
@@ -358,7 +372,7 @@ class DashboardPageState extends State<DashboardPage>
       height: height,
       margin: margin,
       decoration: BoxDecoration(
-        color: AppTheme.textGray.withValues(alpha: 0.15),
+        color: color,
         shape: shape,
         borderRadius: shape == BoxShape.rectangle
             ? BorderRadius.circular(borderRadius)
@@ -367,7 +381,7 @@ class DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildBackgroundGlow() {
+  Widget _buildBackgroundGlow(ColorScheme colors) {
     return Positioned(
       top: -100,
       left: -100,
@@ -378,14 +392,14 @@ class DashboardPageState extends State<DashboardPage>
           height: 300,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: AppTheme.mintAccent.withValues(alpha: 0.15),
+            color: colors.primary.withValues(alpha: 0.15),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(ColorScheme colors) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Column(
@@ -397,14 +411,16 @@ class DashboardPageState extends State<DashboardPage>
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Xin chào,',
-                    style: TextStyle(color: AppTheme.textGray, fontSize: 14),
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 14,
+                    ),
                   ),
                   Text(
                     _user?.fullName ?? 'User',
                     style: const TextStyle(
-                      color: AppTheme.textWhite,
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
@@ -412,11 +428,11 @@ class DashboardPageState extends State<DashboardPage>
                 ],
               ),
               CircleAvatar(
-                backgroundColor: AppTheme.navyLight,
+                backgroundColor: colors.surface,
                 child: IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.notifications_outlined,
-                    color: AppTheme.textWhite,
+                    color: colors.onSurface,
                   ),
                   onPressed: () =>
                       DashboardBottomSheets.showNotifications(context),
@@ -548,7 +564,7 @@ class DashboardPageState extends State<DashboardPage>
     });
   }
 
-  Widget _buildUtilityGrid() {
+  Widget _buildUtilityGrid(ColorScheme colors) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -556,32 +572,30 @@ class DashboardPageState extends State<DashboardPage>
         children: [
           const Text(
             'Tiện ích',
-            style: TextStyle(
-              color: AppTheme.textWhite,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildUtilityIcon(Icons.pie_chart_rounded, 'Báo cáo', () {
+              _buildUtilityIcon(colors, Icons.pie_chart_rounded, 'Báo cáo', () {
                 if (widget.onNavigateToAI != null) {
                   widget.onNavigateToAI!();
                 }
               }),
               _buildUtilityIcon(
+                colors,
                 Icons.savings_rounded,
                 'Sổ tiết kiệm',
                 () => _navigateTo(const SavingsPage()),
               ),
               _buildUtilityIcon(
+                colors,
                 Icons.account_balance_rounded,
                 'Kết nối\nngân hàng',
                 () => DashboardBottomSheets.showBankConnect(context),
               ),
-              _buildUtilityIcon(Icons.grid_view_rounded, 'Tất cả', () {
+              _buildUtilityIcon(colors, Icons.grid_view_rounded, 'Tất cả', () {
                 DashboardBottomSheets.showAllFeatures(
                   context,
                   onSavings: () {
@@ -611,7 +625,12 @@ class DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildUtilityIcon(IconData icon, String label, VoidCallback onTap) {
+  Widget _buildUtilityIcon(
+    ColorScheme colors,
+    IconData icon,
+    String label,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -620,17 +639,17 @@ class DashboardPageState extends State<DashboardPage>
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: AppTheme.navyLight,
+              color: colors.surface,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(icon, color: AppTheme.mintAccent, size: 28),
+            child: Icon(icon, color: colors.primary, size: 28),
           ),
           const SizedBox(height: 8),
           Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppTheme.textGray,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
               fontSize: 12,
               height: 1.2,
             ),
@@ -640,7 +659,7 @@ class DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildRecentTransactions() {
+  Widget _buildRecentTransactions(ColorScheme colors) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -648,24 +667,20 @@ class DashboardPageState extends State<DashboardPage>
         children: [
           const Text(
             'Giao dịch gần đây',
-            style: TextStyle(
-              color: AppTheme.textWhite,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           if (_recentTransactions.isEmpty)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.navyLight,
+                color: colors.surface,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
                   'Chưa có giao dịch nào.',
-                  style: TextStyle(color: AppTheme.textGray),
+                  style: TextStyle(color: colors.onSurfaceVariant),
                 ),
               ),
             )
@@ -673,7 +688,7 @@ class DashboardPageState extends State<DashboardPage>
             ..._recentTransactions.map(
               (tx) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: _buildTxItem(tx),
+                child: _buildTxItem(colors, tx),
               ),
             ),
         ],
@@ -681,11 +696,11 @@ class DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildTxItem(TransactionModel tx) {
+  Widget _buildTxItem(ColorScheme colors, TransactionModel tx) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -706,7 +721,6 @@ class DashboardPageState extends State<DashboardPage>
                 Text(
                   tx.title,
                   style: const TextStyle(
-                    color: AppTheme.textWhite,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
@@ -714,8 +728,8 @@ class DashboardPageState extends State<DashboardPage>
                 const SizedBox(height: 4),
                 Text(
                   _formatTime(tx.date),
-                  style: const TextStyle(
-                    color: AppTheme.textGray,
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -732,11 +746,7 @@ class DashboardPageState extends State<DashboardPage>
           ),
           Text(
             '${tx.isExpense ? "- " : "+ "}${_formatCurrency(tx.amount)}',
-            style: const TextStyle(
-              color: AppTheme.textWhite,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
         ],
       ),

@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/screens/payment/payment_history_screen.dart';
 
@@ -40,7 +39,8 @@ class _LinkedServicesPageState extends State<LinkedServicesPage> {
   void _snack(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
-  Widget _logo(String provider, {double size = 32}) {
+  /// The provider logo is an image and keeps its own colours; only the fallback icon takes the theme.
+  Widget _logo(ColorScheme colors, String provider, {double size = 32}) {
     final fallback =
         {
           'VNPAY': Icons.account_balance_rounded,
@@ -53,7 +53,7 @@ class _LinkedServicesPageState extends State<LinkedServicesPage> {
       width: size,
       height: size,
       errorBuilder: (_, _, _) =>
-          Icon(fallback, color: AppTheme.mintAccent, size: size),
+          Icon(fallback, color: colors.primary, size: size),
     );
   }
 
@@ -66,28 +66,24 @@ class _LinkedServicesPageState extends State<LinkedServicesPage> {
     final amount = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.navyLight,
-        title: Text(
-          'Đồng bộ từ $label',
-          style: const TextStyle(color: AppTheme.textWhite),
-        ),
+        title: Text('Đồng bộ từ $label'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Số tiền nạp vào ngân sách chi tiêu:',
-              style: TextStyle(color: AppTheme.textGray, fontSize: 13),
+              style: TextStyle(
+                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                fontSize: 13,
+              ),
             ),
             const SizedBox(height: 8),
+            // Text and hint take the theme: onSurface and onSurfaceVariant.
             TextField(
               controller: ctrl,
               keyboardType: TextInputType.number,
               autofocus: true,
-              style: const TextStyle(color: AppTheme.textWhite),
-              decoration: const InputDecoration(
-                hintText: 'VD: 100000',
-                hintStyle: TextStyle(color: AppTheme.textGray),
-              ),
+              decoration: const InputDecoration(hintText: 'VD: 100000'),
             ),
           ],
         ),
@@ -168,22 +164,20 @@ class _LinkedServicesPageState extends State<LinkedServicesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppTheme.navyDark,
+      backgroundColor: colors.surface,
+      // The icons take the app bar theme (onSurface).
       appBar: AppBar(
-        backgroundColor: AppTheme.navyDark,
-        iconTheme: const IconThemeData(color: AppTheme.textWhite),
+        backgroundColor: colors.surface,
         title: const Text(
           'Dịch vụ liên kết',
-          style: TextStyle(
-            color: AppTheme.textWhite,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             tooltip: 'Lịch sử đồng bộ',
-            icon: const Icon(Icons.history_rounded, color: AppTheme.textWhite),
+            icon: const Icon(Icons.history_rounded),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const PaymentHistoryScreen()),
@@ -198,29 +192,28 @@ class _LinkedServicesPageState extends State<LinkedServicesPage> {
           children: [
             const Text(
               'Ví điện tử đã liên kết',
-              style: TextStyle(
-                color: AppTheme.textWhite,
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Đồng bộ tiền từ ví vào ngân sách để quản lý chi tiêu.',
-              style: TextStyle(color: AppTheme.textGray, fontSize: 12),
+              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
             ),
             const SizedBox(height: 16),
-            ..._wallets.map((w) => _walletTile(w.$1, w.$2)),
+            ..._wallets.map((w) => _walletTile(colors, w.$1, w.$2)),
             if (_syncing) ...[
               const SizedBox(height: 20),
-              const Center(
+              Center(
                 child: Column(
                   children: [
-                    CircularProgressIndicator(color: AppTheme.mintAccent),
-                    SizedBox(height: 8),
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 8),
                     Text(
                       'Đang đồng bộ... hoàn tất thanh toán trên cổng.',
-                      style: TextStyle(color: AppTheme.textGray, fontSize: 12),
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
@@ -232,17 +225,17 @@ class _LinkedServicesPageState extends State<LinkedServicesPage> {
     );
   }
 
-  Widget _walletTile(String provider, String label) {
+  Widget _walletTile(ColorScheme colors, String provider, String label) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          _logo(provider, size: 36),
+          _logo(colors, provider, size: 36),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -250,12 +243,10 @@ class _LinkedServicesPageState extends State<LinkedServicesPage> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: AppTheme.textWhite,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 2),
+                // Green "linked" status: readable on both themes (6.1:1 on the dark surface).
                 Row(
                   children: const [
                     Icon(
@@ -275,10 +266,6 @@ class _LinkedServicesPageState extends State<LinkedServicesPage> {
           ),
           FilledButton.icon(
             onPressed: () => _openSync(provider, label),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.mintAccent,
-              foregroundColor: Colors.white,
-            ),
             icon: const Icon(Icons.sync_rounded, size: 18),
             label: const Text('Đồng bộ'),
           ),

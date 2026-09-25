@@ -35,6 +35,12 @@ class AppTheme {
   static const Color _lightSurface = Colors.white;
   static const Color _lightBorder = Color(0xFFE7E7EC);
 
+  // Neutral greys for the light container roles (tracks, skeletons, tooltips): the seed would tint them pink, which
+  // the light screens never were. The highest one is the old track colour, textGray at 20% on white.
+  static const Color _lightContainerLow = Color(0xFFF9F9FA);
+  static const Color _lightContainerHigh = Color(0xFFEFEFF1);
+  static const Color _lightContainerHighest = Color(0xFFEBEBEC);
+
   // Dark mode has its own tones and never falls back on the light-only colours above.
   static const Color _darkBackground = Color(0xFF141117);
   static const Color _darkSurface = Color(0xFF1F1B24);
@@ -101,6 +107,10 @@ class AppTheme {
     ),
   ];
 
+  /// [softShadow] on a light surface; nothing on a dark one, where a black shadow does not show.
+  static List<BoxShadow>? softShadowFor(ColorScheme colors) =>
+      colors.brightness == Brightness.light ? softShadow : null;
+
   static BoxDecoration get card => BoxDecoration(
     color: navyLight,
     borderRadius: BorderRadius.circular(20),
@@ -124,7 +134,7 @@ class AppTheme {
   static BoxDecoration cardDecoration(ColorScheme colors) => BoxDecoration(
     color: colors.surface,
     borderRadius: BorderRadius.circular(20),
-    boxShadow: colors.brightness == Brightness.light ? softShadow : null,
+    boxShadow: softShadowFor(colors),
   );
 
   // The light roles repeat the legacy constants, so a screen moved from AppTheme.* to the colour scheme looks the same
@@ -142,6 +152,11 @@ class AppTheme {
           secondary: primary,
           onSecondary: Colors.white,
           surface: _lightSurface,
+          surfaceContainerLowest: _lightSurface,
+          surfaceContainerLow: _lightContainerLow,
+          surfaceContainer: bgLight,
+          surfaceContainerHigh: _lightContainerHigh,
+          surfaceContainerHighest: _lightContainerHighest,
           onSurface: textPrimary,
           onSurfaceVariant: textSecondary,
           outlineVariant: _lightBorder,
@@ -249,6 +264,12 @@ class AppTheme {
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
+      ),
+      // The pickers keep the look the app gave them before: the surface colour with the headline in the text colour.
+      datePickerTheme: DatePickerThemeData(
+        backgroundColor: colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        headerForegroundColor: colorScheme.onSurface,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: colorScheme.surface,

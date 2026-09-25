@@ -265,9 +265,10 @@ class _Summary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = transaction.receiptStatus;
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: AppTheme.card,
+      decoration: AppTheme.cardDecoration(colors),
       child: Row(
         children: [
           Container(
@@ -285,16 +286,13 @@ class _Summary extends StatelessWidget {
               children: [
                 Text(
                   transaction.isExpense ? 'Khoản chi' : 'Khoản thu',
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   _displayDate.format(transaction.date),
-                  style: const TextStyle(
-                    color: AppTheme.textGray,
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -326,6 +324,10 @@ class _CategoryChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final side = BorderSide(
+      color: colors.onSurfaceVariant.withValues(alpha: 0.3),
+    );
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -337,11 +339,11 @@ class _CategoryChips extends StatelessWidget {
             selected: category == selected,
             showCheckmark: false,
             onSelected: (_) => onSelected(category),
-            selectedColor: AppTheme.mintAccent,
-            backgroundColor: AppTheme.navyLight,
-            side: BorderSide(color: AppTheme.textGray.withValues(alpha: 0.3)),
+            selectedColor: colors.primary,
+            backgroundColor: colors.surface,
+            side: side,
             labelStyle: TextStyle(
-              color: category == selected ? Colors.white : AppTheme.textWhite,
+              color: category == selected ? colors.onPrimary : colors.onSurface,
             ),
           ),
         if (isLoading)
@@ -364,7 +366,10 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(color: AppTheme.textGray, fontSize: 14),
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        fontSize: 14,
+      ),
     );
   }
 }
@@ -380,7 +385,10 @@ class _Hint extends StatelessWidget {
       padding: const EdgeInsets.only(top: 6),
       child: Text(
         text,
-        style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 12,
+        ),
       ),
     );
   }

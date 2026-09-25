@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/budget_model.dart';
 import 'package:finance_ai_app/widgets/common/custom_text_field.dart';
 import 'package:finance_ai_app/widgets/common/primary_button.dart';
@@ -179,11 +178,7 @@ class _BudgetFormSheetState extends State<BudgetFormSheet> {
           children: [
             Text(
               _isEditing ? 'Sửa ngân sách' : 'Thiết lập ngân sách',
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             CustomTextField(
@@ -276,7 +271,10 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(color: AppTheme.textGray, fontSize: 14),
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        fontSize: 14,
+      ),
     );
   }
 }
@@ -292,7 +290,10 @@ class _Hint extends StatelessWidget {
       padding: const EdgeInsets.only(top: 6),
       child: Text(
         text,
-        style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -313,16 +314,17 @@ class _OptionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return ChoiceChip(
       label: Text(label),
       selected: selected,
       showCheckmark: false,
       onSelected: enabled ? (_) => onSelected() : null,
-      selectedColor: AppTheme.mintAccent,
-      backgroundColor: AppTheme.navyLight,
-      side: BorderSide(color: AppTheme.textGray.withValues(alpha: 0.3)),
+      selectedColor: colors.primary,
+      backgroundColor: colors.surface,
+      side: BorderSide(color: colors.outlineVariant),
       labelStyle: TextStyle(
-        color: selected ? Colors.white : AppTheme.textWhite,
+        color: selected ? colors.onPrimary : colors.onSurface,
       ),
     );
   }
@@ -340,12 +342,16 @@ class _PeriodPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.event_rounded, color: AppTheme.mintAccent, size: 18),
+        Icon(
+          Icons.event_rounded,
+          color: Theme.of(context).colorScheme.primary,
+          size: 18,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             '$label: ${_displayDate.format(range.start)} – ${_displayDate.format(range.end)}',
-            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+            style: const TextStyle(fontSize: 13),
           ),
         ),
       ],

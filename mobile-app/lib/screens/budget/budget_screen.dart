@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/constants/transaction_categories.dart';
@@ -96,7 +97,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: AppTheme.navyDark,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -154,23 +154,20 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppTheme.navyDark,
+      backgroundColor: colors.surface,
+      // Transparent so that it shows the page colour; icons and title take the app bar theme.
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.textWhite),
         title: const Text(
           'Ngân sách',
-          style: TextStyle(
-            color: AppTheme.textWhite,
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_rounded, color: AppTheme.mintAccent),
+            icon: Icon(Icons.add_rounded, color: colors.primary),
             onPressed: () => _openForm(),
           ),
         ],
@@ -179,8 +176,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
           ? const _BudgetSkeleton()
           : RefreshIndicator(
               onRefresh: _load,
-              color: AppTheme.mintAccent,
-              backgroundColor: AppTheme.navyLight,
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                 children: [
@@ -206,16 +201,17 @@ class _OfflineNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppTheme.mintAccent.withValues(alpha: 0.08),
+        color: colors.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Text(
+      child: Text(
         'Chế độ ngoại tuyến: chỉ hỗ trợ ngân sách theo tháng.',
-        style: TextStyle(color: AppTheme.textGray, fontSize: 12),
+        style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
       ),
     );
   }
@@ -228,30 +224,31 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         children: [
-          const Icon(
+          Icon(
             Icons.pie_chart_outline_rounded,
-            color: AppTheme.textGray,
+            color: colors.onSurfaceVariant,
             size: 48,
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'Chưa có ngân sách nào.',
-            style: TextStyle(color: AppTheme.textGray),
+            style: TextStyle(color: colors.onSurfaceVariant),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Đặt hạn mức chi tiêu theo tuần hoặc tháng để kiểm soát tốt hơn.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textGray, fontSize: 12),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
           ),
           const SizedBox(height: 20),
           PrimaryButton(text: 'Thiết lập ngân sách', onPressed: onCreate),
@@ -276,6 +273,7 @@ class _BudgetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final categoryName = budget.categoryName;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -284,20 +282,20 @@ class _BudgetCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
-          decoration: AppTheme.card,
+          decoration: AppTheme.cardDecoration(colors),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppTheme.mintAccent.withValues(alpha: 0.12),
+                  color: colors.primaryContainer,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
                   categoryName == null
                       ? Icons.pie_chart_rounded
                       : TransactionCategories.iconFor(categoryName),
-                  color: AppTheme.mintAccent,
+                  color: colors.onPrimaryContainer,
                   size: 22,
                 ),
               ),
@@ -308,17 +306,14 @@ class _BudgetCard extends StatelessWidget {
                   children: [
                     Text(
                       categoryName ?? BudgetModel.allCategoriesLabel,
-                      style: const TextStyle(
-                        color: AppTheme.textWhite,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${BudgetPeriodType.label(budget.periodType)} · '
                       '${_displayDate.format(budget.start)} – ${_displayDate.format(budget.end)}',
-                      style: const TextStyle(
-                        color: AppTheme.textGray,
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
                         fontSize: 11,
                       ),
                     ),
@@ -327,16 +322,16 @@ class _BudgetCard extends StatelessWidget {
               ),
               Text(
                 CurrencyHelper.formatVND(budget.amount, showSign: false),
-                style: const TextStyle(
-                  color: AppTheme.mintAccent,
+                style: TextStyle(
+                  color: colors.primary,
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
                 ),
               ),
               IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.delete_outline_rounded,
-                  color: AppTheme.dangerColor,
+                  color: colors.error,
                   size: 20,
                 ),
                 onPressed: onDelete,
@@ -349,22 +344,30 @@ class _BudgetCard extends StatelessWidget {
   }
 }
 
+/// Three card-shaped placeholders that shimmer from the container colour of the theme to its surface.
 class _BudgetSkeleton extends StatelessWidget {
   const _BudgetSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-      physics: const NeverScrollableScrollPhysics(),
-      children: List.generate(
-        3,
-        (_) => Container(
-          height: 76,
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.navyLight.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(20),
+    final colors = Theme.of(context).colorScheme;
+    // The shimmer paints over the boxes, so their own colour only has to be opaque.
+    final box = BoxDecoration(
+      color: colors.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(20),
+    );
+    return Shimmer.fromColors(
+      baseColor: colors.surfaceContainerHighest,
+      highlightColor: colors.surface,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        physics: const NeverScrollableScrollPhysics(),
+        children: List.generate(
+          3,
+          (_) => Container(
+            height: 76,
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: box,
           ),
         ),
       ),

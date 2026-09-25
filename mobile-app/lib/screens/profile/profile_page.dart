@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/cubits/language_cubit.dart';
 import 'package:finance_ai_app/cubits/theme_cubit.dart';
 import 'package:finance_ai_app/models/user_model.dart';
@@ -115,8 +114,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     if (_isLoading) {
-      return _buildSkeletonLoading();
+      return _buildSkeletonLoading(colors);
     }
 
     final name = _user?.fullName ?? 'Người dùng';
@@ -137,13 +137,14 @@ class _ProfilePageState extends State<ProfilePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildProfileHeader(name, email),
+              _buildProfileHeader(colors, name, email),
               const SizedBox(height: 24),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   children: [
                     _buildSection(
+                      colors,
                       title: 'Tài khoản',
                       icon: Icons.manage_accounts_rounded,
                       items: [
@@ -161,6 +162,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(height: 12),
                     _buildSection(
+                      colors,
                       title: 'Tiện ích',
                       icon: Icons.widgets_rounded,
                       items: [
@@ -206,6 +208,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(height: 12),
                     _buildSection(
+                      colors,
                       title: 'Cài đặt',
                       icon: Icons.settings_rounded,
                       items: [
@@ -241,6 +244,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(height: 12),
                     _buildSection(
+                      colors,
                       title: 'Hỗ trợ',
                       icon: Icons.help_rounded,
                       items: [
@@ -265,6 +269,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(height: 12),
                     _buildSection(
+                      colors,
                       title: '',
                       icon: Icons.more_horiz_rounded,
                       hideHeader: true,
@@ -272,7 +277,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         _SectionItem(
                           icon: Icons.logout_rounded,
                           label: 'Đăng xuất',
-                          color: AppTheme.dangerColor,
+                          color: colors.error,
                           onTap: _logout,
                         ),
                       ],
@@ -287,7 +292,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildProfileHeader(String name, String email) {
+  Widget _buildProfileHeader(ColorScheme colors, String name, String email) {
     final initials = _initials(name);
     return Column(
       children: [
@@ -299,8 +304,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Text(
                   'Cá nhân',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppTheme.textPrimary,
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -312,11 +316,11 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: 16),
         CircleAvatar(
           radius: 44,
-          backgroundColor: AppTheme.primary,
+          backgroundColor: colors.primary,
           child: Text(
             initials,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: colors.onPrimary,
               fontSize: 28,
               fontWeight: FontWeight.bold,
             ),
@@ -325,22 +329,19 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: 12),
         Text(
           name,
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 2),
         Text(
           email,
-          style: const TextStyle(color: AppTheme.textGray, fontSize: 13),
+          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
         ),
       ],
     );
   }
 
-  Widget _buildSection({
+  Widget _buildSection(
+    ColorScheme colors, {
     required String title,
     required IconData icon,
     required List<_SectionItem> items,
@@ -354,12 +355,11 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: const EdgeInsets.only(bottom: 8, left: 4),
             child: Row(
               children: [
-                Icon(icon, color: AppTheme.mintAccent, size: 17),
+                Icon(icon, color: colors.primary, size: 17),
                 const SizedBox(width: 6),
                 Text(
                   title,
                   style: const TextStyle(
-                    color: AppTheme.textWhite,
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                   ),
@@ -370,7 +370,7 @@ class _ProfilePageState extends State<ProfilePage> {
         // A Material, not a coloured Container: ListTile paints its background and ink splashes on the nearest Material,
         // so a coloured DecoratedBox in between would hide them (Flutter asserts on it).
         Material(
-          color: AppTheme.navyLight,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(16),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -381,28 +381,24 @@ class _ProfilePageState extends State<ProfilePage> {
                   ListTile(
                     leading: Icon(
                       item.icon,
-                      color: item.color ?? AppTheme.mintAccent,
+                      color: item.color ?? colors.primary,
                       size: 22,
                     ),
+                    // Without a colour of its own, the title and the subtitle take the ListTile defaults of the
+                    // theme: onSurface and onSurfaceVariant.
                     title: Text(
                       item.label,
-                      style: TextStyle(
-                        color: item.color ?? AppTheme.textWhite,
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(color: item.color, fontSize: 14),
                     ),
                     subtitle: item.subtitle != null
                         ? Text(
                             item.subtitle!,
-                            style: const TextStyle(
-                              color: AppTheme.textGray,
-                              fontSize: 12,
-                            ),
+                            style: const TextStyle(fontSize: 12),
                           )
                         : null,
                     trailing: Icon(
                       Icons.chevron_right_rounded,
-                      color: AppTheme.textGray.withValues(alpha: 0.5),
+                      color: colors.onSurfaceVariant.withValues(alpha: 0.5),
                       size: 18,
                     ),
                     onTap: item.onTap,
@@ -412,7 +408,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       height: 1,
                       indent: 60,
                       endIndent: 16,
-                      color: AppTheme.textGray.withValues(alpha: 0.1),
+                      color: colors.onSurfaceVariant.withValues(alpha: 0.1),
                     ),
                 ],
               );
@@ -423,7 +419,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildSkeletonLoading() {
+  Widget _buildSkeletonLoading(ColorScheme colors) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
@@ -433,24 +429,30 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             Align(
               alignment: Alignment.center,
-              child: _buildBox(width: 88, height: 88, shape: BoxShape.circle),
+              child: _buildBox(
+                colors,
+                width: 88,
+                height: 88,
+                shape: BoxShape.circle,
+              ),
             ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.center,
-              child: _buildBox(width: 150, height: 20),
+              child: _buildBox(colors, width: 150, height: 20),
             ),
             const SizedBox(height: 32),
-            _buildBox(height: 150, borderRadius: 16),
+            _buildBox(colors, height: 150, borderRadius: 16),
             const SizedBox(height: 24),
-            _buildBox(height: 200, borderRadius: 16),
+            _buildBox(colors, height: 200, borderRadius: 16),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBox({
+  Widget _buildBox(
+    ColorScheme colors, {
     double? width,
     double? height,
     BoxShape shape = BoxShape.rectangle,
@@ -460,7 +462,7 @@ class _ProfilePageState extends State<ProfilePage> {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: AppTheme.navyLight.withValues(alpha: 0.6),
+        color: colors.surface.withValues(alpha: 0.6),
         shape: shape,
         borderRadius: shape == BoxShape.rectangle
             ? BorderRadius.circular(borderRadius)

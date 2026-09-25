@@ -94,4 +94,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(captured.colors, SemanticColors.dark);
   });
+
+  testWidgets(
+    'ThemeData.semanticColors gives the same colours as context.colors, from the theme or by brightness',
+    (tester) async {
+      expect(AppTheme.lightTheme.semanticColors, SemanticColors.light);
+      expect(AppTheme.darkTheme.semanticColors, SemanticColors.dark);
+      expect(ThemeData().semanticColors, const SemanticColors.defaultLight());
+      expect(
+        ThemeData(brightness: Brightness.dark).semanticColors,
+        const SemanticColors.defaultDark(),
+      );
+
+      await tester.pumpWidget(app(theme: AppTheme.darkTheme));
+      expect(captured.colors, Theme.of(captured).semanticColors);
+    },
+  );
 }

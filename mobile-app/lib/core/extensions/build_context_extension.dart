@@ -17,13 +17,17 @@ extension BuildContextExtension on BuildContext {
     return localizations;
   }
 
-  /// The fintech colours of the current theme. A theme without [SemanticColors] gets the default palette of its
-  /// brightness, so a dark screen never shows the light colours.
-  SemanticColors get colors {
-    final theme = Theme.of(this);
-    return theme.extension<SemanticColors>() ??
-        (theme.colorScheme.brightness == Brightness.dark
-            ? const SemanticColors.defaultDark()
-            : const SemanticColors.defaultLight());
-  }
+  /// The fintech colours of the current theme; see [ThemeDataSemanticColors.semanticColors].
+  SemanticColors get colors => Theme.of(this).semanticColors;
+}
+
+extension ThemeDataSemanticColors on ThemeData {
+  /// The fintech colours of this theme. A theme without [SemanticColors] gets the default palette of its brightness,
+  /// so a dark screen never shows the light colours. Lets a build read the colour scheme and these colours from one
+  /// `Theme.of(context)`.
+  SemanticColors get semanticColors =>
+      extension<SemanticColors>() ??
+      (colorScheme.brightness == Brightness.dark
+          ? const SemanticColors.defaultDark()
+          : const SemanticColors.defaultLight());
 }

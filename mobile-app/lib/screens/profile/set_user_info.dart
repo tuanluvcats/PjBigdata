@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/screens/auth/login_page.dart';
 import 'package:finance_ai_app/services/sqflite_helper.dart';
@@ -91,16 +90,6 @@ class _SetUserInfoScreenState extends State<SetUserInfoScreen> {
       initialDate: initial,
       firstDate: DateTime(1900),
       lastDate: now,
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: AppTheme.primary,
-            onPrimary: Colors.white,
-            onSurface: AppTheme.textPrimary,
-          ),
-        ),
-        child: child!,
-      ),
     );
     if (picked != null) {
       final dd = picked.day.toString().padLeft(2, '0');
@@ -182,30 +171,28 @@ class _SetUserInfoScreenState extends State<SetUserInfoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppTheme.navyDark,
+      backgroundColor: colors.surface,
       appBar: AppBar(
         title: const Text('Thiết lập thông tin'),
         automaticallyImplyLeading: !widget.returnToLoginOnSave,
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.mintAccent),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(
-                    Icons.person_rounded,
-                    size: 92,
-                    color: AppTheme.mintAccent,
-                  ),
+                  Icon(Icons.person_rounded, size: 92, color: colors.primary),
                   const SizedBox(height: 20),
-                  const Text(
+                  Text(
                     'Hãy hoàn tất thông tin cá nhân để sử dụng đầy đủ tính năng.',
-                    style: TextStyle(fontSize: 16, color: AppTheme.textGray),
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: colors.onSurfaceVariant,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
@@ -214,9 +201,9 @@ class _SetUserInfoScreenState extends State<SetUserInfoScreen> {
                     label: 'Ngày sinh (DD/MM/YYYY) - không bắt buộc',
                     keyboardType: TextInputType.datetime,
                     suffixIcon: IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.calendar_today_rounded,
-                        color: AppTheme.mintAccent,
+                        color: colors.primary,
                         size: 20,
                       ),
                       onPressed: _pickDob,

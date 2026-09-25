@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/constants/transaction_categories.dart';
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/receipt_item_model.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
@@ -175,52 +176,51 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
     if (!mounted) return;
     final picked = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: AppTheme.navyLight,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 12, 20, 8),
-              child: Text(
-                'Chọn danh mục chi',
-                style: TextStyle(
-                  color: AppTheme.textWhite,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+      builder: (sheetContext) {
+        final colors = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 8),
+                child: Text(
+                  'Chọn danh mục chi',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
-            ),
-            ...TransactionCategories.expenseSelectable.map((cat) {
-              final selected = cat == _selectedCategory;
-              return ListTile(
-                leading: Icon(
-                  TransactionCategories.iconFor(cat),
-                  color: selected ? AppTheme.mintAccent : AppTheme.textGray,
-                ),
-                title: Text(
-                  cat,
-                  style: TextStyle(
-                    color: selected ? AppTheme.textWhite : AppTheme.textGray,
-                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+              ...TransactionCategories.expenseSelectable.map((cat) {
+                final selected = cat == _selectedCategory;
+                return ListTile(
+                  leading: Icon(
+                    TransactionCategories.iconFor(cat),
+                    color: selected ? colors.primary : colors.onSurfaceVariant,
                   ),
-                ),
-                trailing: selected
-                    ? const Icon(
-                        Icons.check_rounded,
-                        color: AppTheme.mintAccent,
-                      )
-                    : null,
-                onTap: () => Navigator.pop(context, cat),
-              );
-            }),
-          ],
-        ),
-      ),
+                  title: Text(
+                    cat,
+                    style: TextStyle(
+                      color: selected
+                          ? colors.onSurface
+                          : colors.onSurfaceVariant,
+                      fontWeight: selected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  trailing: selected
+                      ? Icon(Icons.check_rounded, color: colors.primary)
+                      : null,
+                  onTap: () => Navigator.pop(context, cat),
+                );
+              }),
+            ],
+          ),
+        );
+      },
     );
 
     if (picked != null && mounted) setState(() => _selectedCategory = picked);
@@ -228,38 +228,38 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Xác nhận hóa đơn')),
-      body: _isProcessing ? _buildProcessingState() : _buildFormContent(),
+      body: _isProcessing
+          ? _buildProcessingState(colors)
+          : _buildFormContent(colors, theme.semanticColors),
     );
   }
 
-  Widget _buildProcessingState() {
-    return const Center(
+  Widget _buildProcessingState(ColorScheme colors) {
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(color: AppTheme.mintAccent),
-          SizedBox(height: 24),
-          Text(
+          const CircularProgressIndicator(),
+          const SizedBox(height: 24),
+          const Text(
             'Đang phân tích hóa đơn...',
-            style: TextStyle(
-              color: AppTheme.textWhite,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             'Vui lòng đợi trong giây lát',
-            style: TextStyle(color: AppTheme.textGray, fontSize: 14),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFormContent() {
+  Widget _buildFormContent(ColorScheme colors, SemanticColors semantic) {
     final fmt = NumberFormat.currency(
       locale: 'vi_VN',
       symbol: 'đ',
@@ -274,6 +274,7 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // The original photo of the receipt keeps its own colours in both themes: no filter over it.
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.file(
@@ -285,34 +286,34 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
                     width: 80,
                     height: 120,
                     decoration: BoxDecoration(
-                      color: AppTheme.navyLight,
+                      color: colors.surface,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.image_not_supported,
-                      color: AppTheme.textGray,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 16),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Trích xuất thành công',
                       style: TextStyle(
-                        color: AppTheme.mintAccent,
+                        color: colors.primary,
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
                       'Vui lòng kiểm tra lại thông tin bên dưới và đối chiếu với ảnh gốc trước khi lưu.',
                       style: TextStyle(
-                        color: AppTheme.textGray,
+                        color: colors.onSurfaceVariant,
                         fontSize: 13,
                         height: 1.4,
                       ),
@@ -326,21 +327,23 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
 
           _buildSectionTitle('Thông tin chung'),
           _buildTextField(
+            colors,
             'Tên cửa hàng',
             _storeNameController,
             Icons.storefront,
           ),
           const SizedBox(height: 16),
           _buildTextField(
+            colors,
             'Ngày giao dịch',
             _dateController,
             Icons.calendar_today,
           ),
           const SizedBox(height: 16),
 
-          const Text(
+          Text(
             'Danh mục',
-            style: TextStyle(color: AppTheme.textGray, fontSize: 14),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
           ),
           const SizedBox(height: 8),
           InkWell(
@@ -349,31 +352,26 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.navyLight,
+                color: colors.surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppTheme.textGray.withValues(alpha: 0.3),
-                ),
+                border: Border.all(color: colors.outlineVariant),
               ),
               child: Row(
                 children: [
                   Icon(
                     TransactionCategories.iconFor(_selectedCategory),
-                    color: AppTheme.textGray,
+                    color: colors.onSurfaceVariant,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       _selectedCategory,
-                      style: const TextStyle(
-                        color: AppTheme.textWhite,
-                        fontSize: 16,
-                      ),
+                      style: const TextStyle(fontSize: 16),
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
-                    color: AppTheme.textGray,
+                    color: colors.onSurfaceVariant,
                   ),
                 ],
               ),
@@ -390,17 +388,27 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  _buildTotalRow('Tạm tính:', fmt.format(_donutTotal)),
+                  _buildTotalRow(
+                    colors,
+                    semantic,
+                    'Tạm tính:',
+                    fmt.format(_donutTotal),
+                  ),
                   const SizedBox(height: 8),
-                  _buildTotalRow('Thuế VAT/Khác:', fmt.format(_receipt.tax)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Divider(
-                      height: 1,
-                      color: Colors.white.withValues(alpha: 0.1),
-                    ),
+                  _buildTotalRow(
+                    colors,
+                    semantic,
+                    'Thuế VAT/Khác:',
+                    fmt.format(_receipt.tax),
+                  ),
+                  // The theme divider: the white 10% line of the old dark design did not show on the light card.
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(height: 1),
                   ),
                   _buildTotalRow(
+                    colors,
+                    semantic,
                     'TỔNG TIỀN:',
                     fmt.format(_donutTotal),
                     isGrandTotal: true,
@@ -416,21 +424,18 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
             height: 56,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.mintAccent,
-                foregroundColor: AppTheme.navyDark,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
               onPressed: _isSaving ? null : _saveToDatabase,
+              // While saving the button is disabled, so its background is the disabled grey: the spinner takes the
+              // primary colour to show on it.
               child: _isSaving
                   ? const SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(
-                        color: AppTheme.navyDark,
-                        strokeWidth: 2,
-                      ),
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Text(
                       'Xác nhận & Lưu CSDL',
@@ -451,44 +456,43 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         title,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 16,
-          color: AppTheme.textWhite,
-        ),
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
       ),
     );
   }
 
+  /// Text, fill, cursor and prefix icon come from the input theme; the label keeps the secondary text colour.
   Widget _buildTextField(
+    ColorScheme colors,
     String label,
     TextEditingController controller,
     IconData icon,
   ) {
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: AppTheme.textGray.withValues(alpha: 0.3)),
+      borderSide: BorderSide(color: colors.outlineVariant),
     );
     return TextFormField(
       controller: controller,
-      style: const TextStyle(color: AppTheme.textWhite),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: AppTheme.textGray),
-        prefixIcon: Icon(icon, color: AppTheme.textGray),
+        labelStyle: TextStyle(color: colors.onSurfaceVariant),
+        prefixIcon: Icon(icon),
         filled: true,
-        fillColor: AppTheme.navyLight,
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppTheme.mintAccent),
+          borderSide: BorderSide(color: colors.primary),
         ),
       ),
     );
   }
 
+  /// The grand total is the amount spent, so it takes the expense colour.
   Widget _buildTotalRow(
+    ColorScheme colors,
+    SemanticColors semantic,
     String label,
     String value, {
     bool isGrandTotal = false,
@@ -499,7 +503,7 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
         Text(
           label,
           style: TextStyle(
-            color: isGrandTotal ? AppTheme.textWhite : AppTheme.textGray,
+            color: isGrandTotal ? colors.onSurface : colors.onSurfaceVariant,
             fontSize: isGrandTotal ? 16 : 14,
             fontWeight: isGrandTotal ? FontWeight.bold : FontWeight.normal,
           ),
@@ -507,7 +511,7 @@ class _ReviewFormPageState extends State<ReviewFormPage> {
         Text(
           value,
           style: TextStyle(
-            color: isGrandTotal ? AppTheme.dangerColor : AppTheme.textWhite,
+            color: isGrandTotal ? semantic.expenseColor : colors.onSurface,
             fontSize: isGrandTotal ? 20 : 14,
             fontWeight: FontWeight.bold,
           ),

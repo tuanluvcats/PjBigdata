@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:finance_ai_app/config/app_config.dart';
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/sync_status.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
@@ -218,16 +219,17 @@ class LedgerPageState extends State<LedgerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final semantic = theme.semanticColors;
     return Scaffold(
       appBar: AppBar(
         title: _isSearching
             ? TextField(
                 controller: _searchController,
                 autofocus: true,
-                style: const TextStyle(color: AppTheme.textPrimary),
                 decoration: const InputDecoration(
                   hintText: 'Tìm tên, danh mục...',
-                  hintStyle: TextStyle(color: AppTheme.textGray),
                   border: InputBorder.none,
                 ),
                 onChanged: (v) => setState(() => _searchQuery = v),
@@ -254,13 +256,13 @@ class LedgerPageState extends State<LedgerPage> {
             icon: Icon(
               Icons.tune_rounded,
               color: (!_showExpenses || !_showIncome)
-                  ? AppTheme.primary
-                  : AppTheme.textGray,
+                  ? colors.primary
+                  : colors.onSurfaceVariant,
             ),
             onPressed: _showTypePicker,
           ),
           IconButton(
-            icon: const Icon(Icons.add_box_rounded, color: AppTheme.primary),
+            icon: Icon(Icons.add_box_rounded, color: colors.primary),
             onPressed: () {
               Navigator.push<bool>(
                 context,
@@ -286,25 +288,26 @@ class LedgerPageState extends State<LedgerPage> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                 children: [
-                  if (_transactionsFailed) _buildLoadFailedNotice(),
-                  _buildDateStepper(),
+                  if (_transactionsFailed)
+                    _buildLoadFailedNotice(colors, semantic),
+                  _buildDateStepper(colors),
                   const SizedBox(height: 16),
-                  _buildPeriodHeader(),
+                  _buildPeriodHeader(colors),
                   const SizedBox(height: 16),
-                  _buildChartCard(),
+                  _buildChartCard(colors, semantic),
                   const SizedBox(height: 16),
-                  _buildStatCards(),
+                  _buildStatCards(colors, semantic),
                   const SizedBox(height: 24),
-                  _buildRecentList(),
+                  _buildRecentList(colors, semantic),
                   const SizedBox(height: 24),
-                  _buildSummaryBlock(),
+                  _buildSummaryBlock(colors, semantic),
                 ],
               ),
             ),
     );
   }
 
-  Widget _buildDateStepper() {
+  Widget _buildDateStepper(ColorScheme colors) {
     return Center(
       child: InkWell(
         onTap: _pickFullDate,
@@ -312,31 +315,27 @@ class LedgerPageState extends State<LedgerPage> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: colors.surface,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: AppTheme.softShadow,
+            boxShadow: AppTheme.softShadowFor(colors),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.calendar_today_rounded,
                 size: 16,
-                color: AppTheme.primary,
+                color: colors.primary,
               ),
               const SizedBox(width: 8),
               const Text(
                 'Lịch',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               ),
               const SizedBox(width: 8),
               Text(
                 DateFormat('dd/MM/yyyy').format(_selectedDate),
-                style: const TextStyle(color: AppTheme.textGray, fontSize: 13),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
               ),
             ],
           ),
@@ -356,16 +355,6 @@ class LedgerPageState extends State<LedgerPage> {
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: AppTheme.primary,
-            onPrimary: Colors.white,
-            onSurface: AppTheme.textPrimary,
-          ),
-        ),
-        child: child!,
-      ),
     );
     if (picked == null) return;
     final monthChanged =
@@ -378,7 +367,7 @@ class LedgerPageState extends State<LedgerPage> {
     if (monthChanged) _load();
   }
 
-  Widget _circleBtn(IconData icon, VoidCallback onTap) {
+  Widget _circleBtn(ColorScheme colors, IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -386,55 +375,55 @@ class LedgerPageState extends State<LedgerPage> {
         width: 34,
         height: 34,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.surface,
           shape: BoxShape.circle,
-          boxShadow: AppTheme.softShadow,
+          boxShadow: AppTheme.softShadowFor(colors),
         ),
-        child: Icon(icon, size: 20, color: AppTheme.textPrimary),
+        child: Icon(icon, size: 20, color: colors.onSurface),
       ),
     );
   }
 
-  Widget _buildPeriodHeader() {
+  Widget _buildPeriodHeader(ColorScheme colors) {
     return Row(
       children: [
-        _circleBtn(Icons.chevron_left_rounded, () => _shiftPeriod(-1)),
+        _circleBtn(colors, Icons.chevron_left_rounded, () => _shiftPeriod(-1)),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
             _periodLabel,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppTheme.textGray,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
           ),
         ),
         const SizedBox(width: 12),
-        _circleBtn(Icons.chevron_right_rounded, () => _shiftPeriod(1)),
+        _circleBtn(colors, Icons.chevron_right_rounded, () => _shiftPeriod(1)),
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: AppTheme.mintLight,
+            color: colors.primaryContainer,
             borderRadius: BorderRadius.circular(20),
           ),
+          // The menu itself opens on the canvas colour of the theme, its surface.
           child: DropdownButtonHideUnderline(
             child: DropdownButton<LedgerPeriod>(
               value: _period,
               isDense: true,
-              icon: const Icon(
+              icon: Icon(
                 Icons.keyboard_arrow_down_rounded,
-                color: AppTheme.primary,
+                color: colors.onPrimaryContainer,
                 size: 18,
               ),
-              style: const TextStyle(
-                color: AppTheme.primary,
+              style: TextStyle(
+                color: colors.onPrimaryContainer,
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
-              dropdownColor: Colors.white,
               items: const [
                 DropdownMenuItem(value: LedgerPeriod.week, child: Text('Tuần')),
                 DropdownMenuItem(
@@ -457,18 +446,18 @@ class LedgerPageState extends State<LedgerPage> {
     );
   }
 
-  Widget _buildChartCard() {
+  Widget _buildChartCard(ColorScheme colors, SemanticColors semantic) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-      decoration: AppTheme.card,
+      decoration: AppTheme.cardDecoration(colors),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              _legendDot(AppTheme.positive, 'Thu'),
+              _legendDot(colors, semantic.incomeColor, 'Thu'),
               const SizedBox(width: 16),
-              _legendDot(AppTheme.dangerColor, 'Chi'),
+              _legendDot(colors, semantic.expenseColor, 'Chi'),
             ],
           ),
           const SizedBox(height: 20),
@@ -481,7 +470,7 @@ class LedgerPageState extends State<LedgerPage> {
                 '${_period.name}_${_selectedDate.month}_${_selectedDate.year}',
               ),
               height: 180,
-              child: _buildBarChart(),
+              child: _buildBarChart(colors, semantic),
             ),
           ),
         ],
@@ -489,7 +478,7 @@ class LedgerPageState extends State<LedgerPage> {
     );
   }
 
-  Widget _buildBarChart() {
+  Widget _buildBarChart(ColorScheme colors, SemanticColors semantic) {
     final List<double> income = [];
     final List<double> expense = [];
     final List<String> labels = [];
@@ -514,6 +503,12 @@ class LedgerPageState extends State<LedgerPage> {
     for (final v in [...income, ...expense]) {
       if (v > maxV) maxV = v;
     }
+    // The bars keep the income and expense colours; the grid and the labels are theme text colours.
+    final gridLine = FlLine(
+      color: colors.onSurfaceVariant.withValues(alpha: 0.15),
+      strokeWidth: 1,
+    );
+    final labelStyle = TextStyle(color: colors.onSurfaceVariant, fontSize: 11);
 
     return BarChart(
       BarChartData(
@@ -523,10 +518,7 @@ class LedgerPageState extends State<LedgerPage> {
           show: true,
           drawVerticalLine: false,
           horizontalInterval: maxV / 2,
-          getDrawingHorizontalLine: (v) => FlLine(
-            color: AppTheme.textGray.withValues(alpha: 0.15),
-            strokeWidth: 1,
-          ),
+          getDrawingHorizontalLine: (v) => gridLine,
         ),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
@@ -548,13 +540,7 @@ class LedgerPageState extends State<LedgerPage> {
                 if (i < 0 || i >= labels.length) return const SizedBox();
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    labels[i],
-                    style: const TextStyle(
-                      color: AppTheme.textGray,
-                      fontSize: 11,
-                    ),
-                  ),
+                  child: Text(labels[i], style: labelStyle),
                 );
               },
             ),
@@ -568,13 +554,13 @@ class LedgerPageState extends State<LedgerPage> {
             barRods: [
               BarChartRodData(
                 toY: income[i],
-                color: AppTheme.positive,
+                color: semantic.incomeColor,
                 width: 7,
                 borderRadius: BorderRadius.circular(4),
               ),
               BarChartRodData(
                 toY: expense[i],
-                color: AppTheme.dangerColor,
+                color: semantic.expenseColor,
                 width: 7,
                 borderRadius: BorderRadius.circular(4),
               ),
@@ -595,31 +581,34 @@ class LedgerPageState extends State<LedgerPage> {
         .fold(0.0, (s, t) => s + t.amount);
   }
 
-  Widget _buildStatCards() {
+  Widget _buildStatCards(ColorScheme colors, SemanticColors semantic) {
     return Row(
       children: [
         Expanded(
           child: _statCard(
+            colors,
             icon: Icons.south_west_rounded,
             label: 'Thu nhập',
             amount: _periodIncome,
-            color: AppTheme.positive,
+            color: semantic.incomeColor,
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _statCard(
+            colors,
             icon: Icons.north_east_rounded,
             label: 'Chi tiêu',
             amount: _periodExpense,
-            color: AppTheme.dangerColor,
+            color: semantic.expenseColor,
           ),
         ),
       ],
     );
   }
 
-  Widget _statCard({
+  Widget _statCard(
+    ColorScheme colors, {
     required IconData icon,
     required String label,
     required double amount,
@@ -627,7 +616,7 @@ class LedgerPageState extends State<LedgerPage> {
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: AppTheme.card,
+      decoration: AppTheme.cardDecoration(colors),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -645,24 +634,20 @@ class LedgerPageState extends State<LedgerPage> {
             alignment: Alignment.centerLeft,
             child: Text(
               _fmtCur.format(amount),
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
           ),
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(color: AppTheme.textGray, fontSize: 13),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
           ),
         ],
       ),
     );
   }
 
-  Widget _legendDot(Color c, String label) {
+  Widget _legendDot(ColorScheme colors, Color c, String label) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -677,33 +662,40 @@ class LedgerPageState extends State<LedgerPage> {
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
         ),
       ],
     );
   }
 
-  Widget _buildRecentList() {
+  Widget _buildRecentList(ColorScheme colors, SemanticColors semantic) {
     final txs = _periodTransactions;
+    // Made once for the whole list rather than once per row.
+    final card = AppTheme.cardDecoration(colors);
+    final detailStyle = TextStyle(color: colors.onSurfaceVariant, fontSize: 12);
+    final expenseStyle = TextStyle(
+      color: semantic.expenseColor,
+      fontWeight: FontWeight.bold,
+    );
+    final incomeStyle = TextStyle(
+      color: semantic.incomeColor,
+      fontWeight: FontWeight.bold,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
           'Giao dịch gần đây',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 12),
         if (txs.isEmpty)
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: AppTheme.card,
-            child: const Text(
+            decoration: card,
+            child: Text(
               'Không có giao dịch trong kỳ này.',
-              style: TextStyle(color: AppTheme.textGray),
+              style: TextStyle(color: colors.onSurfaceVariant),
             ),
           )
         else
@@ -712,7 +704,7 @@ class LedgerPageState extends State<LedgerPage> {
               padding: const EdgeInsets.only(bottom: 10),
               child: Container(
                 padding: const EdgeInsets.all(12),
-                decoration: AppTheme.card,
+                decoration: card,
                 child: InkWell(
                   onTap: () => _showTransactionDetails(tx),
                   borderRadius: BorderRadius.circular(12),
@@ -734,17 +726,13 @@ class LedgerPageState extends State<LedgerPage> {
                             Text(
                               tx.title,
                               style: const TextStyle(
-                                color: AppTheme.textPrimary,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               '${tx.category} • ${DateFormat('dd/MM HH:mm').format(tx.date)}',
-                              style: const TextStyle(
-                                color: AppTheme.textGray,
-                                fontSize: 12,
-                              ),
+                              style: detailStyle,
                             ),
                             if (tx.receiptStatus != null) ...[
                               const SizedBox(height: 4),
@@ -759,12 +747,7 @@ class LedgerPageState extends State<LedgerPage> {
                       ),
                       Text(
                         '${tx.isExpense ? "- " : "+ "}${_fmtCur.format(tx.amount)}',
-                        style: TextStyle(
-                          color: tx.isExpense
-                              ? AppTheme.dangerColor
-                              : AppTheme.positive,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: tx.isExpense ? expenseStyle : incomeStyle,
                       ),
                     ],
                   ),
@@ -776,7 +759,7 @@ class LedgerPageState extends State<LedgerPage> {
     );
   }
 
-  Widget _buildSummaryBlock() {
+  Widget _buildSummaryBlock(ColorScheme colors, SemanticColors semantic) {
     final balance = _periodIncome - _periodExpense;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -788,34 +771,40 @@ class LedgerPageState extends State<LedgerPage> {
           children: [
             const Text(
               'Tổng kết',
-              style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             TextButton.icon(
               onPressed: _exportToExcel,
               icon: const Icon(Icons.download_rounded, size: 18),
               label: const Text('Excel'),
-              style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
             ),
           ],
         ),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: AppTheme.card,
+          decoration: AppTheme.cardDecoration(colors),
           child: Column(
             children: [
-              _summaryRow('Tổng thu', _periodIncome, AppTheme.positive),
+              _summaryRow(
+                colors,
+                'Tổng thu',
+                _periodIncome,
+                semantic.incomeColor,
+              ),
               const SizedBox(height: 8),
-              _summaryRow('Tổng chi', _periodExpense, AppTheme.dangerColor),
+              _summaryRow(
+                colors,
+                'Tổng chi',
+                _periodExpense,
+                semantic.expenseColor,
+              ),
               const Divider(height: 24),
               _summaryRow(
+                colors,
                 'Số dư',
                 balance,
-                balance >= 0 ? AppTheme.positive : AppTheme.dangerColor,
+                balance >= 0 ? semantic.incomeColor : semantic.expenseColor,
                 bold: true,
               ),
             ],
@@ -826,6 +815,7 @@ class LedgerPageState extends State<LedgerPage> {
   }
 
   Widget _summaryRow(
+    ColorScheme colors,
     String label,
     double amount,
     Color color, {
@@ -837,7 +827,7 @@ class LedgerPageState extends State<LedgerPage> {
         Text(
           label,
           style: TextStyle(
-            color: bold ? AppTheme.textPrimary : AppTheme.textGray,
+            color: bold ? colors.onSurface : colors.onSurfaceVariant,
             fontWeight: bold ? FontWeight.bold : FontWeight.normal,
           ),
         ),
@@ -852,439 +842,410 @@ class LedgerPageState extends State<LedgerPage> {
   void _showTypePicker() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppTheme.navyLight,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Bộ lọc & Sắp xếp thông minh',
-                  style: TextStyle(
-                    color: AppTheme.textWhite,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+      builder: (ctx) {
+        final sectionStyle = TextStyle(
+          color: Theme.of(ctx).colorScheme.primary,
+          fontWeight: FontWeight.bold,
+        );
+        return StatefulBuilder(
+          builder: (ctx, setModalState) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Bộ lọc & Sắp xếp thông minh',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                ),
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                const Text(
-                  '1. Loại giao dịch',
-                  style: TextStyle(
-                    color: AppTheme.mintAccent,
-                    fontWeight: FontWeight.bold,
+                  Text('1. Loại giao dịch', style: sectionStyle),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Tất cả'),
+                        selected: _showExpenses && _showIncome,
+                        onSelected: (_) => setModalState(() {
+                          _showExpenses = true;
+                          _showIncome = true;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Chỉ Khoản Chi'),
+                        selected: _showExpenses && !_showIncome,
+                        onSelected: (_) => setModalState(() {
+                          _showExpenses = true;
+                          _showIncome = false;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Chỉ Khoản Thu'),
+                        selected: !_showExpenses && _showIncome,
+                        onSelected: (_) => setModalState(() {
+                          _showExpenses = false;
+                          _showIncome = true;
+                        }),
+                      ),
+                    ],
                   ),
-                ),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('Tất cả'),
-                      selected: _showExpenses && _showIncome,
-                      onSelected: (_) => setModalState(() {
-                        _showExpenses = true;
-                        _showIncome = true;
-                      }),
-                    ),
-                    ChoiceChip(
-                      label: const Text('Chỉ Khoản Chi'),
-                      selected: _showExpenses && !_showIncome,
-                      onSelected: (_) => setModalState(() {
-                        _showExpenses = true;
-                        _showIncome = false;
-                      }),
-                    ),
-                    ChoiceChip(
-                      label: const Text('Chỉ Khoản Thu'),
-                      selected: !_showExpenses && _showIncome,
-                      onSelected: (_) => setModalState(() {
-                        _showExpenses = false;
-                        _showIncome = true;
-                      }),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                const Text(
-                  '2. Khoảng tiền',
-                  style: TextStyle(
-                    color: AppTheme.mintAccent,
-                    fontWeight: FontWeight.bold,
+                  Text('2. Khoảng tiền', style: sectionStyle),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Mọi mức giá'),
+                        selected:
+                            _filterMaxAmount == null &&
+                            _filterMinAmount == null,
+                        onSelected: (_) => setModalState(() {
+                          _filterMinAmount = null;
+                          _filterMaxAmount = null;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('< 100k'),
+                        selected: _filterMaxAmount == 100000,
+                        onSelected: (_) => setModalState(() {
+                          _filterMinAmount = null;
+                          _filterMaxAmount = 100000;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('100k - 500k'),
+                        selected:
+                            _filterMinAmount == 100000 &&
+                            _filterMaxAmount == 500000,
+                        onSelected: (_) => setModalState(() {
+                          _filterMinAmount = 100000;
+                          _filterMaxAmount = 500000;
+                        }),
+                      ),
+                      ChoiceChip(
+                        label: const Text('> 500k'),
+                        selected:
+                            _filterMinAmount == 500000 &&
+                            _filterMaxAmount == null,
+                        onSelected: (_) => setModalState(() {
+                          _filterMinAmount = 500000;
+                          _filterMaxAmount = null;
+                        }),
+                      ),
+                    ],
                   ),
-                ),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('Mọi mức giá'),
-                      selected:
-                          _filterMaxAmount == null && _filterMinAmount == null,
-                      onSelected: (_) => setModalState(() {
-                        _filterMinAmount = null;
-                        _filterMaxAmount = null;
-                      }),
-                    ),
-                    ChoiceChip(
-                      label: const Text('< 100k'),
-                      selected: _filterMaxAmount == 100000,
-                      onSelected: (_) => setModalState(() {
-                        _filterMinAmount = null;
-                        _filterMaxAmount = 100000;
-                      }),
-                    ),
-                    ChoiceChip(
-                      label: const Text('100k - 500k'),
-                      selected:
-                          _filterMinAmount == 100000 &&
-                          _filterMaxAmount == 500000,
-                      onSelected: (_) => setModalState(() {
-                        _filterMinAmount = 100000;
-                        _filterMaxAmount = 500000;
-                      }),
-                    ),
-                    ChoiceChip(
-                      label: const Text('> 500k'),
-                      selected:
-                          _filterMinAmount == 500000 &&
-                          _filterMaxAmount == null,
-                      onSelected: (_) => setModalState(() {
-                        _filterMinAmount = 500000;
-                        _filterMaxAmount = null;
-                      }),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                const Text(
-                  '3. Sắp xếp theo',
-                  style: TextStyle(
-                    color: AppTheme.mintAccent,
-                    fontWeight: FontWeight.bold,
+                  Text('3. Sắp xếp theo', style: sectionStyle),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Mới nhất'),
+                        selected: _sortOption == 'date_desc',
+                        onSelected: (_) =>
+                            setModalState(() => _sortOption = 'date_desc'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Cũ nhất'),
+                        selected: _sortOption == 'date_asc',
+                        onSelected: (_) =>
+                            setModalState(() => _sortOption = 'date_asc'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Giá trị cao nhất'),
+                        selected: _sortOption == 'amount_desc',
+                        onSelected: (_) =>
+                            setModalState(() => _sortOption = 'amount_desc'),
+                      ),
+                    ],
                   ),
-                ),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('Mới nhất'),
-                      selected: _sortOption == 'date_desc',
-                      onSelected: (_) =>
-                          setModalState(() => _sortOption = 'date_desc'),
-                    ),
-                    ChoiceChip(
-                      label: const Text('Cũ nhất'),
-                      selected: _sortOption == 'date_asc',
-                      onSelected: (_) =>
-                          setModalState(() => _sortOption = 'date_asc'),
-                    ),
-                    ChoiceChip(
-                      label: const Text('Giá trị cao nhất'),
-                      selected: _sortOption == 'amount_desc',
-                      onSelected: (_) =>
-                          setModalState(() => _sortOption = 'amount_desc'),
-                    ),
-                  ],
-                ),
 
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.mintAccent,
-                      foregroundColor: AppTheme.navyDark,
-                    ),
-                    onPressed: () {
-                      setState(() {});
-                      Navigator.pop(ctx);
-                    },
-                    child: const Text(
-                      'Áp dụng bộ lọc',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {});
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text(
+                        'Áp dụng bộ lọc',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   void _showTransactionDetails(TransactionModel tx) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppTheme.navyLight,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: tx.color.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        final colors = theme.colorScheme;
+        final semantic = theme.semanticColors;
+        final labelStyle = TextStyle(
+          color: colors.onSurfaceVariant,
+          fontSize: 15,
+        );
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: tx.color.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(tx.icon, color: tx.color, size: 28),
                       ),
-                      child: Icon(tx.icon, color: tx.color, size: 28),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              tx.title,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              tx.category,
+                              style: TextStyle(
+                                color: colors.onSurfaceVariant,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: Icon(Icons.close, color: colors.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  _buildDetailRow(
+                    labelStyle,
+                    'Số tiền:',
+                    '${tx.isExpense ? "-" : "+"}${_fmtCur.format(tx.amount)}',
+                    tx.isExpense ? semantic.expenseColor : semantic.incomeColor,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDetailRow(
+                    labelStyle,
+                    'Thời gian:',
+                    DateFormat('dd/MM/yyyy - HH:mm').format(tx.date),
+                    colors.onSurface,
+                  ),
+                  if (tx.receiptStatus != null) ...[
+                    const SizedBox(height: 12),
+                    // A Wrap, not a Row: on a narrow screen or with a large font the badge drops to its own line instead of
+                    // overflowing. The full-width box keeps the label left and the badge right while both fit on one line.
+                    SizedBox(
+                      width: double.infinity,
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 6,
                         children: [
-                          Text(
-                            tx.title,
-                            style: const TextStyle(
-                              color: AppTheme.textWhite,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            tx.category,
-                            style: const TextStyle(
-                              color: AppTheme.textGray,
-                              fontSize: 14,
-                            ),
-                          ),
+                          Text('Trạng thái hóa đơn:', style: labelStyle),
+                          ReceiptStatusBadge(status: tx.receiptStatus!),
                         ],
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.close, color: AppTheme.textGray),
+                  ],
+                  if (tx.isUnsynced) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          Text('Đồng bộ:', style: labelStyle),
+                          SyncStatusBadge(status: tx.syncStatus),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Giao dịch chưa được máy chủ xác nhận. Khi đã có mạng, bấm "Gửi lại". Gửi lại sẽ không tạo giao dịch trùng.',
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 24),
-
-                _buildDetailRow(
-                  'Số tiền:',
-                  '${tx.isExpense ? "-" : "+"}${_fmtCur.format(tx.amount)}',
-                  tx.isExpense ? AppTheme.dangerColor : AppTheme.positive,
-                ),
-                const SizedBox(height: 12),
-                _buildDetailRow(
-                  'Thời gian:',
-                  DateFormat('dd/MM/yyyy - HH:mm').format(tx.date),
-                  AppTheme.textWhite,
-                ),
-                if (tx.receiptStatus != null) ...[
-                  const SizedBox(height: 12),
-                  // A Wrap, not a Row: on a narrow screen or with a large font the badge drops to its own line instead of
-                  // overflowing. The full-width box keeps the label left and the badge right while both fit on one line.
-                  SizedBox(
-                    width: double.infinity,
-                    child: Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        const Text(
-                          'Trạng thái hóa đơn:',
-                          style: TextStyle(
-                            color: AppTheme.textGray,
-                            fontSize: 15,
-                          ),
-                        ),
-                        ReceiptStatusBadge(status: tx.receiptStatus!),
-                      ],
+                  if (tx.imageUrl != null && tx.imageUrl!.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Ảnh hóa đơn gốc:',
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 14,
+                      ),
                     ),
-                  ),
-                ],
-                if (tx.isUnsynced) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        const Text(
-                          'Đồng bộ:',
-                          style: TextStyle(
-                            color: AppTheme.textGray,
-                            fontSize: 15,
-                          ),
-                        ),
-                        SyncStatusBadge(status: tx.syncStatus),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Giao dịch chưa được máy chủ xác nhận. Khi đã có mạng, bấm "Gửi lại". Gửi lại sẽ không tạo giao dịch trùng.',
-                    style: TextStyle(color: AppTheme.textGray, fontSize: 13),
-                  ),
-                ],
-                if (tx.imageUrl != null && tx.imageUrl!.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Ảnh hóa đơn gốc:',
-                    style: TextStyle(color: AppTheme.textGray, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => Scaffold(
-                            backgroundColor: Colors.black,
-                            appBar: AppBar(
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => Scaffold(
                               backgroundColor: Colors.black,
-                              iconTheme: const IconThemeData(
-                                color: Colors.white,
+                              appBar: AppBar(
+                                backgroundColor: Colors.black,
+                                iconTheme: const IconThemeData(
+                                  color: Colors.white,
+                                ),
                               ),
-                            ),
-                            body: Center(
-                              child: InteractiveViewer(
-                                child: Image.network(tx.imageUrl!),
+                              body: Center(
+                                child: InteractiveViewer(
+                                  child: Image.network(tx.imageUrl!),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        color: AppTheme.navyDark,
-                        width: double.infinity,
-                        height: 200,
-                        child: Image.network(
-                          tx.imageUrl!,
-                          fit: BoxFit.contain,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return const Center(
-                              child: CircularProgressIndicator(
-                                color: AppTheme.mintAccent,
-                              ),
-                            );
-                          },
+                        );
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          color: colors.surface,
+                          width: double.infinity,
+                          height: 200,
+                          child: Image.network(
+                            tx.imageUrl!,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
 
-                const SizedBox(height: 24),
-                // The server has no copy of an unsynced transaction, so the only thing to do with it is to send it again.
-                if (tx.isUnsynced) ...[
+                  const SizedBox(height: 24),
+                  // The server has no copy of an unsynced transaction, so the only thing to do with it is to send it again.
+                  if (tx.isUnsynced) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.cloud_upload_rounded),
+                        label: const Text(
+                          'Gửi lại',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _resendTransactionAction(tx);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  // Editing goes through the server; offline there is no edit form, so the button is not offered.
+                  if (AppConfig.isFull && tx.id != null) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.edit_rounded),
+                        label: const Text(
+                          'Sửa giao dịch',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _editTransactionAction(tx);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   SizedBox(
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.mintAccent,
-                        foregroundColor: Colors.white,
+                        backgroundColor: colors.error.withValues(alpha: 0.1),
+                        foregroundColor: colors.error,
                         elevation: 0,
                       ),
-                      icon: const Icon(Icons.cloud_upload_rounded),
+                      icon: const Icon(Icons.delete_rounded),
                       label: const Text(
-                        'Gửi lại',
+                        'Xóa giao dịch này',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       onPressed: () {
                         Navigator.pop(ctx);
-                        _resendTransactionAction(tx);
+                        if (tx.isUnsynced) {
+                          _deleteUnsyncedAction(tx);
+                        } else {
+                          _deleteTransactionAction(tx.id!);
+                        }
                       },
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                 ],
-                // Editing goes through the server; offline there is no edit form, so the button is not offered.
-                if (AppConfig.isFull && tx.id != null) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.mintAccent,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                      ),
-                      icon: const Icon(Icons.edit_rounded),
-                      label: const Text(
-                        'Sửa giao dịch',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _editTransactionAction(tx);
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.dangerColor.withValues(
-                        alpha: 0.1,
-                      ),
-                      foregroundColor: AppTheme.dangerColor,
-                      elevation: 0,
-                    ),
-                    icon: const Icon(Icons.delete_rounded),
-                    label: const Text(
-                      'Xóa giao dịch này',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      if (tx.isUnsynced) {
-                        _deleteUnsyncedAction(tx);
-                      } else {
-                        _deleteTransactionAction(tx.id!);
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildDetailRow(String label, String value, Color valColor) {
+  Widget _buildDetailRow(
+    TextStyle labelStyle,
+    String label,
+    String value,
+    Color valColor,
+  ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(color: AppTheme.textGray, fontSize: 15),
-        ),
+        Text(label, style: labelStyle),
         Text(
           value,
           style: TextStyle(
@@ -1310,42 +1271,39 @@ class LedgerPageState extends State<LedgerPage> {
   Future<void> _deleteTransactionAction(String id) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.navyDark,
-        title: const Text(
-          'Xóa giao dịch?',
-          style: TextStyle(
-            color: AppTheme.textWhite,
-            fontWeight: FontWeight.bold,
+      builder: (ctx) {
+        final colors = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          title: const Text(
+            'Xóa giao dịch?',
+            style: TextStyle(fontWeight: FontWeight.bold),
           ),
-        ),
-        content: const Text(
-          'Hành động này sẽ hoàn lại tiền vào ví và không thể khôi phục. Bạn chắc chứ?',
-          style: TextStyle(color: AppTheme.textGray),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
-              'Hủy',
-              style: TextStyle(color: AppTheme.textGray),
-            ),
+          content: Text(
+            'Hành động này sẽ hoàn lại tiền vào ví và không thể khôi phục. Bạn chắc chứ?',
+            style: TextStyle(color: colors.onSurfaceVariant),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.dangerColor,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Xóa ngay',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'Hủy',
+                style: TextStyle(color: colors.onSurfaceVariant),
               ),
             ),
-          ),
-        ],
-      ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: colors.error),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(
+                'Xóa ngay',
+                style: TextStyle(
+                  color: colors.onError,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirm != true) return;
@@ -1445,22 +1403,22 @@ class LedgerPageState extends State<LedgerPage> {
     await _load();
   }
 
-  Widget _buildLoadFailedNotice() {
+  Widget _buildLoadFailedNotice(ColorScheme colors, SemanticColors semantic) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppTheme.warningColor.withValues(alpha: 0.12),
+        color: semantic.warningColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.cloud_off_rounded, color: AppTheme.warningColor, size: 20),
-          SizedBox(width: 10),
+          Icon(Icons.cloud_off_rounded, color: semantic.warningColor, size: 20),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               'Không tải được danh sách từ máy chủ. Chỉ hiển thị các giao dịch chưa gửi trên thiết bị. Kéo xuống để thử lại.',
-              style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+              style: const TextStyle(fontSize: 13),
             ),
           ),
         ],

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/spending_range.dart';
 
 /// The time filter above the spending chart: which period the report covers, the days that period spans, and a button
@@ -47,6 +46,7 @@ class SpendingRangeFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -54,7 +54,8 @@ class SpendingRangeFilter extends StatelessWidget {
           spacing: _optionSpacing,
           runSpacing: _optionSpacing,
           children: [
-            for (final period in SpendingPeriod.values) _buildOption(period),
+            for (final period in SpendingPeriod.values)
+              _buildOption(colors, period),
           ],
         ),
         const SizedBox(height: 4),
@@ -63,7 +64,7 @@ class SpendingRangeFilter extends StatelessWidget {
             Expanded(
               child: Text(
                 range.label,
-                style: const TextStyle(color: AppTheme.textGray, fontSize: 12),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
               ),
             ),
             _buildRefreshButton(),
@@ -73,36 +74,33 @@ class SpendingRangeFilter extends StatelessWidget {
     );
   }
 
-  Widget _buildOption(SpendingPeriod period) {
+  /// Selected: a tonal chip framed in the primary colour. Not selected: a surface chip with a neutral border.
+  Widget _buildOption(ColorScheme colors, SpendingPeriod period) {
     final selected = range.period == period;
     return ChoiceChip(
       label: Text(_labelOf(period)),
       selected: selected,
       onSelected: (_) => onPeriodSelected(period),
       showCheckmark: false,
-      selectedColor: AppTheme.mintLight,
-      backgroundColor: Colors.white,
+      selectedColor: colors.primaryContainer,
+      backgroundColor: colors.surface,
       side: BorderSide(
-        color: selected
-            ? AppTheme.primary
-            : AppTheme.textGray.withValues(alpha: 0.3),
+        color: selected ? colors.primary : colors.outlineVariant,
       ),
       shape: const StadiumBorder(),
       labelStyle: TextStyle(
-        color: selected ? AppTheme.primary : AppTheme.textGray,
+        color: selected ? colors.onPrimaryContainer : colors.onSurfaceVariant,
         fontSize: 13,
         fontWeight: FontWeight.w600,
       ),
     );
   }
 
+  /// A text button: the label, the icon and the spinner take the primary colour of the theme.
   Widget _buildRefreshButton() {
     return TextButton(
       onPressed: isRefreshing ? null : onRefresh,
-      style: TextButton.styleFrom(
-        foregroundColor: AppTheme.primary,
-        visualDensity: VisualDensity.compact,
-      ),
+      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -110,10 +108,7 @@ class SpendingRangeFilter extends StatelessWidget {
               ? const SizedBox(
                   width: _refreshIconSize,
                   height: _refreshIconSize,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppTheme.primary,
-                  ),
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.refresh_rounded, size: _refreshIconSize),
           const SizedBox(width: 6),

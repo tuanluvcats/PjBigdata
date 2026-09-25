@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/screens/profile/set_user_info.dart';
 import 'package:finance_ai_app/services/session_service.dart';
@@ -60,7 +59,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
     }
   }
 
-  Widget _buildInfoRow(String label, String value) {
+  Widget _buildInfoRow(ColorScheme colors, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
@@ -69,16 +68,13 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(color: AppTheme.textGray),
+              style: TextStyle(color: colors.onSurfaceVariant),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: AppTheme.textWhite,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -88,26 +84,25 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Thông tin cá nhân'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit_rounded, color: AppTheme.mintAccent),
+            icon: Icon(Icons.edit_rounded, color: colors.primary),
             onPressed: _edit,
             tooltip: 'Chỉnh sửa',
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.mintAccent),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : (_user == null)
-          ? const Center(
+          ? Center(
               child: Text(
                 'Chưa có thông tin cá nhân.',
-                style: TextStyle(color: AppTheme.textGray),
+                style: TextStyle(color: colors.onSurfaceVariant),
               ),
             )
           : ListView(
@@ -117,22 +112,19 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                   margin: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     children: [
-                      _buildInfoRow('Họ và tên', _user!.fullName),
-                      Divider(
-                        height: 1,
-                        color: Colors.white.withValues(alpha: 0.06),
-                      ),
+                      _buildInfoRow(colors, 'Họ và tên', _user!.fullName),
+                      // The theme divider: the white 6% line of the old dark design did not show on the light card.
+                      const Divider(height: 1),
                       _buildInfoRow(
+                        colors,
                         'Năm sinh',
                         (_user!.birthdate ?? '').isEmpty
                             ? 'Chưa cập nhật'
                             : _user!.birthdate!,
                       ),
-                      Divider(
-                        height: 1,
-                        color: Colors.white.withValues(alpha: 0.06),
-                      ),
+                      const Divider(height: 1),
                       _buildInfoRow(
+                        colors,
                         'Số điện thoại',
                         (_user!.phone ?? '').isEmpty
                             ? 'Chưa cập nhật'

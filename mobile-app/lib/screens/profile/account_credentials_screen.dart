@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:finance_ai_app/config/app_config.dart';
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/core/utils/password_policy.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
@@ -280,7 +279,8 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
         : _genericFailureMessage;
   }
 
-  Widget _buildEditableInfoRow({
+  Widget _buildEditableInfoRow(
+    ColorScheme colors, {
     required String label,
     required String value,
     required VoidCallback onTap,
@@ -295,24 +295,17 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
               width: 160,
               child: Text(
                 label,
-                style: const TextStyle(color: AppTheme.textGray),
+                style: TextStyle(color: colors.onSurfaceVariant),
               ),
             ),
             Expanded(
               child: Text(
                 value,
-                style: const TextStyle(
-                  color: AppTheme.textWhite,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
             const SizedBox(width: 10),
-            const Icon(
-              Icons.edit_rounded,
-              size: 20,
-              color: AppTheme.mintAccent,
-            ),
+            Icon(Icons.edit_rounded, size: 20, color: colors.primary),
           ],
         ),
       ),
@@ -322,33 +315,35 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
   @override
   Widget build(BuildContext context) {
     final user = _user;
+    final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: AppTheme.navyDark,
+      backgroundColor: colors.surface,
       appBar: AppBar(title: const Text('Tài khoản')),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.mintAccent),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : (user == null)
-          ? const Center(
+          ? Center(
               child: Text(
                 'Chưa có dữ liệu tài khoản.',
-                style: TextStyle(color: AppTheme.textGray),
+                style: TextStyle(color: colors.onSurfaceVariant),
               ),
             )
           : ListView(
               padding: const EdgeInsets.all(24.0),
               children: [
-                const Icon(
+                Icon(
                   Icons.lock_outline_rounded,
                   size: 72,
-                  color: AppTheme.mintAccent,
+                  color: colors.primary,
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Chạm vào dòng cần sửa.',
-                  style: TextStyle(fontSize: 16, color: AppTheme.textGray),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: colors.onSurfaceVariant,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
@@ -357,15 +352,15 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
                   child: Column(
                     children: [
                       _buildEditableInfoRow(
+                        colors,
                         label: 'Tên đăng nhập',
                         value: user.email,
                         onTap: () => _startEdit(_EditingField.email),
                       ),
-                      Divider(
-                        height: 1,
-                        color: Colors.white.withValues(alpha: 0.06),
-                      ),
+                      // The theme divider: the white 6% line of the old dark design did not show on the light card.
+                      const Divider(height: 1),
                       _buildEditableInfoRow(
+                        colors,
                         label: 'Mật khẩu',
                         value: _maskPassword(user.password),
                         onTap: () => _startEdit(_EditingField.password),
@@ -377,11 +372,7 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
                   const SizedBox(height: 24),
                   const Text(
                     'Đổi mật khẩu',
-                    style: TextStyle(
-                      color: AppTheme.textWhite,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
@@ -394,11 +385,7 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
                   const SizedBox(height: 24),
                   const Text(
                     'Chỉnh sửa tên đăng nhập',
-                    style: TextStyle(
-                      color: AppTheme.textWhite,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
@@ -412,9 +399,9 @@ class _AccountCredentialsScreenState extends State<AccountCredentialsScreen> {
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: _cancelEdit,
-                    child: const Text(
+                    child: Text(
                       'Hủy',
-                      style: TextStyle(color: AppTheme.textGray),
+                      style: TextStyle(color: colors.onSurfaceVariant),
                     ),
                   ),
                 ],
@@ -480,7 +467,6 @@ class _PasswordChangeFormState extends State<_PasswordChangeForm> {
           suffixIcon: IconButton(
             icon: Icon(
               _obscureCurrent ? Icons.visibility_off : Icons.visibility,
-              color: AppTheme.textGray,
             ),
             onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent),
           ),
@@ -493,10 +479,7 @@ class _PasswordChangeFormState extends State<_PasswordChangeForm> {
           obscureText: _obscureNew,
           obscuringCharacter: '*',
           suffixIcon: IconButton(
-            icon: Icon(
-              _obscureNew ? Icons.visibility_off : Icons.visibility,
-              color: AppTheme.textGray,
-            ),
+            icon: Icon(_obscureNew ? Icons.visibility_off : Icons.visibility),
             onPressed: () => setState(() => _obscureNew = !_obscureNew),
           ),
         ),
@@ -510,7 +493,6 @@ class _PasswordChangeFormState extends State<_PasswordChangeForm> {
           suffixIcon: IconButton(
             icon: Icon(
               _obscureConfirm ? Icons.visibility_off : Icons.visibility,
-              color: AppTheme.textGray,
             ),
             onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
           ),
@@ -523,7 +505,12 @@ class _PasswordChangeFormState extends State<_PasswordChangeForm> {
         const SizedBox(height: 8),
         TextButton(
           onPressed: widget.onCancel,
-          child: const Text('Hủy', style: TextStyle(color: AppTheme.textGray)),
+          child: Text(
+            'Hủy',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
       ],
     );

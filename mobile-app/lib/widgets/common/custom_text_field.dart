@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
-
 class CustomTextField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
@@ -24,8 +22,15 @@ class CustomTextField extends StatelessWidget {
     this.obscureText = false,
   }) : assert(obscuringCharacter.length == 1);
 
+  /// The text, the fill, the cursor and the suffix icon come from the theme; the label keeps the secondary text colour
+  /// also when focused, and the field keeps its own rounder corners.
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: colors.outlineVariant),
+    );
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
@@ -34,27 +39,15 @@ class CustomTextField extends StatelessWidget {
       enableSuggestions: !isPassword,
       autocorrect: !isPassword,
       onChanged: onChanged,
-      style: const TextStyle(color: AppTheme.textWhite),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: AppTheme.textGray),
+        labelStyle: TextStyle(color: colors.onSurfaceVariant),
         filled: true,
-        fillColor: AppTheme.navyLight,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: AppTheme.textGray.withValues(alpha: 0.3),
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: AppTheme.textGray.withValues(alpha: 0.3),
-          ),
-        ),
+        border: border,
+        enabledBorder: border,
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppTheme.mintAccent),
+          borderSide: BorderSide(color: colors.primary),
         ),
         suffixIcon: suffixIcon,
       ),

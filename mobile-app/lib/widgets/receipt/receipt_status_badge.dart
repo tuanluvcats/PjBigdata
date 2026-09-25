@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/core/extensions/build_context_extension.dart';
 import 'package:finance_ai_app/models/receipt_status.dart';
 
 /// Small pill telling how far the processing of the receipt attached to a transaction has come. Callers show it only
@@ -10,10 +10,10 @@ class ReceiptStatusBadge extends StatelessWidget {
 
   const ReceiptStatusBadge({super.key, required this.status});
 
-  Color get _color => switch (status) {
-    ReceiptStatus.processing => AppTheme.warningColor,
-    ReceiptStatus.success => AppTheme.positive,
-    ReceiptStatus.failed => AppTheme.dangerColor,
+  Color _colorOf(ThemeData theme) => switch (status) {
+    ReceiptStatus.processing => theme.semanticColors.warningColor,
+    ReceiptStatus.success => theme.semanticColors.successColor,
+    ReceiptStatus.failed => theme.colorScheme.error,
   };
 
   IconData get _icon => switch (status) {
@@ -24,7 +24,7 @@ class ReceiptStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _color;
+    final color = _colorOf(Theme.of(context));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:dio/dio.dart';
 import 'package:finance_ai_app/config/app_config.dart';
-import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/spending_range.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
 import 'package:finance_ai_app/services/remote_api_helper.dart';
@@ -329,6 +328,7 @@ class _AITabPageState extends State<AITabPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -336,25 +336,24 @@ class _AITabPageState extends State<AITabPage> {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
         ),
       ),
+      // The spinners take the primary colour of the theme, the refresh one on its surface.
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.mintAccent),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: () => _load(reportErrors: true),
-              color: AppTheme.mintAccent,
-              backgroundColor: AppTheme.navyLight,
-              child: _buildContent(),
+              child: _buildContent(colors),
             ),
     );
   }
 
-  Widget _buildContent() {
+  /// The icon colours of the insight cards identify each card and stay the same in both themes, like chart series.
+  Widget _buildContent(ColorScheme colors) {
     if (_transactions.isEmpty) {
       return ListView(
         padding: const EdgeInsets.all(20),
         children: [
           _buildInsightCard(
+            colors,
             icon: Icons.ac_unit_rounded,
             iconColor: Colors.blueAccent,
             title: 'Chưa có dữ liệu',
@@ -363,7 +362,11 @@ class _AITabPageState extends State<AITabPage> {
           ),
           const SizedBox(height: 24),
 
-          AiComponents.buildBudgetAdviceSection(_budgetAdvice, _adviceLoading),
+          AiComponents.buildBudgetAdviceSection(
+            colors,
+            _budgetAdvice,
+            _adviceLoading,
+          ),
           const SizedBox(height: 100),
         ],
       );
@@ -373,16 +376,18 @@ class _AITabPageState extends State<AITabPage> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        _buildSafeToSpendCard(),
+        _buildSafeToSpendCard(colors),
         const SizedBox(height: 16),
         _buildInsightCard(
+          colors,
           icon: Icons.trending_up_rounded,
-          iconColor: AppTheme.mintAccent,
+          iconColor: colors.primary,
           title: 'Xu hướng chi tiêu',
           subtitle: _getSpendingTrend(),
         ),
         const SizedBox(height: 16),
         _buildInsightCard(
+          colors,
           icon: Icons.category_rounded,
           iconColor: Colors.orange,
           title: 'Chi nhiều nhất',
@@ -390,6 +395,7 @@ class _AITabPageState extends State<AITabPage> {
         ),
         const SizedBox(height: 16),
         _buildInsightCard(
+          colors,
           icon: Icons.savings_rounded,
           iconColor: Colors.amber,
           title: 'Mẹo tiết kiệm',
@@ -397,6 +403,7 @@ class _AITabPageState extends State<AITabPage> {
         ),
         const SizedBox(height: 16),
         _buildInsightCard(
+          colors,
           icon: Icons.water_drop_rounded,
           iconColor: Colors.blue,
           title: 'So sánh tuần',
@@ -405,11 +412,7 @@ class _AITabPageState extends State<AITabPage> {
         const SizedBox(height: 24),
         const Text(
           'Biểu đồ thu chi tuần',
-          style: TextStyle(
-            color: AppTheme.textWhite,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
         SpendingRangeFilter(
@@ -419,18 +422,28 @@ class _AITabPageState extends State<AITabPage> {
           onRefresh: () => _loadSpadePatterns(reportErrors: true),
         ),
         const SizedBox(height: 16),
-        _buildWeeklyChart(range),
+        _buildWeeklyChart(colors, range),
         const SizedBox(height: 24),
         AiComponents.buildSpadeSection(
+          colors,
           _spadePatterns,
           _spadeLoading,
           hasError: _spadeFailed,
         ),
         const SizedBox(height: 24),
 
-        AiComponents.build503020Card(_monthTxs, _monthIncome, _monthExpense),
+        AiComponents.build503020Card(
+          colors,
+          _monthTxs,
+          _monthIncome,
+          _monthExpense,
+        ),
         const SizedBox(height: 24),
-        AiComponents.buildBudgetAdviceSection(_budgetAdvice, _adviceLoading),
+        AiComponents.buildBudgetAdviceSection(
+          colors,
+          _budgetAdvice,
+          _adviceLoading,
+        ),
         const SizedBox(height: 100),
       ],
     );
@@ -459,12 +472,24 @@ class _AITabPageState extends State<AITabPage> {
     return 'Tuần ${maxIdx + 1} có chi tiêu cao nhất: ${_fmt(amounts[maxIdx])}.';
   }
 
-  Widget _buildWeeklyChart(SpendingRange range) {
+  Widget _buildWeeklyChart(ColorScheme colors, SpendingRange range) {
     final buckets = range.buckets;
     final weekExpenses = _expensesPerBucket(buckets);
     final maxY = (weekExpenses.reduce((a, b) => a > b ? a : b) * 1.2).clamp(
       100.0,
       double.infinity,
+    );
+    // The bars take the primary colour; grid, labels and the touch tooltip take theme colours, so that they switch
+    // between light and dark with the rest of the screen.
+    final gridLine = FlLine(
+      color: colors.onSurfaceVariant.withValues(alpha: 0.1),
+      strokeWidth: 1,
+    );
+    final labelStyle = TextStyle(color: colors.onSurfaceVariant, fontSize: 12);
+    final tooltipStyle = TextStyle(
+      color: colors.onSurface,
+      fontWeight: FontWeight.bold,
+      fontSize: 14,
     );
 
     return Container(
@@ -472,21 +497,25 @@ class _AITabPageState extends State<AITabPage> {
       height: 200,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(24),
       ),
       child: BarChart(
         BarChartData(
           alignment: BarChartAlignment.spaceAround,
           borderData: FlBorderData(show: false),
+          barTouchData: BarTouchData(
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipColor: (_) => colors.surfaceContainer,
+              getTooltipItem: (group, groupIndex, rod, rodIndex) =>
+                  BarTooltipItem(rod.toY.toString(), tooltipStyle),
+            ),
+          ),
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
             horizontalInterval: maxY / 4,
-            getDrawingHorizontalLine: (v) => FlLine(
-              color: AppTheme.textGray.withValues(alpha: 0.1),
-              strokeWidth: 1,
-            ),
+            getDrawingHorizontalLine: (v) => gridLine,
           ),
           titlesData: FlTitlesData(
             leftTitles: const AxisTitles(
@@ -503,13 +532,7 @@ class _AITabPageState extends State<AITabPage> {
                 showTitles: true,
                 getTitlesWidget: (v, _) => Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    buckets[v.toInt()].label,
-                    style: const TextStyle(
-                      color: AppTheme.textGray,
-                      fontSize: 12,
-                    ),
-                  ),
+                  child: Text(buckets[v.toInt()].label, style: labelStyle),
                 ),
               ),
             ),
@@ -521,13 +544,13 @@ class _AITabPageState extends State<AITabPage> {
               barRods: [
                 BarChartRodData(
                   toY: weekExpenses[i],
-                  color: AppTheme.mintAccent,
+                  color: colors.primary,
                   width: 20,
                   borderRadius: BorderRadius.circular(6),
                   backDrawRodData: BackgroundBarChartRodData(
                     show: true,
                     toY: maxY,
-                    color: AppTheme.navyDark,
+                    color: colors.surfaceContainerHighest,
                   ),
                 ),
               ],
@@ -538,11 +561,12 @@ class _AITabPageState extends State<AITabPage> {
     );
   }
 
-  Widget _buildSafeToSpendCard() {
+  Widget _buildSafeToSpendCard(ColorScheme colors) {
     if (_monthIncome <= 0) {
       return _buildInsightCard(
+        colors,
         icon: Icons.account_balance_wallet_rounded,
-        iconColor: AppTheme.mintAccent,
+        iconColor: colors.primary,
         title: 'Hôm nay tiêu được bao nhiêu?',
         subtitle: 'Thêm khoản thu tháng này để tính số tiền an toàn.',
       );
@@ -565,12 +589,12 @@ class _AITabPageState extends State<AITabPage> {
             .clamp(1, 31);
     final safePerDay = (_monthIncome - _monthExpense - goalNeed) / daysLeft;
     final ok = safePerDay >= 0;
-    final color = ok ? AppTheme.mintAccent : Colors.redAccent;
+    final color = ok ? colors.primary : colors.error;
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
@@ -587,11 +611,7 @@ class _AITabPageState extends State<AITabPage> {
               const SizedBox(width: 8),
               const Text(
                 'Hôm nay tiêu được bao nhiêu?',
-                style: TextStyle(
-                  color: AppTheme.textWhite,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ],
           ),
@@ -609,8 +629,8 @@ class _AITabPageState extends State<AITabPage> {
             ok
                 ? 'Còn lại chia đều $daysLeft ngày.'
                 : 'Bạn đã chi vượt phần an toàn của tháng.',
-            style: const TextStyle(
-              color: AppTheme.textGray,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
               fontSize: 13,
               height: 1.4,
             ),
@@ -653,7 +673,8 @@ class _AITabPageState extends State<AITabPage> {
     return 'Bạn đang trong lộ trình tiết kiệm. Xem gợi ý phân bổ tiền bên dưới để đạt mục tiêu nhanh hơn!';
   }
 
-  Widget _buildInsightCard({
+  Widget _buildInsightCard(
+    ColorScheme colors, {
     required IconData icon,
     required Color iconColor,
     required String title,
@@ -662,7 +683,7 @@ class _AITabPageState extends State<AITabPage> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.navyLight,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -683,7 +704,6 @@ class _AITabPageState extends State<AITabPage> {
                 Text(
                   title,
                   style: const TextStyle(
-                    color: AppTheme.textWhite,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
@@ -691,8 +711,8 @@ class _AITabPageState extends State<AITabPage> {
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(
-                    color: AppTheme.textGray,
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
                     fontSize: 13,
                   ),
                 ),
