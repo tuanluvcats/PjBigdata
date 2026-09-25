@@ -16,8 +16,8 @@ class SettingsRepositoryImpl implements SettingsRepository {
 
   static const String themeModeKey = 'app_theme';
   static const String languageKey = 'app_language';
-  // Light until every legacy screen takes its colours from the theme (Dark Mode migration), then ThemeMode.system.
-  static const ThemeMode defaultThemeMode = ThemeMode.light;
+  // With no saved choice the app follows the device's light or dark mode.
+  static const ThemeMode defaultThemeMode = ThemeMode.system;
 
   final SharedPreferences _preferences;
   ThemeMode _themeMode;

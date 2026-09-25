@@ -50,8 +50,8 @@ void main() {
   }) => SettingsRepositoryImpl(preferences, deviceLocale: () => device);
 
   group('theme', () {
-    test('is the light theme when nothing was saved', () async {
-      expect(repository(await preferences()).themeMode, ThemeMode.light);
+    test('follows the device theme when nothing was saved', () async {
+      expect(repository(await preferences()).themeMode, ThemeMode.system);
     });
 
     test(
@@ -72,16 +72,19 @@ void main() {
       },
     );
 
-    test('ignores a saved value it does not know', () async {
-      expect(
-        repository(await preferences({_themeKey: 'sepia'})).themeMode,
-        ThemeMode.light,
-      );
-      expect(
-        repository(await preferences({_themeKey: 1})).themeMode,
-        ThemeMode.light,
-      );
-    });
+    test(
+      'ignores a saved value it does not know and follows the device',
+      () async {
+        expect(
+          repository(await preferences({_themeKey: 'sepia'})).themeMode,
+          ThemeMode.system,
+        );
+        expect(
+          repository(await preferences({_themeKey: 1})).themeMode,
+          ThemeMode.system,
+        );
+      },
+    );
 
     test(
       'saves a new theme where the next start of the app reads it',
