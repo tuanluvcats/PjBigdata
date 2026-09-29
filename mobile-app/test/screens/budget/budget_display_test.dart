@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
+import 'package:finance_ai_app/l10n/app_localizations.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/screens/budget/budget_screen.dart';
 import 'package:finance_ai_app/screens/dashboard/dashboard_page.dart';
@@ -95,6 +96,9 @@ class _Tabs {
   final GlobalKey<LedgerPageState> ledger = GlobalKey<LedgerPageState>();
 
   Widget get app => MaterialApp(
+    // The bell of the home screen reads its tooltip from the app's localizations.
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(
       body: ValueListenableBuilder<int>(
         valueListenable: index,
@@ -148,6 +152,8 @@ void main() {
       (_) => okResponse(transactions),
     );
     backend.on('GET', '/api/budgets', (_) => okResponse(budgets));
+    // The home screen also asks for the number on its notification bell.
+    backend.on('GET', '/api/notifications/unread-count', (_) => okResponse(0));
   });
 
   int budgetRequests() =>
@@ -182,6 +188,9 @@ void main() {
     setUp(() {
       dashboard = GlobalKey<DashboardPageState>();
       app = MaterialApp(
+        // The bell of the home screen reads its tooltip from the app's localizations.
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(body: DashboardPage(key: dashboard)),
       );
     });

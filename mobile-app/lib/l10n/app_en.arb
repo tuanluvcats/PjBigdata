@@ -39,5 +39,65 @@
   "settingsSaveFailed": "Couldn't save this setting. The change applies until you close the app.",
   "@settingsSaveFailed": {
     "description": "Snackbar shown when a theme or language choice could not be written to the device."
+  },
+  "notificationsTitle": "Notifications",
+  "@notificationsTitle": {
+    "description": "Title of the notification screen, also the tooltip of the bell on the home screen."
+  },
+  "notificationsMarkAllRead": "Mark all as read",
+  "@notificationsMarkAllRead": {
+    "description": "App bar action of the notification screen that marks every notification as read."
+  },
+  "notificationsEmpty": "You have no notifications yet.",
+  "@notificationsEmpty": {
+    "description": "Shown on the notification screen when the user has no notification at all."
+  },
+  "notificationsLoadFailed": "Couldn't load your notifications.",
+  "@notificationsLoadFailed": {
+    "description": "Shown when the list of notifications could not be loaded from the server."
+  },
+  "notificationsLoadMoreFailed": "Couldn't load more notifications.",
+  "@notificationsLoadMoreFailed": {
+    "description": "Shown at the end of the list when the next page of notifications could not be loaded."
+  },
+  "notificationsRetry": "Try again",
+  "@notificationsRetry": {
+    "description": "Button that asks the server for the notifications again after a failure."
+  },
+  "notificationsMarkReadFailed": "Couldn't mark the notification as read. Please try again.",
+  "@notificationsMarkReadFailed": {
+    "description": "Snackbar shown when the server refused or missed marking one notification as read; it shows as unread again."
+  },
+  "notificationsMarkAllReadFailed": "Couldn't mark your notifications as read. Please try again.",
+  "@notificationsMarkAllReadFailed": {
+    "description": "Snackbar shown when marking every notification as read failed; they show as unread again."
+  },
+  "notificationsDetailUnavailable": "This notification can't be opened yet.",
+  "@notificationsDetailUnavailable": {
+    "description": "Snackbar shown when the tapped notification has no screen to open in the app yet."
+  },
+  "notificationsUnread": "Unread",
+  "@notificationsUnread": {
+    "description": "Screen reader label of the dot that marks an unread notification."
+  },
+  "notificationTypeBudgetWarning": "Budget almost used up",
+  "@notificationTypeBudgetWarning": {
+    "description": "Heading of a notification saying that spending reached 80% of a budget."
+  },
+  "notificationTypeBudgetExceeded": "Budget exceeded",
+  "@notificationTypeBudgetExceeded": {
+    "description": "Heading of a notification saying that spending reached or passed 100% of a budget."
+  },
+  "notificationTypeTransactionAlert": "Transaction alert",
+  "@notificationTypeTransactionAlert": {
+    "description": "Heading of a notification about one transaction."
+  },
+  "notificationTypeReceiptProcessed": "Receipt processed",
+  "@notificationTypeReceiptProcessed": {
+    "description": "Heading of a notification saying that a receipt has been processed."
+  },
+  "notificationTypeOther": "Notification",
+  "@notificationTypeOther": {
+    "description": "Heading of a notification whose kind this version of the app does not know."
   }
 }

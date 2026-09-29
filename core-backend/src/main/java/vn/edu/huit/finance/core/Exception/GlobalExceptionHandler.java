@@ -81,6 +81,12 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
     }
 
+    // 404 also for a notification of another user, so the answer never reveals that the id exists.
+    @ExceptionHandler(NotificationNotFoundException.class)
+    public Object handleNotificationNotFound(NotificationNotFoundException ex, HttpServletRequest request) {
+        return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
     // 403 and not 404: the caller is signed in and the record exists, but it belongs to somebody else.
     @ExceptionHandler(TransactionAccessDeniedException.class)
     public Object handleTransactionAccessDenied(TransactionAccessDeniedException ex, HttpServletRequest request) {

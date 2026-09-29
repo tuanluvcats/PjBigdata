@@ -38,4 +38,52 @@ class AppLocalizationsVi extends AppLocalizations {
   @override
   String get settingsSaveFailed =>
       'Không lưu được cài đặt. Thay đổi chỉ có hiệu lực đến khi đóng ứng dụng.';
+
+  @override
+  String get notificationsTitle => 'Thông báo';
+
+  @override
+  String get notificationsMarkAllRead => 'Đọc tất cả';
+
+  @override
+  String get notificationsEmpty => 'Chưa có thông báo nào.';
+
+  @override
+  String get notificationsLoadFailed => 'Không tải được thông báo.';
+
+  @override
+  String get notificationsLoadMoreFailed => 'Không tải thêm được thông báo.';
+
+  @override
+  String get notificationsRetry => 'Thử lại';
+
+  @override
+  String get notificationsMarkReadFailed =>
+      'Không đánh dấu được thông báo là đã đọc. Vui lòng thử lại.';
+
+  @override
+  String get notificationsMarkAllReadFailed =>
+      'Không đánh dấu được các thông báo là đã đọc. Vui lòng thử lại.';
+
+  @override
+  String get notificationsDetailUnavailable =>
+      'Chưa thể mở chi tiết của thông báo này.';
+
+  @override
+  String get notificationsUnread => 'Chưa đọc';
+
+  @override
+  String get notificationTypeBudgetWarning => 'Sắp chạm hạn mức ngân sách';
+
+  @override
+  String get notificationTypeBudgetExceeded => 'Đã vượt ngân sách';
+
+  @override
+  String get notificationTypeTransactionAlert => 'Cảnh báo giao dịch';
+
+  @override
+  String get notificationTypeReceiptProcessed => 'Hóa đơn đã được xử lý';
+
+  @override
+  String get notificationTypeOther => 'Thông báo';
 }

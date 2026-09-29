@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/constants/transaction_categories.dart';
+import 'package:finance_ai_app/l10n/app_localizations.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/screens/dashboard/dashboard_page.dart';
 import 'package:finance_ai_app/screens/ledger/ledger_page.dart';
@@ -88,6 +89,8 @@ void main() {
     );
     backend.on('GET', '/api/budgets', (_) => okResponse([]));
     backend.on('GET', '/api/categories', (_) => okResponse(_serverCategories));
+    // The home screen also asks for the number on its notification bell.
+    backend.on('GET', '/api/notifications/unread-count', (_) => okResponse(0));
   });
 
   Future<void> pump(WidgetTester tester, Widget app) async {
@@ -285,7 +288,12 @@ void main() {
 
       await pump(
         tester,
-        const MaterialApp(home: Scaffold(body: DashboardPage())),
+        // The bell of the home screen reads its tooltip from the app's localizations.
+        const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: DashboardPage()),
+        ),
       );
 
       expect(find.text('Giao dịch 1'), findsOneWidget);

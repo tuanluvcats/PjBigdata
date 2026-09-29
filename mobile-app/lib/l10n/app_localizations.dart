@@ -157,6 +157,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t save this setting. The change applies until you close the app.'**
   String get settingsSaveFailed;
+
+  /// Title of the notification screen, also the tooltip of the bell on the home screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get notificationsTitle;
+
+  /// App bar action of the notification screen that marks every notification as read.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark all as read'**
+  String get notificationsMarkAllRead;
+
+  /// Shown on the notification screen when the user has no notification at all.
+  ///
+  /// In en, this message translates to:
+  /// **'You have no notifications yet.'**
+  String get notificationsEmpty;
+
+  /// Shown when the list of notifications could not be loaded from the server.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your notifications.'**
+  String get notificationsLoadFailed;
+
+  /// Shown at the end of the list when the next page of notifications could not be loaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load more notifications.'**
+  String get notificationsLoadMoreFailed;
+
+  /// Button that asks the server for the notifications again after a failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get notificationsRetry;
+
+  /// Snackbar shown when the server refused or missed marking one notification as read; it shows as unread again.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t mark the notification as read. Please try again.'**
+  String get notificationsMarkReadFailed;
+
+  /// Snackbar shown when marking every notification as read failed; they show as unread again.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t mark your notifications as read. Please try again.'**
+  String get notificationsMarkAllReadFailed;
+
+  /// Snackbar shown when the tapped notification has no screen to open in the app yet.
+  ///
+  /// In en, this message translates to:
+  /// **'This notification can\'t be opened yet.'**
+  String get notificationsDetailUnavailable;
+
+  /// Screen reader label of the dot that marks an unread notification.
+  ///
+  /// In en, this message translates to:
+  /// **'Unread'**
+  String get notificationsUnread;
+
+  /// Heading of a notification saying that spending reached 80% of a budget.
+  ///
+  /// In en, this message translates to:
+  /// **'Budget almost used up'**
+  String get notificationTypeBudgetWarning;
+
+  /// Heading of a notification saying that spending reached or passed 100% of a budget.
+  ///
+  /// In en, this message translates to:
+  /// **'Budget exceeded'**
+  String get notificationTypeBudgetExceeded;
+
+  /// Heading of a notification about one transaction.
+  ///
+  /// In en, this message translates to:
+  /// **'Transaction alert'**
+  String get notificationTypeTransactionAlert;
+
+  /// Heading of a notification saying that a receipt has been processed.
+  ///
+  /// In en, this message translates to:
+  /// **'Receipt processed'**
+  String get notificationTypeReceiptProcessed;
+
+  /// Heading of a notification whose kind this version of the app does not know.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification'**
+  String get notificationTypeOther;
 }
 
 class _AppLocalizationsDelegate

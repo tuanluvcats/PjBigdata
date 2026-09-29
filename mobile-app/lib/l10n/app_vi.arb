@@ -9,5 +9,20 @@
   "systemThemeDescription": "Tự đổi theo cài đặt của thiết bị",
   "english": "English",
   "vietnamese": "Tiếng Việt",
-  "settingsSaveFailed": "Không lưu được cài đặt. Thay đổi chỉ có hiệu lực đến khi đóng ứng dụng."
+  "settingsSaveFailed": "Không lưu được cài đặt. Thay đổi chỉ có hiệu lực đến khi đóng ứng dụng.",
+  "notificationsTitle": "Thông báo",
+  "notificationsMarkAllRead": "Đọc tất cả",
+  "notificationsEmpty": "Chưa có thông báo nào.",
+  "notificationsLoadFailed": "Không tải được thông báo.",
+  "notificationsLoadMoreFailed": "Không tải thêm được thông báo.",
+  "notificationsRetry": "Thử lại",
+  "notificationsMarkReadFailed": "Không đánh dấu được thông báo là đã đọc. Vui lòng thử lại.",
+  "notificationsMarkAllReadFailed": "Không đánh dấu được các thông báo là đã đọc. Vui lòng thử lại.",
+  "notificationsDetailUnavailable": "Chưa thể mở chi tiết của thông báo này.",
+  "notificationsUnread": "Chưa đọc",
+  "notificationTypeBudgetWarning": "Sắp chạm hạn mức ngân sách",
+  "notificationTypeBudgetExceeded": "Đã vượt ngân sách",
+  "notificationTypeTransactionAlert": "Cảnh báo giao dịch",
+  "notificationTypeReceiptProcessed": "Hóa đơn đã được xử lý",
+  "notificationTypeOther": "Thông báo"
 }

@@ -38,4 +38,53 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsSaveFailed =>
       'Couldn\'t save this setting. The change applies until you close the app.';
+
+  @override
+  String get notificationsTitle => 'Notifications';
+
+  @override
+  String get notificationsMarkAllRead => 'Mark all as read';
+
+  @override
+  String get notificationsEmpty => 'You have no notifications yet.';
+
+  @override
+  String get notificationsLoadFailed => 'Couldn\'t load your notifications.';
+
+  @override
+  String get notificationsLoadMoreFailed =>
+      'Couldn\'t load more notifications.';
+
+  @override
+  String get notificationsRetry => 'Try again';
+
+  @override
+  String get notificationsMarkReadFailed =>
+      'Couldn\'t mark the notification as read. Please try again.';
+
+  @override
+  String get notificationsMarkAllReadFailed =>
+      'Couldn\'t mark your notifications as read. Please try again.';
+
+  @override
+  String get notificationsDetailUnavailable =>
+      'This notification can\'t be opened yet.';
+
+  @override
+  String get notificationsUnread => 'Unread';
+
+  @override
+  String get notificationTypeBudgetWarning => 'Budget almost used up';
+
+  @override
+  String get notificationTypeBudgetExceeded => 'Budget exceeded';
+
+  @override
+  String get notificationTypeTransactionAlert => 'Transaction alert';
+
+  @override
+  String get notificationTypeReceiptProcessed => 'Receipt processed';
+
+  @override
+  String get notificationTypeOther => 'Notification';
 }

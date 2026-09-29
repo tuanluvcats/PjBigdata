@@ -79,6 +79,8 @@ void main() {
       (_) => okResponse(transactions),
     );
     backend.on('GET', '/api/budgets', (_) => okResponse([]));
+    // The home screen also asks for the number on its notification bell.
+    backend.on('GET', '/api/notifications/unread-count', (_) => okResponse(0));
   });
 
   // The language cubit of withAppSettings sets the default locale of intl.

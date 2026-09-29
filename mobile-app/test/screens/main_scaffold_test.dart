@@ -112,6 +112,8 @@ void main() {
     backend.on('GET', '/api/transactions/mine', (_) => okResponse([]));
     backend.on('GET', '/api/budgets', (_) => okResponse([]));
     backend.on('GET', '/api/savings', (_) => okResponse([]));
+    // The home tab also asks for the number on its notification bell.
+    backend.on('GET', '/api/notifications/unread-count', (_) => okResponse(0));
     backend.on(
       'POST',
       '/spade/analyze',

@@ -99,8 +99,10 @@ public class BudgetAlertService {
             BigDecimal spentAfter = spentWithin(budget, userId);
             BigDecimal spentBefore = spentAfter.subtract(transaction.getAmount()).add(before.contributionTo(budget));
 
+            // The alert is about the budget and the transaction that crossed it, never about a receipt.
             newlyReached(spentBefore, spentAfter, budget.getAmount()).ifPresent(type -> notificationService.create(
-                    transaction.getUser(), type, messageFor(type, budget, spentAfter), budget.getId()));
+                    transaction.getUser(), type, messageFor(type, budget, spentAfter),
+                    transaction.getId(), budget.getId(), null));
         }
     }
 
@@ -123,7 +125,8 @@ public class BudgetAlertService {
             return Optional.empty();
         }
         Optional<NotificationType> before = highestReached(spentBefore, limit);
-        boolean alreadyThere = before.isPresent() && before.get().ordinal() >= after.get().ordinal();
+        boolean alreadyThere = before.isPresent()
+                && before.get().getThresholdPercent() >= after.get().getThresholdPercent();
         return alreadyThere ? Optional.empty() : after;
     }
 
@@ -132,7 +135,7 @@ public class BudgetAlertService {
         // Compared as spent * 100 >= limit * percent, so no division can round a threshold the wrong way.
         BigDecimal spentPercentPoints = spent.multiply(PERCENT_BASE);
         NotificationType reached = null;
-        for (NotificationType type : NotificationType.values()) {
+        for (NotificationType type : NotificationType.budgetLevels()) {
             BigDecimal levelPercentPoints = limit.multiply(BigDecimal.valueOf(type.getThresholdPercent()));
             if (spentPercentPoints.compareTo(levelPercentPoints) >= 0) {
                 reached = type;
@@ -150,6 +153,7 @@ public class BudgetAlertService {
             case BUDGET_WARNING -> String.format(Locale.ROOT, MSG_BUDGET_WARNING, spentText, limitText,
                     type.getThresholdPercent(), scope);
             case BUDGET_EXCEEDED -> String.format(Locale.ROOT, MSG_BUDGET_EXCEEDED, spentText, limitText, scope);
+            default -> throw new IllegalArgumentException("Not a budget level: " + type);
         };
     }
 

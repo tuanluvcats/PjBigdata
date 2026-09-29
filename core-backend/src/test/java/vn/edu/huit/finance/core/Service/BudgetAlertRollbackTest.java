@@ -158,7 +158,7 @@ class BudgetAlertRollbackTest {
     }
 
     private List<Notification> notificationsOf(Long userId) {
-        return notificationRepository.findNewestByUserId(userId, PageRequest.of(0, WHOLE_LIST));
+        return notificationRepository.findNewestByUserId(userId, PageRequest.of(0, WHOLE_LIST)).getContent();
     }
 
     private BigDecimal walletInDatabase() {
@@ -173,12 +173,16 @@ class BudgetAlertRollbackTest {
 
     @Test
     void anExpenseThatTakesTheBudgetToEightyPercentCommitsItsNotificationWithTheTransaction() {
-        service.createTransaction(checkout("200000"), aliceId);
+        Object createdId = service.createTransaction(checkout("200000"), aliceId).get("transactionId");
 
         List<Notification> raised = notificationsOf(aliceId);
         assertEquals(1, raised.size());
         assertEquals(NotificationType.BUDGET_WARNING, raised.get(0).getType());
         assertEquals(foodBudget.getId(), raised.get(0).getBudgetId());
+        assertNotNull(createdId);
+        assertEquals(createdId, raised.get(0).getTransactionId(), "the alert points at the expense that crossed the level");
+        assertNull(raised.get(0).getReceiptId());
+        assertFalse(raised.get(0).isRead(), "a new notification is unread");
         assertEquals("Bạn đã chi 1.700.000 / 2.000.000 VNĐ, đạt 80% ngân sách Ăn uống.", raised.get(0).getMessage());
         assertNotNull(raised.get(0).getCreatedAt());
         assertEquals(3, transactionRepository.count());

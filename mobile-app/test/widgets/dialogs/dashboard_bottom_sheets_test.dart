@@ -41,44 +41,6 @@ void main() {
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
     group('${mode.name} theme', () {
       testWidgets(
-        'notifications: surface sheet, handle, title, action and empty state follow the theme',
-        (tester) async {
-          final host = await _host(tester, mode);
-          final colors = Theme.of(host).colorScheme;
-
-          DashboardBottomSheets.showNotifications(host);
-          await tester.pumpAndSettle();
-
-          expect(_sheetColor(tester), colors.surface);
-          expect(
-            paintedColor(tester, find.text('Thông báo')),
-            colors.onSurface,
-          );
-          expect(paintedColor(tester, find.text('Đọc tất cả')), colors.primary);
-          expect(
-            paintedColor(tester, find.text('Không có thông báo mới.')),
-            colors.onSurfaceVariant,
-          );
-          expect(
-            paintedColor(tester, find.byIcon(Icons.notifications_off_outlined)),
-            colors.onSurfaceVariant.withValues(alpha: 0.5),
-          );
-          final handle = tester
-              .widgetList<Container>(
-                find.descendant(
-                  of: find.byType(BottomSheet),
-                  matching: find.byType(Container),
-                ),
-              )
-              .firstWhere((container) => container.constraints?.maxWidth == 40);
-          expect(
-            (handle.decoration! as BoxDecoration).color,
-            colors.onSurfaceVariant.withValues(alpha: 0.3),
-          );
-        },
-      );
-
-      testWidgets(
         'bank list: texts, dividers and the connect chip follow the theme, and every bank icon is readable on its tile',
         (tester) async {
           final host = await _host(tester, mode);

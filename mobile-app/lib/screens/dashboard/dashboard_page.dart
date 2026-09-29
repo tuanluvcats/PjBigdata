@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/core/theme/app_theme.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
@@ -10,10 +12,13 @@ import 'package:finance_ai_app/models/budget_progress.dart';
 import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/repositories/app_repository.dart';
 import 'package:finance_ai_app/screens/budget/budget_screen.dart';
+import 'package:finance_ai_app/screens/notifications/notification_screen.dart';
 import 'package:finance_ai_app/screens/profile/savings_page.dart';
 import 'package:finance_ai_app/screens/linked/linked_services_page.dart';
+import 'package:finance_ai_app/services/remote_api_helper.dart';
 import 'package:finance_ai_app/widgets/budget/budget_alert_presenter.dart';
 import 'package:finance_ai_app/widgets/budget/budget_section.dart';
+import 'package:finance_ai_app/widgets/notifications/notification_bell.dart';
 import 'package:finance_ai_app/widgets/receipt/receipt_status_badge.dart';
 import 'package:finance_ai_app/widgets/sync/sync_status_badge.dart';
 import 'package:finance_ai_app/widgets/dialogs/dashboard_bottom_sheets.dart';
@@ -26,7 +31,7 @@ class DashboardPage extends StatefulWidget {
 }
 
 class DashboardPageState extends State<DashboardPage>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   /// How many budgets the home screen lists; the rest is one line saying how many more there are.
   static const int _maxBudgetCards = 3;
 
@@ -34,6 +39,12 @@ class DashboardPageState extends State<DashboardPage>
   bool get wantKeepAlive => true;
 
   void reload() => _load();
+
+  /// The number on the bell. The bell listens to it directly, so a new count repaints the bell, not the page.
+  final ValueNotifier<int> _unreadNotifications = ValueNotifier<int>(0);
+
+  /// Numbers the unread-count requests: only the answer to the latest one is shown, an older one arriving late is not.
+  int _unreadRequest = 0;
 
   bool _isLoading = true;
   bool _balanceHidden = false;
@@ -52,7 +63,24 @@ class DashboardPageState extends State<DashboardPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _unreadNotifications.dispose();
+    super.dispose();
+  }
+
+  /// Back from the background: the server may have raised notifications meanwhile. The observer is removed in
+  /// dispose, so a page that is gone never asks. There is no polling.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshUnreadNotifications());
+    }
   }
 
   Future<void> _load() async {
@@ -62,6 +90,8 @@ class DashboardPageState extends State<DashboardPage>
       setState(() => _isLoading = false);
       return;
     }
+    // Not awaited: the bell has its own request and never holds up, or breaks, the rest of the page.
+    unawaited(_refreshUnreadNotifications());
 
     final now = DateTime.now();
     final prevMonth = DateTime(now.year, now.month - 1);
@@ -134,6 +164,38 @@ class DashboardPageState extends State<DashboardPage>
       if (!mounted) return;
       setState(() => _isLoading = false);
     }
+  }
+
+  /// Notifications are kept by the server only, so there is nothing to count without it (demo mode) or signed out. On
+  /// failure the bell keeps its last number.
+  Future<void> _refreshUnreadNotifications() async {
+    if (!mounted || !AppConfig.isFull || SessionService.currentUserId == null) {
+      return;
+    }
+    final request = ++_unreadRequest;
+    try {
+      final count = await RemoteApiHelper.instance.getUnreadNotificationCount();
+      if (mounted && request == _unreadRequest) {
+        _unreadNotifications.value = count;
+      }
+    } on DioException catch (e) {
+      if (mounted) {
+        debugPrint(
+          'Lỗi tải số thông báo chưa đọc: HTTP ${e.response?.statusCode ?? e.type.name}',
+        );
+      }
+    } on FormatException catch (e) {
+      if (mounted) debugPrint('Lỗi đọc số thông báo chưa đọc: ${e.message}');
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationScreen()),
+    );
+    // Whatever was read or marked there shows on the bell as soon as the user is back.
+    if (mounted) unawaited(_refreshUnreadNotifications());
   }
 
   String _formatCurrency(double amount) => NumberFormat.currency(
@@ -429,13 +491,9 @@ class DashboardPageState extends State<DashboardPage>
               ),
               CircleAvatar(
                 backgroundColor: colors.surface,
-                child: IconButton(
-                  icon: Icon(
-                    Icons.notifications_outlined,
-                    color: colors.onSurface,
-                  ),
-                  onPressed: () =>
-                      DashboardBottomSheets.showNotifications(context),
+                child: NotificationBell(
+                  unreadCount: _unreadNotifications,
+                  onPressed: _openNotifications,
                 ),
               ),
             ],

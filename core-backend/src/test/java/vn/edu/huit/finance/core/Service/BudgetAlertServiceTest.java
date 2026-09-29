@@ -31,9 +31,9 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 /**
@@ -48,6 +48,7 @@ class BudgetAlertServiceTest {
     private static final Long TRANSPORT_ID = 20L;
     private static final Long FOOD_BUDGET_ID = 100L;
     private static final Long ALL_BUDGET_ID = 200L;
+    private static final Long TRANSACTION_ID = 500L;
     private static final String LIMIT = "2000000";
     private static final LocalDate SEPTEMBER_FIRST = LocalDate.of(2026, 9, 1);
     private static final LocalDate SEPTEMBER_LAST = LocalDate.of(2026, 9, 30);
@@ -97,7 +98,7 @@ class BudgetAlertServiceTest {
 
     private Transaction expense(Category category, String amount) {
         Transaction transaction = new Transaction();
-        transaction.setId(500L);
+        transaction.setId(TRANSACTION_ID);
         transaction.setUser(alice);
         transaction.setCategory(category);
         transaction.setCategoryName(category.getName());
@@ -127,7 +128,7 @@ class BudgetAlertServiceTest {
     }
 
     private void assertNoNotification() {
-        verify(notificationService, never()).create(any(), any(), anyString(), anyLong());
+        verify(notificationService, never()).create(any(), any(), anyString(), any(), any(), any());
     }
 
     // ----------------------------------------------------------------------------------- a new expense: the thresholds
@@ -162,7 +163,7 @@ class BudgetAlertServiceTest {
         if (expected == null) {
             assertNoNotification();
         } else {
-            verify(notificationService, times(1)).create(eq(alice), eq(expected), anyString(), eq(FOOD_BUDGET_ID));
+            verify(notificationService, times(1)).create(eq(alice), eq(expected), anyString(), eq(TRANSACTION_ID), eq(FOOD_BUDGET_ID), isNull());
             verifyNoMoreInteractions(notificationService);
         }
     }
@@ -175,8 +176,8 @@ class BudgetAlertServiceTest {
 
         service.notifyAfterCreate(expense(food, "1000000"));
 
-        verify(notificationService).create(any(), eq(NotificationType.BUDGET_EXCEEDED), anyString(), any());
-        verify(notificationService, never()).create(any(), eq(NotificationType.BUDGET_WARNING), anyString(), any());
+        verify(notificationService).create(any(), eq(NotificationType.BUDGET_EXCEEDED), anyString(), any(), any(), any());
+        verify(notificationService, never()).create(any(), eq(NotificationType.BUDGET_WARNING), anyString(), any(), any(), any());
     }
 
     @Test
@@ -248,8 +249,8 @@ class BudgetAlertServiceTest {
 
         service.notifyAfterCreate(expense(food, "300000"));
 
-        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(FOOD_BUDGET_ID));
-        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_EXCEEDED), anyString(), eq(ALL_BUDGET_ID));
+        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(TRANSACTION_ID), eq(FOOD_BUDGET_ID), isNull());
+        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_EXCEEDED), anyString(), eq(TRANSACTION_ID), eq(ALL_BUDGET_ID), isNull());
     }
 
     @Test
@@ -262,8 +263,8 @@ class BudgetAlertServiceTest {
 
         service.notifyAfterCreate(expense(food, "300000"));
 
-        verify(notificationService).create(any(), any(), anyString(), eq(FOOD_BUDGET_ID));
-        verify(notificationService, never()).create(any(), any(), anyString(), eq(ALL_BUDGET_ID));
+        verify(notificationService).create(any(), any(), anyString(), any(), eq(FOOD_BUDGET_ID), any());
+        verify(notificationService, never()).create(any(), any(), anyString(), any(), eq(ALL_BUDGET_ID), any());
     }
 
     // ---------------------------------------------------------------------------------------------- an edited expense
@@ -277,7 +278,7 @@ class BudgetAlertServiceTest {
         // Before the edit the expense was 100,000, so the total was 1,500,000 (75%).
         service.notifyAfterUpdate(expense(food, "300000"), counted(food, "100000", SPENT_ON));
 
-        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(FOOD_BUDGET_ID));
+        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(TRANSACTION_ID), eq(FOOD_BUDGET_ID), isNull());
     }
 
     @Test
@@ -312,7 +313,7 @@ class BudgetAlertServiceTest {
         // It was a transport expense: it counted for nothing in the food budget, whose total was 1,200,000 (60%).
         service.notifyAfterUpdate(expense(food, "500000"), counted(transport, "500000", SPENT_ON));
 
-        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(FOOD_BUDGET_ID));
+        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(TRANSACTION_ID), eq(FOOD_BUDGET_ID), isNull());
     }
 
     @Test
@@ -336,7 +337,7 @@ class BudgetAlertServiceTest {
         // It used to be dated in August: it was outside this budget, whose total was 1,200,000.
         service.notifyAfterUpdate(expense(food, "500000"), counted(food, "500000", LocalDate.of(2026, 8, 20)));
 
-        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(FOOD_BUDGET_ID));
+        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(TRANSACTION_ID), eq(FOOD_BUDGET_ID), isNull());
     }
 
     @Test
@@ -349,7 +350,7 @@ class BudgetAlertServiceTest {
 
         service.notifyAfterUpdate(expense(food, "500000"), wasAnIncome);
 
-        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(FOOD_BUDGET_ID));
+        verify(notificationService).create(eq(alice), eq(NotificationType.BUDGET_WARNING), anyString(), eq(TRANSACTION_ID), eq(FOOD_BUDGET_ID), isNull());
     }
 
     @Test
@@ -373,7 +374,7 @@ class BudgetAlertServiceTest {
         service.notifyAfterCreate(expense(food, "100000"));
 
         verify(notificationService).create(alice, NotificationType.BUDGET_WARNING,
-                "Bạn đã chi 1.600.000 / 2.000.000 VNĐ, đạt 80% ngân sách Ăn uống.", FOOD_BUDGET_ID);
+                "Bạn đã chi 1.600.000 / 2.000.000 VNĐ, đạt 80% ngân sách Ăn uống.", TRANSACTION_ID, FOOD_BUDGET_ID, null);
     }
 
     @Test
@@ -385,7 +386,7 @@ class BudgetAlertServiceTest {
         service.notifyAfterCreate(expense(food, "600000"));
 
         verify(notificationService).create(alice, NotificationType.BUDGET_EXCEEDED,
-                "Bạn đã chi 2.100.000 / 2.000.000 VNĐ, vượt ngân sách tất cả danh mục.", ALL_BUDGET_ID);
+                "Bạn đã chi 2.100.000 / 2.000.000 VNĐ, vượt ngân sách tất cả danh mục.", TRANSACTION_ID, ALL_BUDGET_ID, null);
     }
 
     // ---------------------------------------------------------------------------------------------- structural guards
@@ -404,13 +405,13 @@ class BudgetAlertServiceTest {
     }
 
     @Test
-    void theThresholdsAreDeclaredInAscendingOrder_becauseTheServiceComparesLevelsByOrdinal() {
-        NotificationType[] types = NotificationType.values();
-
-        for (int i = 1; i < types.length; i++) {
-            assertTrue(types[i - 1].getThresholdPercent() < types[i].getThresholdPercent());
-        }
+    void onlyTheTwoBudgetLevelsHaveAThreshold_andTheyAreWalkedFromTheLowest() {
+        assertEquals(List.of(NotificationType.BUDGET_WARNING, NotificationType.BUDGET_EXCEEDED), NotificationType.budgetLevels());
         assertEquals(80, NotificationType.BUDGET_WARNING.getThresholdPercent());
         assertEquals(100, NotificationType.BUDGET_EXCEEDED.getThresholdPercent());
+        assertNull(NotificationType.TRANSACTION_ALERT.getThresholdPercent());
+        assertNull(NotificationType.RECEIPT_PROCESSED.getThresholdPercent());
+        assertFalse(NotificationType.TRANSACTION_ALERT.isBudgetLevel());
+        assertFalse(NotificationType.RECEIPT_PROCESSED.isBudgetLevel());
     }
 }
