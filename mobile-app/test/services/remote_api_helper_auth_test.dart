@@ -595,5 +595,102 @@ void main() {
 
       expect(backend.calls, ['POST /api/auth/reset-password']);
     });
+
+    test(
+      'a 401 of the OTP request is its answer too: no refresh, the session is left alone',
+      () async {
+        backend.on('POST', '/api/auth/forgot-password', (_) => _unauthorized());
+
+        await expectLater(
+          RemoteApiHelper.instance.forgotPassword(email: 'a@b.c'),
+          throwsA(isDioError(401)),
+        );
+
+        expect(backend.calls, ['POST /api/auth/forgot-password']);
+        expect(SessionService.currentToken, 'access-token');
+        expect(SessionService.currentRefreshToken, 'refresh-token');
+      },
+    );
+  });
+
+  group('the password recovery requests', () {
+    test(
+      'the OTP request POSTs the email as its only query parameter, with no body',
+      () async {
+        backend.on(
+          'POST',
+          '/api/auth/forgot-password',
+          (_) => okResponse(null, message: 'Mã OTP đã được gửi'),
+        );
+
+        await RemoteApiHelper.instance.forgotPassword(email: 'An@Example.com');
+
+        final request = backend.requests.single;
+        expect(request.method, 'POST');
+        expect(request.path, '/api/auth/forgot-password');
+        expect(request.queryParameters, {'email': 'An@Example.com'});
+        expect(request.data, isNull);
+      },
+    );
+
+    test(
+      'the reset POSTs email, OTP and new password in the JSON body and nothing in the URL',
+      () async {
+        backend.on(
+          'POST',
+          '/api/auth/reset-password',
+          (_) => okResponse(null, message: 'Đổi mật khẩu thành công!'),
+        );
+
+        await RemoteApiHelper.instance.resetPassword(
+          email: 'a@b.c',
+          otp: '123456',
+          newPassword: 'NewPass456',
+        );
+
+        final request = backend.requests.single;
+        expect(request.method, 'POST');
+        expect(request.path, '/api/auth/reset-password');
+        expect(request.data, {
+          'email': 'a@b.c',
+          'otp': '123456',
+          'newPassword': 'NewPass456',
+        });
+        expect(request.queryParameters, isEmpty);
+        expect(request.uri.query, isEmpty);
+      },
+    );
+
+    test(
+      'a refusal reaches the caller as the DioException of the server answer',
+      () async {
+        backend.on(
+          'POST',
+          '/api/auth/reset-password',
+          (_) => jsonResponse(400, {
+            'code': 400,
+            'message': 'Mã OTP không chính xác. Bạn còn 2 lần thử.',
+          }),
+        );
+
+        await expectLater(
+          RemoteApiHelper.instance.resetPassword(
+            email: 'a@b.c',
+            otp: '000000',
+            newPassword: 'NewPass456',
+          ),
+          throwsA(
+            isA<DioException>()
+                .having((e) => e.response?.statusCode, 'status code', 400)
+                .having(
+                  (e) => (e.response?.data as Map)['message'],
+                  'server message',
+                  'Mã OTP không chính xác. Bạn còn 2 lần thử.',
+                ),
+          ),
+        );
+        expect(backend.calls, ['POST /api/auth/reset-password']);
+      },
+    );
   });
 }

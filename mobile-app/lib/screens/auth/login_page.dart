@@ -11,6 +11,7 @@ import 'package:finance_ai_app/services/session_service.dart';
 import 'package:finance_ai_app/repositories/local_auth_repository.dart';
 import 'package:finance_ai_app/services/social_auth_service.dart';
 import 'package:finance_ai_app/widgets/dialogs/app_dialog.dart';
+import 'package:finance_ai_app/screens/auth/forgot_password_page.dart';
 
 import 'register_page.dart';
 
@@ -140,92 +141,12 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showForgotPassword(BuildContext context) {
-    final emailCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        final colors = Theme.of(ctx).colorScheme;
-        // The dialog takes the surface colour of the theme, the field its text and hint colours.
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            'Quên mật khẩu',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Nhập email để nhận liên kết đặt lại mật khẩu.',
-                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailCtrl,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  hintText: 'email@example.com',
-                  filled: true,
-                  fillColor: colors.surfaceContainer,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(
-                'Hủy',
-                style: TextStyle(color: colors.onSurfaceVariant),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              onPressed: () async {
-                final email = emailCtrl.text.trim();
-                if (email.isEmpty) return;
-                Navigator.pop(ctx);
-                if (AppConfig.isFull) {
-                  try {
-                    await RemoteApiHelper.instance.forgotPassword(email: email);
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Đã gửi email đặt lại mật khẩu!'),
-                      ),
-                    );
-                  } catch (e) {
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
-                  }
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Tính năng chỉ khả dụng khi kết nối server.',
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Gửi'),
-            ),
-          ],
-        );
-      },
+  /// The one way into the password recovery. The recovery screens never sign in: whatever happens there, the user
+  /// comes back here, or to a new login screen, and signs in with the new password.
+  void _openForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
     );
   }
 
@@ -360,7 +281,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () => _showForgotPassword(context),
+                    onTap: _openForgotPassword,
                     child: Text(
                       'Quên mật khẩu?',
                       style: TextStyle(

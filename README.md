@@ -94,7 +94,7 @@ the AI service. No cloud-hosted database is used.
 
 ### Health checks
 ```bash
-   docker compose ps                                             # db and core-api should be "healthy"
+   docker compose ps                                             # db, redis and core-api should be "healthy"
    docker compose exec db pg_isready -U "$DB_USERNAME" -d finance_db
    curl -f http://localhost:8080/actuator/health
 ```
@@ -108,5 +108,43 @@ Take a backup before every deployment that changes the schema, and copy it off t
    # Restore into the running database: this OVERWRITES the objects in the dump, so stop core-api first
    docker compose stop core-api
    docker compose exec -T db pg_restore -U "$DB_USERNAME" -d finance_db --clean --if-exists < finance_db_YYYY-MM-DD_HHMM.dump
+   docker compose restart redis   # empties the statistics cache, which must not outlive the data it was computed from
    docker compose start core-api
+```
+
+## 7. Statistics cache (Redis)
+The statistics endpoints (the app's home page `GET /api/transactions/app-dashboard`, `GET /api/transactions/popular-vendors`,
+their `/api/admin/transactions/...` variants and the admin dashboard page) are cached in Redis, the `redis` service of
+`docker-compose.yml` (`redis:8.10-alpine`), which every core-api instance shares. PostgreSQL stays the source of truth:
+when Redis is down or slow, requests read PostgreSQL directly and nothing fails.
+
+- **Network & security:** no port is published, not even on `127.0.0.1`; only the containers of `finance-network` reach
+  Redis, with the password `REDIS_PASSWORD`. `KEYS`, `FLUSHALL` and `FLUSHDB` are disabled, nothing is persisted (a
+  restart starts empty) and memory is capped (`maxmemory` with `allkeys-lru`, plus a container limit). Tokens,
+  passwords and OTPs are never cached.
+- **Keys:** `<CACHE_KEY_PREFIX>:v1:<cache>:<key>`, e.g. `ledgermind:prod:v1:user-dashboard:42` or
+  `ledgermind:prod:v1:admin-top-spenders:0:5`. The `v1` is raised in the code whenever a cached DTO changes shape.
+- **Invalidation:** every write that changes a cached figure (transactions, receipts, accounts, a restore from the admin
+  page) evicts the affected entries once its database transaction has committed; the TTLs bound anything else.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `REDIS_PASSWORD` | *(required)* | Password of the `redis` service; `docker compose` refuses to start without it. Generate one with `openssl rand -hex 32`. |
+| `REDIS_MAXMEMORY` / `REDIS_MEMORY_LIMIT` | `128mb` / `192M` | Cap of the Redis dataset / memory limit of its container (keep the limit about 1.5 x the cap). |
+| `REDIS_CONNECT_TIMEOUT` / `REDIS_COMMAND_TIMEOUT` | `1s` / `500ms` | The most Redis can delay a request before the database is read instead. |
+| `CACHE_KEY_PREFIX` | `ledgermind:<active Spring profile>` | Application and environment part of every key; staging and production must differ if they ever share a Redis. |
+| `CACHE_TTL_USER_DASHBOARD` | `45s` | Home page of one user. |
+| `CACHE_TTL_USER_POPULAR_VENDORS` | `60s` | Popular vendors of one user. |
+| `CACHE_TTL_ADMIN_DASHBOARD_SUMMARY` | `45s` | Total volume, user count, low-balance list, receipt statuses. |
+| `CACHE_TTL_ADMIN_TOP_SPENDERS` | `60s` | Top spenders. |
+| `CACHE_TTL_ADMIN_STATISTICS` | `60s` | Six-month transaction chart. |
+| `CACHE_TTL_JITTER_PERCENT` | `10` | An entry lives between (100 - jitter) % and 100 % of its TTL, so entries do not all expire together. |
+
+`REDIS_HOST` (`redis`) and `REDIS_PORT` (`6379`) are set by `docker-compose.yml`; outside Docker they default to
+`localhost:6379`.
+```bash
+   docker compose exec redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli INFO stats'   # keyspace_hits, keyspace_misses, evicted_keys
+   docker compose exec redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli INFO memory'  # used_memory_human, maxmemory_human
+   docker compose exec redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli --latency'    # round-trip latency, Ctrl+C to stop
+   docker compose restart redis                                                             # empties every cache
 ```

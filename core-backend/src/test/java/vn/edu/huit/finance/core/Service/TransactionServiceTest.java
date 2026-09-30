@@ -2,6 +2,7 @@ package vn.edu.huit.finance.core.Service;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -15,9 +16,11 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.huit.finance.core.Dto.AppDashboardResponseDto;
 import vn.edu.huit.finance.core.Dto.PopularVendorResponseDto;
@@ -42,6 +45,8 @@ import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Repository.TransactionRepository;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -80,12 +85,22 @@ class TransactionServiceTest {
     @Mock private CurrentUserProvider currentUserProvider;
     @Mock private ReceiptProcessingService receiptProcessingService;
     @Mock private BudgetAlertService budgetAlertService;
+    @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private EntityManager entityManager;
     @InjectMocks private TransactionService service;
 
     private final User alice = user(ALICE_ID, WALLET);
     private final User bob = user(BOB_ID, WALLET);
     private final Category food = category(FOOD_ID, "Ăn uống", "EXPENSE");
+
+    /**
+     * The statistics are computed for real, from the mocked repository, so the tests below keep proving whose rows are
+     * read. (The Redis cache in front of them is tested with a real Redis in StatisticsCacheTransactionTest.)
+     */
+    @BeforeEach
+    void realStatisticsOverTheMockedRepository() {
+        ReflectionTestUtils.setField(service, "userStatisticsService", new UserStatisticsService(transactionRepo));
+    }
 
     // ---------------------------------------------------------------------------------------------------------- fixtures
 
@@ -1530,7 +1545,206 @@ class TransactionServiceTest {
         verifyNoInteractions(budgetAlertService);
     }
 
+    // ------------------------------------------------- the statistics cache: what every write reports, once it is done
+
+    private void verifyReported(StatisticsChange change, Long userId) {
+        verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(change, userId));
+        verifyNoMoreInteractions(eventPublisher);
+    }
+
+    @Test
+    void aCheckoutReportsThatTheOwnersTotalsChangedAfterTheTransactionIsSaved() {
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+        TransactionRequestDto request = checkout(true, "150000");
+        request.setCategoryId(FOOD_ID);
+
+        service.createMyTransaction(request);
+
+        InOrder order = inOrder(transactionRepo, eventPublisher);
+        order.verify(transactionRepo).save(any(Transaction.class));
+        order.verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.TRANSACTION_TOTALS, ALICE_ID));
+        verifyNoMoreInteractions(eventPublisher);
+    }
+
+    @Test
+    void theCheckoutOfThePaymentWebhookReportsTheUserItNames() {
+        when(userRepo.findById(BOB_ID)).thenReturn(Optional.of(bob));
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+        TransactionRequestDto request = checkout(false, "50000");
+        request.setCategoryId(FOOD_ID);
+
+        service.createTransaction(request, BOB_ID);
+
+        verifyReported(StatisticsChange.TRANSACTION_TOTALS, BOB_ID);
+    }
+
+    @Test
+    void aRepeatedCheckoutReportsNothingBecauseNothingChanged() {
+        checkoutAsAlice();
+        aliceAlreadyCheckedOutWith(CLIENT_ID);
+
+        service.createMyTransaction(checkoutWithClientId(CLIENT_ID));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void aRefusedCheckoutReportsNothing() {
+        alice.setWalletBalance(new BigDecimal("50000"));
+        checkoutAsAlice();
+        when(categoryRepo.findById(FOOD_ID)).thenReturn(Optional.of(food));
+        TransactionRequestDto request = checkout(true, "50000.01");
+        request.setCategoryId(FOOD_ID);
+
+        assertThrows(RuntimeException.class, () -> service.createMyTransaction(request));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    static Stream<Arguments> editsAndWhatTheyChange() {
+        TransactionUpdateRequestDto direction = update();
+        direction.setExpense(false);
+        TransactionUpdateRequestDto newDate = update();
+        newDate.setTransactionDate(LocalDateTime.of(2026, 9, 2, 8, 30));
+        TransactionUpdateRequestDto sameDateAndANote = update();
+        sameDateAndANote.setTransactionDate(LocalDateTime.of(2026, 9, 1, 12, 0));
+        sameDateAndANote.setNote("Bún chả");
+        TransactionUpdateRequestDto note = update();
+        note.setNote("Bún chả");
+        TransactionUpdateRequestDto paymentMethod = update();
+        paymentMethod.setPaymentMethod("Tiền mặt");
+        return Stream.of(
+                Arguments.of("the amount", updateAmount("120000"), StatisticsChange.TRANSACTION_TOTALS),
+                Arguments.of("the direction", direction, StatisticsChange.TRANSACTION_TOTALS),
+                Arguments.of("the date", newDate, StatisticsChange.TRANSACTION_TOTALS),
+                Arguments.of("the same amount again", updateAmount("100000.00"), StatisticsChange.TRANSACTION_DETAILS),
+                Arguments.of("the same date again and a note", sameDateAndANote, StatisticsChange.TRANSACTION_DETAILS),
+                Arguments.of("the note", note, StatisticsChange.TRANSACTION_DETAILS),
+                Arguments.of("the payment method", paymentMethod, StatisticsChange.TRANSACTION_DETAILS));
+    }
+
+    @ParameterizedTest(name = "changing {0}")
+    @MethodSource("editsAndWhatTheyChange")
+    void anEditReportsTheTotalsOnlyWhenTheWalletOrTheDateMoves(
+            String what, TransactionUpdateRequestDto request, StatisticsChange expected) {
+        aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
+
+        service.updateTransaction(TX_ID, request);
+
+        verifyReported(expected, ALICE_ID);
+    }
+
+    @Test
+    void aNewCategoryOnlyChangesWhatTheOwnersDashboardShows() {
+        aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
+        Category drinks = category(11L, "Đồ uống", "EXPENSE");
+        when(categoryRepo.findById(11L)).thenReturn(Optional.of(drinks));
+        TransactionUpdateRequestDto request = update();
+        request.setCategoryId(11L);
+
+        service.updateTransaction(TX_ID, request);
+
+        verifyReported(StatisticsChange.TRANSACTION_DETAILS, ALICE_ID);
+    }
+
+    @Test
+    void aRefusedEditReportsNothing() {
+        alice.setWalletBalance(new BigDecimal("99999.99"));
+        aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
+
+        assertThrows(InsufficientBalanceException.class, () -> service.updateTransaction(TX_ID, updateAmount("200000")));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void aDeletionReportsThatTheOwnersTotalsChanged() {
+        aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
+
+        service.deleteTransaction(TX_ID);
+
+        verifyReported(StatisticsChange.TRANSACTION_TOTALS, ALICE_ID);
+    }
+
+    @Test
+    void aRefusedDeletionReportsNothing() {
+        signedInAsAlice();
+        when(transactionRepo.findDetailedById(TX_ID)).thenReturn(Optional.of(transaction(bob, HUNDRED_THOUSAND, true)));
+
+        assertThrows(TransactionAccessDeniedException.class, () -> service.deleteTransaction(TX_ID));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void aCanceledReceiptReportsAStatusChangeOfTheCallersReceipt() {
+        signedInAsAlice();
+        when(receiptRepo.findById(7L)).thenReturn(Optional.of(receipt("PENDING", transaction(alice, HUNDRED_THOUSAND, true))));
+
+        service.cancelMyReceipt(7L);
+
+        verifyReported(StatisticsChange.RECEIPT_STATUS, ALICE_ID);
+    }
+
+    @Test
+    void aRefusedCancellationReportsNothing() {
+        signedInAsAlice();
+        when(receiptRepo.findById(7L)).thenReturn(Optional.of(receipt("PENDING", transaction(bob, HUNDRED_THOUSAND, true))));
+
+        assertThrows(TransactionAccessDeniedException.class, () -> service.cancelMyReceipt(7L));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void anApprovalThatMovesTheWalletReportsTheOwnersTotalsNotTheAdministrators() {
+        expenseReceiptToApprove("120000");
+
+        service.approveReceipt(RECEIPT_ID);
+
+        verifyReported(StatisticsChange.TRANSACTION_TOTALS, ALICE_ID);
+    }
+
+    @Test
+    void anApprovalThatKeepsTheAmountReportsOnlyTheNewStatus() {
+        expenseReceiptToApprove("100000.00");
+
+        service.approveReceipt(RECEIPT_ID);
+
+        verifyReported(StatisticsChange.RECEIPT_STATUS, ALICE_ID);
+    }
+
+    @Test
+    void aRefusedApprovalReportsNothing() {
+        receiptToApprove(true, "CANCELED", "120000");
+
+        assertThrows(IllegalStateException.class, () -> service.approveReceipt(RECEIPT_ID));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void readingStatisticsReportsNothing() {
+        signedInAsAlice();
+
+        service.getMyPopularVendors();
+        service.getMyDashboard();
+
+        verifyNoInteractions(eventPublisher);
+    }
+
     // ------------------------------------------------------------------------------------------------ structural guards
+
+    @Test
+    void noMethodOfTheServiceIsCachedItselfSoNoCallFromInsideItCanBypassTheCache() {
+        // The cache lives on UserStatisticsService and is reached through its Spring proxy; a @Cacheable here would be
+        // skipped silently whenever another method of this class called it.
+        for (Method method : TransactionService.class.getDeclaredMethods()) {
+            assertFalse(AnnotatedElementUtils.hasAnnotation(method, org.springframework.cache.annotation.Cacheable.class),
+                    method.getName() + " must not be @Cacheable");
+        }
+    }
 
     @Test
     void everyMethodThatChangesMoneyRunsInAWritableTransaction() throws NoSuchMethodException {

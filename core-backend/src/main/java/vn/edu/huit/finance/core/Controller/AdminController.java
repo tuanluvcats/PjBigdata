@@ -15,22 +15,26 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
+import vn.edu.huit.finance.core.Dto.AdminDashboardSummaryDto;
 import vn.edu.huit.finance.core.Dto.ApiResponse;
+import vn.edu.huit.finance.core.Dto.MonthlyTransactionCountDto;
+import vn.edu.huit.finance.core.Dto.ReceiptStatusCountDto;
 import vn.edu.huit.finance.core.Dto.UserCreateDto;
 import vn.edu.huit.finance.core.Dto.UserUpdateDto;
 import vn.edu.huit.finance.core.Entity.*;
 import vn.edu.huit.finance.core.Repository.*;
+import vn.edu.huit.finance.core.Service.AdminStatisticsService;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.BackupService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
+import vn.edu.huit.finance.core.Service.ReceiptProcessingService;
 import vn.edu.huit.finance.core.Service.TransactionService;
 import vn.edu.huit.finance.core.Service.UserService;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.TemporalAdjusters;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -39,9 +43,14 @@ import java.util.HashMap;
 @RequestMapping("/admin")
 public class AdminController {
     private static final int DEFAULT_PAGE_SIZE = 10;
+    private static final int TOP_SPENDERS_PAGE = 0;
+    private static final int TOP_SPENDERS_LIMIT = 5;
+    private static final int CHART_MONTHS = 6;
+    private static final String CHART_LABEL_PREFIX = "Tháng ";
 
     @Autowired private UserRepository userRepo;
-    @Autowired private TransactionRepository transactionRepo;
+    @Autowired private AdminStatisticsService adminStatisticsService;
+    @Autowired private ReceiptProcessingService receiptProcessingService;
     @Autowired private CategoryRepository categoryRepo;
     @Autowired private CampaignRepository campaignRepo;
     @Autowired private ReceiptRepository receiptRepo;
@@ -54,61 +63,41 @@ public class AdminController {
     @Autowired private AuditLogService auditLogService;
     @Autowired private LoginAttemptService loginAttemptService;
     @Autowired private AppReviewRepository appReviewRepository;
+    /**
+     * The aggregates come from AdminStatisticsService, cached in Redis as DTOs (never this Model, never an entity) and
+     * keyed by the month, threshold, page and limit asked for here; the customer segments below are read live.
+     */
     @GetMapping("/dashboard")
     public String showDashboard(Model model) {
-        BigDecimal totalVolume = transactionRepo.sumTotalVolume();
-        long totalUsers = userRepo.count();
-        List<User> lowBalanceUsers = userRepo.findByWalletBalanceLessThan(new BigDecimal("50000"));
+        YearMonth currentMonth = YearMonth.now();
+        AdminDashboardSummaryDto summary = adminStatisticsService.getDashboardSummary(
+                currentMonth, TransactionService.LOW_BALANCE_THRESHOLD);
 
-        LocalDateTime startOfMonth = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-        LocalDateTime endOfMonth = LocalDate.now().with(TemporalAdjusters.lastDayOfMonth()).atTime(23, 59, 59);
+        model.addAttribute("totalVolume", formatCurrencyWithoutDecimal(summary.getTotalVolume()));
+        model.addAttribute("totalUsers", summary.getTotalUsers());
+        model.addAttribute("lowBalanceUsers", summary.getLowBalanceUsers());
+        model.addAttribute("totalTransactionsThisMonth", summary.getTransactionsInPeriod());
 
-        long totalTransactionsThisMonth = transactionRepo.countByTransactionDateBetween(startOfMonth, endOfMonth);
+        model.addAttribute("topSpenders", adminStatisticsService.getTopSpenders(TOP_SPENDERS_PAGE, TOP_SPENDERS_LIMIT));
 
-        model.addAttribute("totalVolume", formatCurrencyWithoutDecimal(totalVolume));
-        model.addAttribute("totalUsers", totalUsers);
-        model.addAttribute("lowBalanceUsers", lowBalanceUsers);
-        model.addAttribute("totalTransactionsThisMonth", totalTransactionsThisMonth);
+        List<MonthlyTransactionCountDto> chart = adminStatisticsService.getMonthlyTransactionCounts(currentMonth, CHART_MONTHS);
+        model.addAttribute("chartLabels", chart.stream()
+                .map(month -> CHART_LABEL_PREFIX + month.getMonth().getMonthValue())
+                .toList());
+        model.addAttribute("chartData", chart.stream().map(MonthlyTransactionCountDto::getTransactionCount).toList());
 
-        List<Object[]> aiStats = receiptRepo.getReceiptStatusStatistics();
-        model.addAttribute("aiStats", aiStats);
-
-        List<Object[]> topSpenders = transactionRepo.findTopSpenders(PageRequest.of(0, 5));
-        model.addAttribute("topSpenders", topSpenders);
-
-
-        List<String> chartLabels = new java.util.ArrayList<>();
-        List<Long> chartData = new java.util.ArrayList<>();
-
-
-        for (int i = 5; i >= 0; i--) {
-            LocalDate monthDate = LocalDate.now().minusMonths(i);
-            chartLabels.add("Tháng " + monthDate.getMonthValue());
-
-
-            LocalDateTime start = monthDate.withDayOfMonth(1).atStartOfDay();
-            LocalDateTime end = monthDate.with(TemporalAdjusters.lastDayOfMonth()).atTime(23, 59, 59);
-
-
-            long count = transactionRepo.countByTransactionDateBetween(start, end);
-            chartData.add(count);
-        }
-
-
-        model.addAttribute("chartLabels", chartLabels);
-        model.addAttribute("chartData", chartData);
         List<String> aiLabels = new java.util.ArrayList<>();
         List<Long> aiData = new java.util.ArrayList<>();
 
-        for (Object[] obj : aiStats) {
-            String status = String.valueOf(obj[0]);
+        for (ReceiptStatusCountDto receiptStatus : summary.getReceiptStatuses()) {
+            String status = receiptStatus.getStatus();
 
             if ("SUCCESS".equals(status)) status = "Thành công";
             else if ("FAILED".equals(status)) status = "Lỗi AI";
             else status = "Đang xử lý";
 
             aiLabels.add(status);
-            aiData.add(((Number) obj[1]).longValue());
+            aiData.add(receiptStatus.getCount());
         }
 
         model.addAttribute("aiLabels", aiLabels);
@@ -169,9 +158,7 @@ public class AdminController {
 
     @PostMapping("/receipts/reject/{id}")
     public String rejectReceipt(@PathVariable Long id) {
-        Receipt receipt = receiptRepo.findById(id).orElseThrow();
-        receipt.setStatus("FAILED");
-        receiptRepo.save(receipt);
+        receiptProcessingService.rejectReceipt(id);
         return "redirect:/admin/receipts";
     }
 

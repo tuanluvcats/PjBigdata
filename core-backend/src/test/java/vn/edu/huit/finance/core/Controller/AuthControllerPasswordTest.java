@@ -9,12 +9,15 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import vn.edu.huit.finance.core.Config.SecurityConfig;
@@ -33,6 +36,8 @@ import vn.edu.huit.finance.core.Security.TokenClaims;
 import vn.edu.huit.finance.core.Security.TokenType;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.SocialAuthService;
 import vn.edu.huit.finance.core.Service.TokenBlacklistService;
@@ -64,6 +69,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(AuthController.class)
 @ContextConfiguration(classes = {
         AuthController.class, GlobalExceptionHandler.class, SecurityConfig.class, JwtAuthFilter.class})
+@RecordApplicationEvents
 class AuthControllerPasswordTest {
 
     private static final String URL = AuthPaths.CHANGE_PASSWORD_URL;
@@ -86,6 +92,7 @@ class AuthControllerPasswordTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired private ApplicationEvents events;
 
     @MockBean private AuthService authService;
     @MockBean private JwtUtil jwtUtil;
@@ -389,5 +396,34 @@ class AuthControllerPasswordTest {
                 .andExpect(jsonPath("$.message").value(containsString("10 chữ số")));
 
         verify(userRepository, never()).save(any());
+    }
+
+    private long accountsCreatedAnnounced() {
+        return events.stream(StatisticsChangedEvent.class)
+                .filter(event -> event.change() == StatisticsChange.ACCOUNT_CREATED)
+                .count();
+    }
+
+    @Test
+    void register_announcesTheNewAccountToTheStatisticsCache_onceItIsSaved() throws Exception {
+        mockMvc.perform(registerRequest(registerBody(STRONG_PASSWORD, NEW_USER_PHONE)))
+                .andExpect(status().isOk());
+
+        assertEquals(1, accountsCreatedAnnounced());
+    }
+
+    @Test
+    void register_announcesNothing_whenNoAccountWasCreated() throws Exception {
+        when(userRepository.findByEmail(NEW_USER_EMAIL)).thenReturn(Optional.of(new User()));
+        mockMvc.perform(registerRequest(registerBody(STRONG_PASSWORD, NEW_USER_PHONE)))
+                .andExpect(status().isBadRequest());
+
+        reset(userRepository);
+        when(userRepository.save(any(User.class))).thenThrow(new DataIntegrityViolationException("uk_users_phone"));
+        mockMvc.perform(registerRequest(registerBody(STRONG_PASSWORD, NEW_USER_PHONE)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Email hoặc số điện thoại đã tồn tại."));
+
+        assertEquals(0, accountsCreatedAnnounced());
     }
 }

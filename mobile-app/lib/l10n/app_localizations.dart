@@ -253,6 +253,270 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your session has ended, for example because your password was changed. Please sign in again.'**
   String get sessionEnded;
+
+  /// Button that closes an error dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get dialogGotIt;
+
+  /// App bar title of the forgot-password screen, the first step of the password recovery.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot password'**
+  String get forgotPasswordTitle;
+
+  /// Heading of the forgot-password screen, above its description.
+  ///
+  /// In en, this message translates to:
+  /// **'Get a verification code'**
+  String get forgotPasswordHeading;
+
+  /// Explains on the forgot-password screen that a one-time code will be emailed to the address typed below.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the email of your account. We\'ll send you a one-time code (OTP) to set a new password.'**
+  String get forgotPasswordDescription;
+
+  /// Label above the email field of the forgot-password screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get forgotPasswordEmailLabel;
+
+  /// Hint inside the empty email field of the forgot-password screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your email address'**
+  String get forgotPasswordEmailHint;
+
+  /// Error under the email field when the user asks for a code without typing an email.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter your email.'**
+  String get forgotPasswordEmailRequired;
+
+  /// Error under the email field when what was typed is not an email address.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a valid email address.'**
+  String get forgotPasswordEmailInvalid;
+
+  /// Button of the forgot-password screen that asks the server to email a one-time code.
+  ///
+  /// In en, this message translates to:
+  /// **'Send code'**
+  String get forgotPasswordSendOtp;
+
+  /// Title of the error dialog shown when the one-time code could not be sent or sent again.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send the code'**
+  String get forgotPasswordSendFailed;
+
+  /// Error dialog text when the server refused to send a one-time code without saying why.
+  ///
+  /// In en, this message translates to:
+  /// **'The code couldn\'t be sent. Please check the email and try again.'**
+  String get forgotPasswordRejected;
+
+  /// App bar title of the reset-password screen, where the user types the one-time code and a new password.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset password'**
+  String get resetPasswordTitle;
+
+  /// Heading of the reset-password screen, above its description.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a new password'**
+  String get resetPasswordHeading;
+
+  /// Description of the reset-password screen. The email is shown partly hidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the code we sent to {email}, then choose a new password.'**
+  String resetPasswordDescription(String email);
+
+  /// Label above the one-time code field of the reset-password screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Verification code (OTP)'**
+  String get resetPasswordOtpLabel;
+
+  /// Hint inside the empty one-time code field.
+  ///
+  /// In en, this message translates to:
+  /// **'{length}-digit code'**
+  String resetPasswordOtpHint(int length);
+
+  /// Error under the one-time code field when it is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter the code.'**
+  String get resetPasswordOtpRequired;
+
+  /// Error under the one-time code field when it does not hold exactly the expected number of digits.
+  ///
+  /// In en, this message translates to:
+  /// **'The code must be exactly {length} digits.'**
+  String resetPasswordOtpInvalid(int length);
+
+  /// Button that emails a new one-time code to the same address.
+  ///
+  /// In en, this message translates to:
+  /// **'Resend code'**
+  String get resetPasswordResendOtp;
+
+  /// Disabled resend button while the user has to wait before asking for another code.
+  ///
+  /// In en, this message translates to:
+  /// **'Resend code in {seconds}s'**
+  String resetPasswordResendIn(int seconds);
+
+  /// SnackBar shown when a new one-time code has been sent.
+  ///
+  /// In en, this message translates to:
+  /// **'A new code has been sent. Please check your email.'**
+  String get resetPasswordOtpResent;
+
+  /// Label above the new password field of the reset-password screen.
+  ///
+  /// In en, this message translates to:
+  /// **'New password'**
+  String get resetPasswordNewPasswordLabel;
+
+  /// Hint inside the empty new password field.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a new password'**
+  String get resetPasswordNewPasswordHint;
+
+  /// Error under the new password field when it is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a new password.'**
+  String get resetPasswordPasswordRequired;
+
+  /// The password rules, shown under the new password field, in the error colour when the password breaks them.
+  ///
+  /// In en, this message translates to:
+  /// **'{min} to {max} characters, with at least one letter and one digit.'**
+  String resetPasswordPasswordPolicy(int min, int max);
+
+  /// Label above the field where the new password is typed a second time.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm new password'**
+  String get resetPasswordConfirmPasswordLabel;
+
+  /// Hint inside the empty confirmation field.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the new password again'**
+  String get resetPasswordConfirmPasswordHint;
+
+  /// Error under the confirmation field when it is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Please confirm the new password.'**
+  String get resetPasswordConfirmRequired;
+
+  /// Error under the confirmation field when it differs from the new password.
+  ///
+  /// In en, this message translates to:
+  /// **'The passwords don\'t match.'**
+  String get resetPasswordMismatch;
+
+  /// Button that sets the new password with the one-time code.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset password'**
+  String get resetPasswordSubmit;
+
+  /// Label of the disabled reset button while the request is on its way.
+  ///
+  /// In en, this message translates to:
+  /// **'Processing...'**
+  String get resetPasswordSubmitting;
+
+  /// Title of the dialog shown when the password has been reset.
+  ///
+  /// In en, this message translates to:
+  /// **'Password reset'**
+  String get resetPasswordSuccessTitle;
+
+  /// Text of the dialog shown when the password has been reset; the user is not signed in automatically.
+  ///
+  /// In en, this message translates to:
+  /// **'Your password has been changed. Please sign in with your new password.'**
+  String get resetPasswordSuccessMessage;
+
+  /// Button of the success dialog that opens the login screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to sign in'**
+  String get resetPasswordBackToLogin;
+
+  /// Title of the error dialog shown when the password could not be reset.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t reset your password'**
+  String get resetPasswordFailed;
+
+  /// Error dialog text when the server refused the reset without saying why.
+  ///
+  /// In en, this message translates to:
+  /// **'Your password couldn\'t be reset. Please check the code and try again.'**
+  String get resetPasswordRejected;
+
+  /// Tooltip of the eye button that shows a hidden password.
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get passwordShow;
+
+  /// Tooltip of the eye button that hides a shown password.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get passwordHide;
+
+  /// Label of a disabled send or resend button while the one-time code request is on its way.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending...'**
+  String get passwordRecoverySending;
+
+  /// Shown when the user tries to recover a password in the offline demo mode, where there is no server to send a code.
+  ///
+  /// In en, this message translates to:
+  /// **'Password recovery needs a connection to the server and isn\'t available in demo mode.'**
+  String get passwordRecoveryServerOnly;
+
+  /// Error dialog text when a password recovery request got no answer from the server.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t reach the server. Please check your connection and try again.'**
+  String get passwordRecoveryNetworkError;
+
+  /// Error dialog text when a password recovery request timed out.
+  ///
+  /// In en, this message translates to:
+  /// **'The server is taking too long to respond. Please try again.'**
+  String get passwordRecoveryTimeout;
+
+  /// Error dialog text when the server failed (5xx) on a password recovery request.
+  ///
+  /// In en, this message translates to:
+  /// **'The server ran into a problem. Please try again later.'**
+  String get passwordRecoveryServerError;
+
+  /// Error dialog text when a password recovery request failed for a reason the app does not know.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Please try again.'**
+  String get passwordRecoveryUnexpectedError;
 }
 
 class _AppLocalizationsDelegate

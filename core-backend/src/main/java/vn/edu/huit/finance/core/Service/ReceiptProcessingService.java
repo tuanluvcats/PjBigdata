@@ -2,6 +2,7 @@ package vn.edu.huit.finance.core.Service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.huit.finance.core.Dto.ExtractedReceiptDto;
@@ -13,6 +14,8 @@ import vn.edu.huit.finance.core.Exception.ReceiptNotFoundException;
 import vn.edu.huit.finance.core.Exception.TransactionAccessDeniedException;
 import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -24,7 +27,8 @@ import java.math.RoundingMode;
  *   <li>{@link #attachReceipt} builds the receipt of a transaction that is being created; the receipt is persisted by
  *       the cascade of that transaction, in the same database transaction as the wallet, so all of them commit or
  *       none does;</li>
- *   <li>{@link #submitFeedback} lets the owner correct the amount of a receipt the AI failed on.</li>
+ *   <li>{@link #submitFeedback} lets the owner correct the amount of a receipt the AI failed on;</li>
+ *   <li>{@link #rejectReceipt} lets an administrator reject one.</li>
  * </ul>
  * Approving a receipt moves the wallet, so it lives next to the wallet lock, in {@code TransactionService.approveReceipt}
  * (which this class cannot call: {@code TransactionService} already depends on it).
@@ -45,6 +49,8 @@ public class ReceiptProcessingService {
     private CurrentUserProvider currentUserProvider;
     @Autowired
     private OcrService ocrService;
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     /**
      * Builds the receipt of {@code transaction} from the AI's JSON and links both ways. Meant to be called while the
@@ -96,7 +102,28 @@ public class ReceiptProcessingService {
         receipt.setExtractedTotal(amount);
         receipt.setStatus(ReceiptStatus.WAITING_FOR_REVIEW.name());
         receiptRepo.save(receipt);
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, caller.getId()));
         log.info("Receipt feedback received, userId={}, receiptId={}", caller.getId(), receiptId);
+    }
+
+    /**
+     * For administrators only (the caller of this method has to check that): rejects a receipt (FAILED), after which its
+     * owner may send the right amount through {@link #submitFeedback}. Neither the transaction nor the wallet changes.
+     */
+    @Transactional
+    public void rejectReceipt(Long receiptId) {
+        Receipt receipt = receiptRepo.findDetailedById(receiptId).orElseThrow(() -> {
+            log.warn("Receipt not found for rejection, receiptId={}", receiptId);
+            return new ReceiptNotFoundException(MSG_RECEIPT_NOT_FOUND);
+        });
+        receipt.setStatus(ReceiptStatus.FAILED.name());
+        receiptRepo.save(receipt);
+
+        // A receipt no transaction carries belongs to nobody: only the admin summary counts it.
+        Transaction carrier = receipt.getTransaction();
+        Long ownerId = carrier != null ? carrier.getUser().getId() : null;
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, ownerId));
+        log.info("Receipt rejected, receiptId={}, ownerId={}", receiptId, ownerId);
     }
 
     /** A receipt that does not exist is a 404, one that exists but is somebody else's (or nobody's) a 403. */

@@ -138,10 +138,10 @@
                                             <div class="bg-primary bg-opacity-10 rounded-circle p-2 me-3">
                                                 <i class="bi bi-person-fill text-primary"></i>
                                             </div>
-                                            <span class="fw-bold fs-6" th:text="${sp[0]}"></span>
+                                            <span class="fw-bold fs-6" th:text="${sp.username}"></span>
                                         </div>
                                     </td>
-                                    <td class="text-end pe-4 text-success fw-bold fs-6" th:text="${#numbers.formatInteger(sp[1], 1, 'POINT') + ' VNĐ'}"></td>
+                                    <td class="text-end pe-4 text-success fw-bold fs-6" th:text="${#numbers.formatInteger(sp.totalSpent, 1, 'POINT') + ' VNĐ'}"></td>
                                 </tr>
                                 <tr th:if="${topSpenders == null or topSpenders.isEmpty()}">
                                     <td colspan="3" class="text-center py-4 text-muted">Chưa có dữ liệu giao dịch.</td>

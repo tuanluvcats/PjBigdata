@@ -7,8 +7,7 @@ import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +31,8 @@ import vn.edu.huit.finance.core.Exception.TransactionNotFoundException;
 import vn.edu.huit.finance.core.Exception.UserNotFoundException;
 import vn.edu.huit.finance.core.Repository.*;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -45,7 +46,8 @@ import java.util.Optional;
  * reconciled expense raises (BudgetAlertService) are written in that same transaction. Methods without a user id take the
  * owner from the SecurityContext (through CurrentUserProvider) and scope every lookup to that owner; the ones that do take
  * an id (createTransaction for the payment webhook, the *Of methods for administrators) trust their caller to have checked
- * it, and so does approveReceipt, which is for administrators too.
+ * it, and so does approveReceipt, which is for administrators too. Every write also names what it changed for the cached
+ * statistics (StatisticsChangedEvent), and the stale entries are evicted once its transaction has committed.
  */
 @Slf4j
 @Service
@@ -55,8 +57,8 @@ public class TransactionService {
     private static final String CATEGORY_TYPE_INCOME = "INCOME";
     private static final String RECEIPT_STATUS_PENDING = "PENDING";
     private static final String RECEIPT_STATUS_CANCELED = "CANCELED";
-    private static final int DASHBOARD_RECENT_COUNT = 5;
-    private static final BigDecimal LOW_BALANCE_THRESHOLD = new BigDecimal("50000");
+    /** Below this a wallet runs low: a checkout warns its owner, and the admin dashboard lists the user. */
+    public static final BigDecimal LOW_BALANCE_THRESHOLD = new BigDecimal("50000");
 
     private static final String KEY_TRANSACTION_ID = "transactionId";
     private static final String KEY_FINAL_AMOUNT = "finalAmount";
@@ -93,6 +95,10 @@ public class TransactionService {
     private ReceiptProcessingService receiptProcessingService;
     @Autowired
     private BudgetAlertService budgetAlertService;
+    @Autowired
+    private UserStatisticsService userStatisticsService;
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -164,6 +170,7 @@ public class TransactionService {
 
         transactionRepo.save(transaction);
         budgetAlertService.notifyAfterCreate(transaction);
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.TRANSACTION_TOTALS, userId));
 
         try {
             if (request.getRawReceiptData() != null && !request.getRawReceiptData().isEmpty()) {
@@ -205,6 +212,8 @@ public class TransactionService {
 
         BigDecimal walletChange = signedAmount(newAmount, newExpense)
                 .subtract(signedAmount(transaction.getAmount(), transaction.isExpense()));
+        boolean dateChanges = request.getTransactionDate() != null
+                && !request.getTransactionDate().equals(transaction.getTransactionDate());
         if (walletChange.signum() != 0) {
             User owner = lockWallet(caller);
             transaction.setUser(owner);
@@ -228,6 +237,12 @@ public class TransactionService {
         }
         Transaction saved = transactionRepo.save(transaction);
         budgetAlertService.notifyAfterUpdate(saved, spendingBefore);
+        // Amount and direction move the wallet and every total, the date moves the monthly counts; anything else only
+        // shows on the owner's own dashboard.
+        StatisticsChange change = walletChange.signum() != 0 || dateChanges
+                ? StatisticsChange.TRANSACTION_TOTALS
+                : StatisticsChange.TRANSACTION_DETAILS;
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(change, caller.getId()));
 
         log.info("Transaction updated, userId={}, transactionId={}, walletChange={}", caller.getId(), transactionId, walletChange);
         return TransactionResponseDto.from(saved);
@@ -243,6 +258,7 @@ public class TransactionService {
         User owner = lockWallet(caller);
         writeWallet(owner, owner.getWalletBalance().add(undo));
         transactionRepo.delete(transaction);
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.TRANSACTION_TOTALS, caller.getId()));
 
         log.info("Transaction deleted, userId={}, transactionId={}, walletChange={}", caller.getId(), transactionId, undo);
     }
@@ -267,6 +283,7 @@ public class TransactionService {
 
         receipt.setStatus(RECEIPT_STATUS_CANCELED);
         receiptRepo.save(receipt);
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, userId));
         log.info("Receipt canceled, userId={}, receiptId={}", userId, receiptId);
     }
 
@@ -312,6 +329,9 @@ public class TransactionService {
         if (walletChange.signum() != 0) {
             budgetAlertService.notifyAfterUpdate(saved, spendingBefore);
         }
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(walletChange.signum() != 0
+                ? StatisticsChange.TRANSACTION_TOTALS
+                : StatisticsChange.RECEIPT_STATUS, owner.getId()));
 
         log.info("Receipt approved, receiptId={}, transactionId={}, userId={}, previousAmount={}, finalAmount={}, walletChange={}",
                 receiptId, saved.getId(), owner.getId(), previousAmount, finalAmount, walletChange);
@@ -338,51 +358,33 @@ public class TransactionService {
                 .toList();
     }
 
+    /** Cached per user in Redis: the id is the caller's, from the SecurityContext, so nobody reads another user's entry. */
     @Transactional(readOnly = true)
     public List<PopularVendorResponseDto> getMyPopularVendors() {
-        return popularVendorsOf(currentUserProvider.getCurrentUser().getId());
+        return userStatisticsService.popularVendorsOf(currentUserProvider.getCurrentUser().getId());
     }
 
+    /** Cached per user in Redis: the id is the caller's, from the SecurityContext, so nobody reads another user's entry. */
     @Transactional(readOnly = true)
     public AppDashboardResponseDto getMyDashboard() {
-        return dashboardOf(currentUserProvider.getCurrentUser().getId());
+        return userStatisticsService.dashboardOf(currentUserProvider.getCurrentUser().getId());
     }
 
-    /** For administrators only (the caller of this method has to check that): the statistics of any user. */
+    /**
+     * For administrators only (the caller of this method has to check that): the statistics of any user. The user is
+     * looked up first, so an unknown or deleted user is a 404 even while an entry of theirs is still cached.
+     */
     @Transactional(readOnly = true)
     public List<PopularVendorResponseDto> getPopularVendorsOf(Long userId) {
         requireExistingUser(userId);
-        return popularVendorsOf(userId);
+        return userStatisticsService.popularVendorsOf(userId);
     }
 
     /** For administrators only (the caller of this method has to check that): the home page data of any user. */
     @Transactional(readOnly = true)
     public AppDashboardResponseDto getDashboardOf(Long userId) {
         requireExistingUser(userId);
-        return dashboardOf(userId);
-    }
-
-    private List<PopularVendorResponseDto> popularVendorsOf(Long userId) {
-        return transactionRepo.findPopularVendors(userId).stream()
-                .map(row -> PopularVendorResponseDto.builder()
-                        .vendorName((String) row[0])
-                        .transactionCount(((Number) row[1]).longValue())
-                        .build())
-                .toList();
-    }
-
-    private AppDashboardResponseDto dashboardOf(Long userId) {
-        Pageable latest = PageRequest.of(0, DASHBOARD_RECENT_COUNT,
-                Sort.by(TransactionSortField.TRANSACTION_DATE.getProperty()).descending());
-        Transaction biggest = transactionRepo.findTopByUserIdOrderByAmountDesc(userId);
-
-        return AppDashboardResponseDto.builder()
-                .recentTransactions(transactionRepo.findByUserId(userId, latest).stream()
-                        .map(TransactionResponseDto::from).toList())
-                .biggestTransaction(biggest != null ? TransactionResponseDto.from(biggest) : null)
-                .saleTransactions(transactionRepo.findByUserIdAndVoucherCodeNotNull(userId).stream()
-                        .map(TransactionResponseDto::from).toList())
-                .build();
+        return userStatisticsService.dashboardOf(userId);
     }
 
     private void requireExistingUser(Long userId) {

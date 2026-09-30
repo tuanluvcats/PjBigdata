@@ -2,7 +2,11 @@ package vn.edu.huit.finance.core.Service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
+
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -14,6 +18,8 @@ import java.util.Comparator;
 public class BackupService {
     @Autowired
     private AuditLogService auditLogService;
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     @Value("${spring.datasource.username}")
     private String dbUser;
@@ -90,6 +96,8 @@ public class BackupService {
 
             if (exitCode == 0) {
                 auditLogService.logAction(getCurrentUser(), "RESTORE_DB", "Phục hồi Database từ file: " + fileName);
+                // Every cached statistic now describes data that is gone.
+                eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.DATABASE_RESTORED));
             }
 
             return exitCode == 0;

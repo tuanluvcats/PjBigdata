@@ -3,6 +3,7 @@ package vn.edu.huit.finance.core.Controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +26,8 @@ import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.time.LocalDateTime;
 
@@ -45,6 +48,7 @@ public class AuthController {
     @Autowired  private AuditLogService auditLogService;
     @Autowired  private AuthService authService;
     @Autowired  private vn.edu.huit.finance.core.Service.SocialAuthService socialAuthService;
+    @Autowired  private ApplicationEventPublisher eventPublisher;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDto request) {
@@ -74,6 +78,8 @@ public class AuthController {
             return ResponseEntity.status(400).body(java.util.Map.of(
                     "code", 400, "message", "Email hoặc số điện thoại đã tồn tại."));
         }
+        // The save committed on its own, so the admin summary (user count, low-balance list) is evicted right away.
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_CREATED));
 
         java.util.Map<String, Object> response = new java.util.HashMap<>();
         response.put("code", 200);

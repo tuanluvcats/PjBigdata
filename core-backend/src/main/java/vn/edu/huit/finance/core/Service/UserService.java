@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.coyote.BadRequestException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,8 @@ import vn.edu.huit.finance.core.Dto.UserUpdateDto;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.Roles;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 @Slf4j
 @Service
@@ -24,6 +27,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public User createUser(UserCreateDto dto) {
@@ -35,7 +39,9 @@ public class UserService {
         user.setRole(Roles.normalize(dto.getRole()));
         user.setActive(true);
 
-        return userRepository.save(user);
+        User created = userRepository.save(user);
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_CREATED));
+        return created;
     }
 
     /** For administrators: any field of any user, the role included. */
@@ -70,7 +76,9 @@ public class UserService {
         if (dto.getPhone() != null && !dto.getPhone().isBlank()) user.setPhone(dto.getPhone());
         if (dto.getEmail() != null && !dto.getEmail().isBlank()) user.setEmail(dto.getEmail());
 
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_PROFILE, id));
+        return saved;
     }
 
     @Transactional
@@ -85,6 +93,7 @@ public class UserService {
             userRepository.save(user);
             throw new RuntimeException("Tài khoản đang có giao dịch. Hệ thống đã tự động vô hiệu hóa (Khóa) thay vì xóa vĩnh viễn để bảo toàn dữ liệu.");
         }
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_DELETED, id));
     }
 
     private String buildAdminPlaceholderPhone(String username) {

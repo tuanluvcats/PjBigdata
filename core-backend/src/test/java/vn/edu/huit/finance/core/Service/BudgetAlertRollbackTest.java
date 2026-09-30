@@ -51,7 +51,7 @@ import static org.mockito.Mockito.when;
         "spring.jpa.properties.hibernate.generate_statistics=true"})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({TransactionService.class, ReceiptProcessingService.class, OcrService.class,
-        BudgetAlertService.class, NotificationService.class})
+        BudgetAlertService.class, NotificationService.class, UserStatisticsService.class})
 class BudgetAlertRollbackTest {
 
     private static final BigDecimal WALLET = new BigDecimal("10000000.00");

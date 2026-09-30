@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:finance_ai_app/core/utils/email_format.dart';
 import 'package:finance_ai_app/models/user_model.dart';
 import 'package:finance_ai_app/screens/auth/login_page.dart';
 import 'package:finance_ai_app/services/sqflite_helper.dart';
@@ -112,8 +113,7 @@ class _SetUserInfoScreenState extends State<SetUserInfoScreen> {
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
 
-    if (email.isEmpty ||
-        !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+    if (email.isEmpty || !EmailFormat.isValid(email)) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Email không hợp lệ.')));

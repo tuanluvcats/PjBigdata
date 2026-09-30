@@ -22,6 +22,49 @@ services:
     networks:
       - finance-network
 
+  # 0b. CACHE: Redis holds only a cache of the statistics (dashboards, admin aggregates). PostgreSQL stays the source of
+  # truth, and core-api reads it directly whenever Redis is down. No port is published, not even on 127.0.0.1: only the
+  # containers of finance-network reach it (admin work: docker compose exec redis redis-cli). No persistence, so a
+  # restart starts empty instead of serving entries older than the database. KEYS, FLUSHALL and FLUSHDB are disabled.
+  redis:
+    image: redis:8.10-alpine
+    container_name: finance-redis
+    user: redis
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server
+        --requirepass "$$REDIS_PASSWORD"
+        --maxmemory "$$REDIS_MAXMEMORY"
+        --maxmemory-policy allkeys-lru
+        --save ''
+        --appendonly no
+        --rename-command KEYS ''
+        --rename-command FLUSHALL ''
+        --rename-command FLUSHDB ''
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-128mb}
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # Keep it about 1.5 x REDIS_MAXMEMORY: Redis needs some memory beyond its dataset.
+          memory: ${REDIS_MEMORY_LIMIT:-192M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - finance-network
+
   # 1. CORE BACKEND (Spring Boot Java)
   core-api:
     build:
@@ -48,7 +91,11 @@ services:
       - PAYMENT_VNPAY_SECRET=${VNPAY_SECRET}
       - PAYMENT_ZALOPAY_SECRET=${ZALOPAY_SECRET}
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
-      - DATA_MINING_URL=http://data-mining-api:8000 
+      - DATA_MINING_URL=http://data-mining-api:8000
+      # Statistics cache (core-backend/src/main/resources/redis-cache.properties); the CACHE_* settings come from .env.
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 15s
@@ -58,6 +105,8 @@ services:
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       data-mining-api:
         condition: service_healthy

@@ -9,6 +9,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.huit.finance.core.Entity.Receipt;
@@ -18,6 +19,8 @@ import vn.edu.huit.finance.core.Exception.ReceiptNotFoundException;
 import vn.edu.huit.finance.core.Exception.TransactionAccessDeniedException;
 import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -45,6 +48,7 @@ class ReceiptProcessingServiceTest {
     @Mock private ReceiptRepository receiptRepo;
     @Mock private CurrentUserProvider currentUserProvider;
     @Spy private OcrService ocrService = new OcrService();
+    @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private ReceiptProcessingService service;
 
     private final User alice = user(ALICE_ID);
@@ -201,6 +205,81 @@ class ReceiptProcessingServiceTest {
         Method feedback = ReceiptProcessingService.class.getMethod("submitFeedback", Long.class, BigDecimal.class);
 
         assertTrue(AnnotatedElementUtils.hasAnnotation(feedback, Transactional.class));
+    }
+
+    @Test
+    void feedbackReportsAStatusChangeOfTheOwnersReceiptForTheStatisticsCache() {
+        signedInAsAlice();
+        repositoryHolds(receipt("FAILED", transactionOf(alice)));
+
+        service.submitFeedback(RECEIPT_ID, new BigDecimal("150000"));
+
+        verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, ALICE_ID));
+    }
+
+    @Test
+    void refusedFeedbackReportsNothing() {
+        signedInAsAlice();
+        repositoryHolds(receipt("FAILED", transactionOf(bob)));
+
+        assertThrows(TransactionAccessDeniedException.class, () -> service.submitFeedback(RECEIPT_ID, new BigDecimal("150000")));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    // ------------------------------------------------------------------------------------------ rejection (administrators)
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING", "SUCCESS", "WAITING_FOR_REVIEW"})
+    void anAdministratorRejectsAReceiptAndOnlyItsStatusChanges(String status) {
+        Transaction transaction = transactionOf(alice);
+        Receipt receipt = receipt(status, transaction);
+        repositoryHolds(receipt);
+
+        service.rejectReceipt(RECEIPT_ID);
+
+        assertEquals("FAILED", receipt.getStatus());
+        assertMoney("1.00", receipt.getExtractedTotal());
+        assertMoney("200000", transaction.getAmount());
+        verify(receiptRepo).save(receipt);
+        verifyNoInteractions(currentUserProvider);
+    }
+
+    @Test
+    void aRejectionReportsAStatusChangeOfTheOwnersReceiptNotOfTheAdministrators() {
+        repositoryHolds(receipt("WAITING_FOR_REVIEW", transactionOf(bob)));
+
+        service.rejectReceipt(RECEIPT_ID);
+
+        verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, BOB_ID));
+    }
+
+    @Test
+    void aReceiptNoTransactionCarriesIsRejectedTooAndOnlyTheAdminFiguresAreReported() {
+        Receipt orphan = receipt("PENDING", null);
+        repositoryHolds(orphan);
+
+        service.rejectReceipt(RECEIPT_ID);
+
+        assertEquals("FAILED", orphan.getStatus());
+        verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS));
+    }
+
+    @Test
+    void rejectingAReceiptThatDoesNotExistIsNotFoundAndReportsNothing() {
+        when(receiptRepo.findDetailedById(RECEIPT_ID)).thenReturn(Optional.empty());
+
+        assertThrows(ReceiptNotFoundException.class, () -> service.rejectReceipt(RECEIPT_ID));
+
+        verify(receiptRepo, never()).save(any());
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void aRejectionRunsInsideADatabaseTransaction() throws NoSuchMethodException {
+        Method reject = ReceiptProcessingService.class.getMethod("rejectReceipt", Long.class);
+
+        assertTrue(AnnotatedElementUtils.hasAnnotation(reject, Transactional.class));
     }
 
     // ---------------------------------------------------------------------------------------- linking a scanned receipt

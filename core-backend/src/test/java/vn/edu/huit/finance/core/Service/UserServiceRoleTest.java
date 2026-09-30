@@ -8,6 +8,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import vn.edu.huit.finance.core.Dto.UserCreateDto;
@@ -15,6 +17,8 @@ import vn.edu.huit.finance.core.Dto.UserUpdateDto;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.InvalidRoleException;
 import vn.edu.huit.finance.core.Repository.UserRepository;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.util.Optional;
 
@@ -30,6 +34,7 @@ class UserServiceRoleTest {
 
     @Mock private UserRepository userRepository;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private UserService service;
 
     private static User user(String role, boolean active) {
@@ -285,5 +290,63 @@ class UserServiceRoleTest {
         assertEquals("alice", alice.getUsername());
         assertEquals("0900000001", alice.getPhone());
         verify(userRepository, times(2)).save(alice);
+    }
+
+    // ---- what each write reports to the statistics cache ----
+
+    @Test
+    void aNewAccountIsReportedForTheAdminFigures() {
+        service.createUser(createDto("user"));
+
+        verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_CREATED));
+    }
+
+    @Test
+    void anEditedProfileIsReportedWhoeverEditsIt() {
+        whenLoaded(user("ROLE_USER", true));
+        UserUpdateDto dto = new UserUpdateDto();
+        dto.setUsername("alice2");
+
+        service.updateOwnProfile(ID, dto);
+        service.updateUser(ID, dto);
+
+        verify(eventPublisher, times(2)).publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_PROFILE, ID));
+    }
+
+    @Test
+    void aRefusedProfileEditReportsNothing() {
+        when(userRepository.findById(ID)).thenReturn(Optional.of(user("ROLE_USER", true)));
+
+        assertThrows(AccessDeniedException.class, () -> service.updateOwnProfile(ID, updateDto("ADMIN")));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void aDeletedAccountIsReportedWithItsId() {
+        when(userRepository.findById(ID)).thenReturn(Optional.of(user("ROLE_USER", true)));
+
+        service.deleteUser(ID);
+
+        verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_DELETED, ID));
+    }
+
+    @Test
+    void aDeletionTheDatabaseRefusesReportsNothing() {
+        when(userRepository.findById(ID)).thenReturn(Optional.of(user("ROLE_USER", true)));
+        doThrow(new DataIntegrityViolationException("transactions reference the user")).when(userRepository).flush();
+
+        assertThrows(RuntimeException.class, () -> service.deleteUser(ID));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void lockingAUserChangesNoCachedFigureAndReportsNothing() {
+        whenLoaded(user("ROLE_USER", true));
+
+        service.toggleUserStatus(ID);
+
+        verifyNoInteractions(eventPublisher);
     }
 }

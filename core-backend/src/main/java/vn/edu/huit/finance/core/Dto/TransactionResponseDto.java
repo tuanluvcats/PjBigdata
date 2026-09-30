@@ -1,15 +1,20 @@
 package vn.edu.huit.finance.core.Dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Entity.Transaction;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/** Part of the cached home page (AppDashboardResponseDto), so it must read back from JSON too. */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class TransactionResponseDto {
     private Long id;
     private String title;

@@ -3,8 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 
 import 'package:finance_ai_app/core/theme/app_theme.dart';
+import 'package:finance_ai_app/screens/auth/forgot_password_page.dart';
 import 'package:finance_ai_app/screens/auth/login_page.dart';
 import 'package:finance_ai_app/screens/auth/register_page.dart';
+import 'package:finance_ai_app/screens/auth/reset_password_page.dart';
 
 import '../../helpers/app_settings_scope.dart';
 import '../../helpers/fake_settings_repository.dart';
@@ -146,54 +148,137 @@ void main() {
         },
       );
 
-      testWidgets('LoginScreen: the forgot-password dialog follows the theme', (
-        tester,
-      ) async {
-        final colors = (await _show(
-          tester,
-          const LoginScreen(),
-          mode,
-        )).colorScheme;
+      testWidgets(
+        'ForgotPasswordScreen: page, app bar, texts, field, its error and the button follow the theme',
+        (tester) async {
+          final theme = await _show(tester, const ForgotPasswordScreen(), mode);
+          final colors = theme.colorScheme;
 
-        await tester.tap(find.text('Quên mật khẩu?'));
-        await tester.pumpAndSettle();
+          expect(
+            materialColor(tester, find.byType(Scaffold)),
+            theme.scaffoldBackgroundColor,
+          );
+          expect(
+            paintedColor(tester, find.text('Quên mật khẩu')),
+            colors.onSurface,
+          );
+          expect(
+            paintedColor(tester, find.text('Nhận mã OTP')),
+            colors.onSurface,
+          );
+          expect(
+            paintedColor(
+              tester,
+              find.text(
+                'Nhập email tài khoản của bạn. Chúng tôi sẽ gửi mã OTP để bạn đặt mật khẩu mới.',
+              ),
+            ),
+            colors.onSurfaceVariant,
+          );
+          expect(paintedColor(tester, find.text('Email')), colors.onSurface);
+          expect(
+            paintedColor(tester, find.text('Nhập địa chỉ email')),
+            colors.onSurfaceVariant,
+          );
+          expect(
+            _fieldDecoration(tester, find.byType(TextFormField)).fillColor,
+            colors.surface,
+          );
+          expect(
+            materialColor(tester, find.byType(ElevatedButton)),
+            colors.primary,
+          );
+          expect(
+            paintedColor(tester, find.text('Gửi mã OTP')),
+            colors.onPrimary,
+          );
 
-        expect(materialColor(tester, find.byType(AlertDialog)), colors.surface);
-        expect(
-          paintedColor(tester, find.text('Quên mật khẩu')),
-          colors.onSurface,
-        );
-        expect(
-          paintedColor(
+          // Sending with no email shows the error under the field in the error colour.
+          await tester.tap(find.byType(ElevatedButton));
+          await tester.pumpAndSettle();
+          expect(
+            paintedColor(tester, find.text('Vui lòng nhập email.')),
+            colors.error,
+          );
+        },
+      );
+
+      testWidgets(
+        'ResetPasswordScreen: texts, fields, rules, eye buttons, resend and reset buttons follow the theme',
+        (tester) async {
+          final theme = await _show(
             tester,
-            find.text('Nhập email để nhận liên kết đặt lại mật khẩu.'),
-          ),
-          colors.onSurfaceVariant,
-        );
-        final field = _fieldDecoration(
-          tester,
-          find.descendant(
-            of: find.byType(AlertDialog),
-            matching: find.byType(TextField),
-          ),
-        );
-        expect(field.fillColor, colors.surfaceContainer);
-        expect(
-          field.enabledBorder?.borderSide.color,
-          colors.outlineVariant,
-          reason: 'the outline sets the field apart from the dialog',
-        );
-        expect(
-          paintedColor(tester, find.text('email@example.com')),
-          colors.onSurfaceVariant,
-        );
-        expect(paintedColor(tester, find.text('Hủy')), colors.onSurfaceVariant);
-        expect(
-          materialColor(tester, find.widgetWithText(ElevatedButton, 'Gửi')),
-          colors.primary,
-        );
-        expect(paintedColor(tester, find.text('Gửi')), colors.onPrimary);
-      });
+            const ResetPasswordScreen(email: 'an@example.com'),
+            mode,
+          );
+          final colors = theme.colorScheme;
+
+          expect(
+            materialColor(tester, find.byType(Scaffold)),
+            theme.scaffoldBackgroundColor,
+          );
+          expect(
+            paintedColor(tester, find.text('Tạo mật khẩu mới')),
+            colors.onSurface,
+          );
+          expect(
+            paintedColor(
+              tester,
+              find.text(
+                'Nhập mã OTP đã được gửi tới a***@example.com, sau đó đặt mật khẩu mới.',
+              ),
+            ),
+            colors.onSurfaceVariant,
+          );
+          expect(paintedColor(tester, find.text('Mã OTP')), colors.onSurface);
+          expect(
+            paintedColor(tester, find.text('Mã gồm 6 chữ số')),
+            colors.onSurfaceVariant,
+          );
+          expect(
+            paintedColor(
+              tester,
+              find.text(
+                'Từ 8 đến 72 ký tự, gồm ít nhất một chữ cái và một chữ số.',
+              ),
+            ),
+            colors.onSurfaceVariant,
+            reason: 'the password rules under the field',
+          );
+          for (final field in tester.widgetList<InputDecorator>(
+            find.byType(InputDecorator),
+          )) {
+            expect(field.decoration.fillColor, colors.surface);
+          }
+          for (final eye in tester.widgetList<Icon>(
+            find.byIcon(Icons.visibility_off_outlined),
+          )) {
+            expect(eye.color, colors.onSurfaceVariant);
+          }
+          expect(
+            materialColor(tester, find.byType(ElevatedButton)),
+            colors.primary,
+          );
+          expect(
+            paintedColor(
+              tester,
+              find.descendant(
+                of: find.byType(ElevatedButton),
+                matching: find.text('Đặt lại mật khẩu'),
+              ),
+            ),
+            colors.onPrimary,
+          );
+          // Once the countdown is over, "resend" takes the primary colour of the theme; the Material of a button fades
+          // its label colour, so the fade has to end before the colour is read.
+          await tester.pump(ResetPasswordScreen.resendCooldown);
+          await tester.pumpAndSettle();
+          expect(
+            paintedColor(tester, find.text('Gửi lại mã OTP')),
+            colors.primary,
+          );
+        },
+      );
 
       testWidgets(
         'RegisterScreen: page, app bar, texts, fields, terms, checklist card and social buttons follow the theme',
@@ -329,20 +414,6 @@ void main() {
       AppTheme.mintAccent,
     );
     expect(paintedColor(tester, find.text('Đăng nhập')), AppTheme.navyDark);
-
-    await tester.tap(find.text('Quên mật khẩu?'));
-    await tester.pumpAndSettle();
-    expect(materialColor(tester, find.byType(AlertDialog)), Colors.white);
-    expect(
-      _fieldDecoration(
-        tester,
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.byType(TextField),
-        ),
-      ).fillColor,
-      AppTheme.bgLight,
-    );
   });
 
   testWidgets(

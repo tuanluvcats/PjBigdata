@@ -1,11 +1,14 @@
 package vn.edu.huit.finance.core.Service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.UserRepository;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.util.Map;
 import java.util.UUID;
@@ -15,14 +18,17 @@ public class SocialAuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher eventPublisher;
     private final RestClient http = RestClient.create();
 
     @Value("${app.google.web-client-id:}")
     private String googleWebClientId;
 
-    public SocialAuthService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public SocialAuthService(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                             ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.eventPublisher = eventPublisher;
     }
 
     public User authenticate(String provider, String token) {
@@ -88,7 +94,9 @@ public class SocialAuthService {
             u.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
             u.setPhone(provider.substring(0, 2).toUpperCase() + "_" + UUID.randomUUID());
             u.setRole("ROLE_USER");
-            return userRepository.save(u);
+            User created = userRepository.save(u);
+            eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_CREATED));
+            return created;
         });
     }
 
