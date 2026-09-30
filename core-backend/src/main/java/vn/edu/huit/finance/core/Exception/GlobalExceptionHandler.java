@@ -55,6 +55,12 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
     }
 
+    // 409: another request changed the password first; nothing was written, so trying again is safe.
+    @ExceptionHandler(CredentialsChangeConflictException.class)
+    public Object handleCredentialsChangeConflict(CredentialsChangeConflictException ex, HttpServletRequest request) {
+        return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(BudgetNotFoundException.class)
     public Object handleBudgetNotFound(BudgetNotFoundException ex, HttpServletRequest request) {
         return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);

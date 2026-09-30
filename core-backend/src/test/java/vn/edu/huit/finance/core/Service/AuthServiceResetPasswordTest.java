@@ -1,11 +1,14 @@
 package vn.edu.huit.finance.core.Service;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -16,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.huit.finance.core.Entity.User;
+import vn.edu.huit.finance.core.Exception.CredentialsChangeConflictException;
 import vn.edu.huit.finance.core.Exception.InvalidOtpException;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 
@@ -42,8 +46,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
- * Regression tests for the OTP reset-password flow: what reaches the database, how long an OTP lives, and how many
- * wrong guesses it survives.
+ * Regression tests for the OTP reset-password flow: what reaches the database, how long an OTP lives, how many wrong
+ * guesses it survives, and that a successful reset ends every session of the account (credentials version + 1).
  */
 @ExtendWith(MockitoExtension.class)
 class AuthServiceResetPasswordTest {
@@ -74,6 +78,8 @@ class AuthServiceResetPasswordTest {
 
     @Mock private UserRepository userRepository;
     @Mock private JavaMailSender mailSender;
+    @Mock private EntityManager entityManager;
+    @Mock private AuditLogService auditLogService;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
     private AuthService service;
@@ -85,12 +91,18 @@ class AuthServiceResetPasswordTest {
         ReflectionTestUtils.setField(service, "userRepository", userRepository);
         ReflectionTestUtils.setField(service, "passwordEncoder", passwordEncoder);
         ReflectionTestUtils.setField(service, "mailSender", mailSender);
+        ReflectionTestUtils.setField(service, "entityManager", entityManager);
+        ReflectionTestUtils.setField(service, "auditLogService", auditLogService);
         timeIs(ISSUED_AT);
 
         user = new User();
         user.setId(1L);
         user.setEmail(EMAIL);
         user.setPassword(passwordEncoder.encode(OLD_PASSWORD));
+        // The row lock of a reset hands the user back, and the guarded UPDATE finds the version the lock read; lenient,
+        // because most tests are refused before the database.
+        lenient().when(entityManager.find(User.class, 1L, LockModeType.PESSIMISTIC_WRITE)).thenReturn(user);
+        lenient().when(userRepository.updatePasswordAndEndSessions(eq(1L), anyString(), eq(0))).thenReturn(1);
     }
 
     private void timeIs(Instant now) {
@@ -125,10 +137,11 @@ class AuthServiceResetPasswordTest {
                 () -> service.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD));
     }
 
-    private User savedUser() {
-        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(saved.capture());
-        return saved.getValue();
+    /** The hash the one guarded UPDATE wrote, together with the new credentials version. */
+    private String storedHash() {
+        ArgumentCaptor<String> hash = ArgumentCaptor.forClass(String.class);
+        verify(userRepository).updatePasswordAndEndSessions(eq(1L), hash.capture(), eq(0));
+        return hash.getValue();
     }
 
     @Test
@@ -137,7 +150,7 @@ class AuthServiceResetPasswordTest {
 
         service.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD);
 
-        String stored = savedUser().getPassword();
+        String stored = storedHash();
         assertNotEquals(NEW_PASSWORD, stored, "the plaintext password must never reach the database");
         assertTrue(BCRYPT_HASH.matcher(stored).matches(), "expected a BCrypt hash but was: " + stored);
         assertTrue(passwordEncoder.matches(NEW_PASSWORD, stored));
@@ -154,6 +167,70 @@ class AuthServiceResetPasswordTest {
 
         assertEquals(hashBefore, user.getPassword());
         verify(userRepository, never()).save(any());
+        verify(userRepository, never()).updatePasswordAndEndSessions(any(), any(), any());
+        assertEquals(0, user.getCredentialsVersion(), "a refused reset must leave every session alone");
+    }
+
+    @Test
+    void verifyOtpAndResetPassword_endsEverySessionOfTheAccount_byRaisingTheCredentialsVersionOnce() {
+        String otp = requestOtp();
+
+        service.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD);
+
+        verify(userRepository, times(1)).updatePasswordAndEndSessions(eq(1L), anyString(), eq(0));
+        assertEquals(1, user.getCredentialsVersion());
+        // Never through a save of the entity: neither column is updatable through it.
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void verifyOtpAndResetPassword_writesThePasswordResetAuditRow_afterTheUpdate_withoutTheOtpOrAnyPassword() {
+        String otp = requestOtp();
+
+        service.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD);
+
+        // Envers never sees the bulk UPDATE, so this row is the audit trail; written once the UPDATE has applied.
+        InOrder inOrder = inOrder(userRepository, auditLogService);
+        inOrder.verify(userRepository).updatePasswordAndEndSessions(eq(1L), anyString(), eq(0));
+        ArgumentCaptor<String> description = ArgumentCaptor.forClass(String.class);
+        inOrder.verify(auditLogService).logAction(eq(EMAIL), eq("PASSWORD_RESET"), description.capture());
+        for (String secret : new String[] {otp, OLD_PASSWORD, NEW_PASSWORD, storedHash()}) {
+            assertFalse(description.getValue().contains(secret), "the audit row must not contain " + secret);
+        }
+    }
+
+    @Test
+    void verifyOtpAndResetPassword_writesNoAuditRow_whenTheOtpIsRefused() {
+        requestOtp();
+
+        rejectionOf(WRONG_OTP);
+
+        verifyNoInteractions(auditLogService);
+    }
+
+    @Test
+    void verifyOtpAndResetPassword_writesNoAuditRow_whenTheGuardedUpdateMatchesNoRow() {
+        String otp = requestOtp();
+        when(userRepository.updatePasswordAndEndSessions(eq(1L), anyString(), eq(0))).thenReturn(0);
+
+        assertThrows(CredentialsChangeConflictException.class,
+                () -> service.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD));
+
+        // No audit row claims a reset that did not happen.
+        verifyNoInteractions(auditLogService);
+        assertEquals(0, user.getCredentialsVersion());
+    }
+
+    @Test
+    void verifyOtpAndResetPassword_locksTheRowBeforeWritingThePasswordAndTheVersion() {
+        String otp = requestOtp();
+
+        service.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD);
+
+        InOrder inOrder = inOrder(entityManager, userRepository);
+        inOrder.verify(entityManager).detach(user);
+        inOrder.verify(entityManager).find(User.class, 1L, LockModeType.PESSIMISTIC_WRITE);
+        inOrder.verify(userRepository).updatePasswordAndEndSessions(eq(1L), anyString(), eq(0));
     }
 
     @Test
@@ -164,7 +241,7 @@ class AuthServiceResetPasswordTest {
 
         service.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD);
 
-        assertTrue(passwordEncoder.matches(NEW_PASSWORD, savedUser().getPassword()));
+        assertTrue(passwordEncoder.matches(NEW_PASSWORD, storedHash()));
     }
 
     @Test
@@ -189,7 +266,7 @@ class AuthServiceResetPasswordTest {
         String freshOtp = requestOtp();
         service.verifyOtpAndResetPassword(EMAIL, freshOtp, NEW_PASSWORD);
 
-        assertTrue(passwordEncoder.matches(NEW_PASSWORD, savedUser().getPassword()));
+        assertTrue(passwordEncoder.matches(NEW_PASSWORD, storedHash()));
     }
 
     @Test
@@ -204,7 +281,7 @@ class AuthServiceResetPasswordTest {
         assertEquals(TWO_ATTEMPTS_LEFT_MESSAGE, rejectionOf(first).getMessage());
         service.verifyOtpAndResetPassword(EMAIL, second, NEW_PASSWORD);
 
-        assertTrue(passwordEncoder.matches(NEW_PASSWORD, savedUser().getPassword()));
+        assertTrue(passwordEncoder.matches(NEW_PASSWORD, storedHash()));
     }
 
     @Test
@@ -214,7 +291,7 @@ class AuthServiceResetPasswordTest {
 
         service.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD);
 
-        assertTrue(passwordEncoder.matches(NEW_PASSWORD, savedUser().getPassword()));
+        assertTrue(passwordEncoder.matches(NEW_PASSWORD, storedHash()));
     }
 
     @Test
@@ -248,7 +325,7 @@ class AuthServiceResetPasswordTest {
 
         assertEquals(OTP_EXPIRED_MESSAGE, thrown.getMessage());
         assertEquals(storedAfterReset, user.getPassword());
-        verify(userRepository, times(1)).save(any());
+        verify(userRepository, times(1)).updatePasswordAndEndSessions(any(), any(), any());
     }
 
     @Test

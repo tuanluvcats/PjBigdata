@@ -1,5 +1,6 @@
 package vn.edu.huit.finance.core.Controller;
 
+import io.jsonwebtoken.MalformedJwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -40,6 +41,8 @@ import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
+import vn.edu.huit.finance.core.Security.TokenClaims;
+import vn.edu.huit.finance.core.Security.TokenType;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 import vn.edu.huit.finance.core.Service.TransactionService;
@@ -94,10 +97,8 @@ class TransactionControllerTest {
 
     @BeforeEach
     void stubJwtForAlice() {
-        when(jwtUtil.extractUsername(TOKEN)).thenReturn(USERNAME);
-        when(jwtUtil.validateToken(TOKEN)).thenReturn(true);
-        when(jwtUtil.extractUsername(BAD_TOKEN)).thenReturn(USERNAME);
-        when(jwtUtil.validateToken(BAD_TOKEN)).thenReturn(false);
+        when(jwtUtil.parse(TOKEN, TokenType.ACCESS)).thenReturn(new TokenClaims(USERNAME, 0));
+        when(jwtUtil.parse(BAD_TOKEN, TokenType.ACCESS)).thenThrow(new MalformedJwtException("not a valid token"));
 
         User alice = new User();
         alice.setUsername(USERNAME);

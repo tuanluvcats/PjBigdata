@@ -20,6 +20,8 @@ import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
+import vn.edu.huit.finance.core.Security.TokenClaims;
+import vn.edu.huit.finance.core.Security.TokenType;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.TokenBlacklistService;
@@ -69,8 +71,7 @@ class UserControllerRoleTest {
         alice.setRole("ROLE_USER");
         alice.setActive(true);
         alice.setLastActionTime(LocalDateTime.now());
-        when(jwtUtil.extractUsername(TOKEN)).thenReturn("alice");
-        when(jwtUtil.validateToken(TOKEN)).thenReturn(true);
+        when(jwtUtil.parse(TOKEN, TokenType.ACCESS)).thenReturn(new TokenClaims("alice", 0));
         when(userDetailsService.loadApplicationUser("alice")).thenReturn(alice);
         when(userDetailsService.loadUserByUsername("alice")).thenReturn(new org.springframework.security.core.userdetails.User(
                 "alice", "hash", AuthorityUtils.createAuthorityList("ROLE_USER")));

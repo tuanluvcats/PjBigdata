@@ -21,6 +21,7 @@ import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.RevokedTokenRepository;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 
 import java.time.LocalDateTime;
@@ -40,12 +41,15 @@ import static org.mockito.Mockito.when;
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.properties.hibernate.generate_statistics=true"})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Import({AuthService.class, TokenBlacklistService.class, JwtUtil.class, TokenRevocationRollbackTest.EncoderConfig.class})
+@Import({AuthService.class, TokenBlacklistService.class, JwtUtil.class, CustomUserDetailsService.class,
+        TokenRevocationRollbackTest.EncoderConfig.class})
 class TokenRevocationRollbackTest {
 
     private static final String EMAIL = "alice@example.com";
     private static final String OLD_PASSWORD = "OldPass123";
     private static final String NEW_PASSWORD = "NewPass456";
+    // What a fresh account starts with, and so what the tokens of these tests are issued for.
+    private static final int VERSION = 0;
     private static final String HASH_OF_A_GONE_TOKEN = "a".repeat(RevokedToken.TOKEN_HASH_LENGTH);
     private static final String HASH_OF_A_LIVE_TOKEN = "b".repeat(RevokedToken.TOKEN_HASH_LENGTH);
 
@@ -98,25 +102,31 @@ class TokenRevocationRollbackTest {
         return userRepository.findById(aliceId).orElseThrow().getPassword();
     }
 
+    private int versionInDatabase() {
+        return userRepository.findById(aliceId).orElseThrow().getCredentialsVersion();
+    }
+
     // ------------------------------------------------------------------------------------------------- change password
 
     @Test
-    void changePassword_commitsTheNewPasswordAndTheRevocationTogether() {
-        String token = jwtUtil.generateToken(EMAIL);
-        String tokenOfAnotherDevice = jwtUtil.generateToken(EMAIL);
+    void changePassword_commitsTheNewPasswordTheRevocationAndTheNewVersionTogether() {
+        String token = jwtUtil.generateToken(EMAIL, VERSION);
+        String tokenOfAnotherDevice = jwtUtil.generateToken(EMAIL, VERSION);
 
         authService.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), token);
 
         assertTrue(passwordEncoder.matches(NEW_PASSWORD, passwordInDatabase()));
         assertTrue(tokenBlacklistService.isRevoked(token));
-        assertFalse(tokenBlacklistService.isRevoked(tokenOfAnotherDevice), "only the token of the request is revoked");
+        // The other device's token is not on the blacklist: it ends through the credentials version (CrossSessionTokenRevocationTest).
+        assertFalse(tokenBlacklistService.isRevoked(tokenOfAnotherDevice), "only the token of the request is blacklisted");
         assertEquals(1, revokedTokenRepository.count());
+        assertEquals(VERSION + 1, versionInDatabase());
     }
 
     @Test
     void changePassword_whenTheRevocationCannotBeSaved_thePasswordStaysAsItWas() {
         doThrow(new IllegalStateException("database went away")).when(revokedTokenRepository).save(any(RevokedToken.class));
-        String token = jwtUtil.generateToken(EMAIL);
+        String token = jwtUtil.generateToken(EMAIL, VERSION);
 
         assertThrows(IllegalStateException.class,
                 () -> authService.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), token));
@@ -124,25 +134,28 @@ class TokenRevocationRollbackTest {
         assertTrue(passwordEncoder.matches(OLD_PASSWORD, passwordInDatabase()),
                 "the new password must not be committed without the revocation");
         assertEquals(0, revokedTokenRepository.count());
+        // The one UPDATE of the password and the version had already run when the revocation failed; both go back with it.
+        assertEquals(VERSION, versionInDatabase(), "the sessions of the other devices must survive a change that failed");
     }
 
     @Test
     void changePassword_withAWrongOldPassword_revokesNothing() {
-        String token = jwtUtil.generateToken(EMAIL);
+        String token = jwtUtil.generateToken(EMAIL, VERSION);
 
         assertThrows(RuntimeException.class, () -> authService.changePassword(request("wrong-old", NEW_PASSWORD), token));
 
         assertFalse(tokenBlacklistService.isRevoked(token), "a refused change must leave the session alone");
         assertTrue(passwordEncoder.matches(OLD_PASSWORD, passwordInDatabase()));
+        assertEquals(VERSION, versionInDatabase());
     }
 
     // ------------------------------------------------------------------------------------------------------- logout
 
     @Test
     void logout_revokesTheAccessTokenAndTheRefreshToken_andNothingElse() {
-        String access = jwtUtil.generateToken(EMAIL);
-        String refresh = jwtUtil.generateRefreshToken(EMAIL);
-        String tokenOfAnotherDevice = jwtUtil.generateToken(EMAIL);
+        String access = jwtUtil.generateToken(EMAIL, VERSION);
+        String refresh = jwtUtil.generateRefreshToken(EMAIL, VERSION);
+        String tokenOfAnotherDevice = jwtUtil.generateToken(EMAIL, VERSION);
 
         authService.logout(access, refresh);
 
@@ -153,7 +166,7 @@ class TokenRevocationRollbackTest {
 
     @Test
     void logout_withAGarbageRefreshToken_stillRevokesTheAccessToken() {
-        String access = jwtUtil.generateToken(EMAIL);
+        String access = jwtUtil.generateToken(EMAIL, VERSION);
 
         authService.logout(access, "not.a.jwt");
 
@@ -164,9 +177,9 @@ class TokenRevocationRollbackTest {
     @Test
     void logout_whenTheRevocationCannotBeSaved_nothingIsRevoked() {
         doThrow(new IllegalStateException("database went away")).when(revokedTokenRepository).save(any(RevokedToken.class));
-        String access = jwtUtil.generateToken(EMAIL);
+        String access = jwtUtil.generateToken(EMAIL, VERSION);
 
-        assertThrows(IllegalStateException.class, () -> authService.logout(access, jwtUtil.generateRefreshToken(EMAIL)));
+        assertThrows(IllegalStateException.class, () -> authService.logout(access, jwtUtil.generateRefreshToken(EMAIL, VERSION)));
 
         assertEquals(0, revokedTokenRepository.count());
     }

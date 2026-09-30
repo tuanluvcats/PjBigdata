@@ -31,6 +31,8 @@ import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Security.Roles;
+import vn.edu.huit.finance.core.Security.TokenClaims;
+import vn.edu.huit.finance.core.Security.TokenType;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 import vn.edu.huit.finance.core.Service.TransactionService;
@@ -81,8 +83,7 @@ class AdminTransactionControllerTest {
     }
 
     private void stubToken(String token, String username, String role) {
-        when(jwtUtil.extractUsername(token)).thenReturn(username);
-        when(jwtUtil.validateToken(token)).thenReturn(true);
+        when(jwtUtil.parse(token, TokenType.ACCESS)).thenReturn(new TokenClaims(username, 0));
         User user = new User();
         user.setUsername(username);
         user.setActive(true);

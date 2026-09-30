@@ -1,18 +1,31 @@
 package vn.edu.huit.finance.core.Service;
 
+import io.jsonwebtoken.JwtException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
 import vn.edu.huit.finance.core.Dto.ChangePasswordRequestDto;
 import vn.edu.huit.finance.core.Entity.User;
+import vn.edu.huit.finance.core.Exception.CredentialsChangeConflictException;
 import vn.edu.huit.finance.core.Exception.InvalidOtpException;
 import vn.edu.huit.finance.core.Exception.InvalidPasswordException;
+import vn.edu.huit.finance.core.Exception.InvalidTokenException;
+import vn.edu.huit.finance.core.Exception.UserNotFoundException;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
+import vn.edu.huit.finance.core.Security.JwtUtil;
+import vn.edu.huit.finance.core.Security.TokenClaims;
+import vn.edu.huit.finance.core.Security.TokenType;
 
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -26,12 +39,23 @@ import java.util.concurrent.atomic.AtomicReference;
 @Service
 public class AuthService {
 
-    private static final String AUDIT_ACTION_CHANGE_PASSWORD = "CHANGE_PASSWORD";
+    // The password is written by a bulk UPDATE, which Envers never sees: these action_logs rows are its audit trail.
+    // Descriptions are fixed texts: never a password, hash, OTP or token.
+    private static final String AUDIT_ACTION_CHANGE_PASSWORD = "PASSWORD_CHANGED";
     private static final String AUDIT_DESC_CHANGE_PASSWORD = "Người dùng đổi mật khẩu thành công";
+    private static final String AUDIT_ACTION_RESET_PASSWORD = "PASSWORD_RESET";
+    private static final String AUDIT_DESC_RESET_PASSWORD = "Người dùng đặt lại mật khẩu bằng mã OTP";
     private static final String AUDIT_ACTION_LOGOUT = "LOGOUT";
     private static final String AUDIT_DESC_LOGOUT = "Người dùng đăng xuất";
     private static final String MSG_OLD_PASSWORD_INCORRECT = "Mật khẩu cũ không chính xác";
     private static final String MSG_NEW_PASSWORD_SAME_AS_OLD = "Mật khẩu mới phải khác mật khẩu cũ";
+    // One answer for every refused refresh, so a caller cannot tell which check its token failed.
+    private static final String MSG_REFRESH_TOKEN_INVALID = "Refresh token không hợp lệ hoặc đã hết hạn";
+    private static final String MSG_USER_NOT_FOUND = "Không tìm thấy người dùng";
+    private static final String MSG_CREDENTIALS_CHANGED_MEANWHILE =
+            "Mật khẩu vừa được thay đổi bởi một yêu cầu khác. Vui lòng thử lại.";
+    // The one row of the user: anything else means the guarded UPDATE did not apply.
+    private static final int ROWS_OF_ONE_USER = 1;
 
     private static final int OTP_LENGTH = 6;
     private static final String OTP_FORMAT = "%0" + OTP_LENGTH + "d";
@@ -64,6 +88,15 @@ public class AuthService {
 
     @Autowired
     private TokenBlacklistService tokenBlacklistService;
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    @Autowired
+    private CustomUserDetailsService userDetailsService;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     /** The pending OTP of one email. Immutable: a wrong attempt swaps it for a copy with one more failed attempt. */
     private record OtpRecord(String code, LocalDateTime expiryTime, int attempts) {
@@ -102,16 +135,22 @@ public class AuthService {
         mailSender.send(message);
     }
 
+    /**
+     * Sets the new password and ends every session of the account, on every device (credentials version + 1): whoever
+     * knew the old password is locked out. No tokens are handed out, the client signs in again with the new password.
+     * The PASSWORD_RESET audit row is written in the same transaction, once the password is: all three commit together
+     * or not at all.
+     */
     @Transactional
     public void verifyOtpAndResetPassword(String email, String otp, String newPassword) {
         // Consumed before the database work: if that fails the user requests a new OTP, but the code is never replayable.
         consumeOtp(email, otp);
 
-        User user = userRepository.findByEmail(email).orElseThrow();
-        user.setPassword(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
+        User user = lockUser(userRepository.findByEmail(email).orElseThrow());
+        replacePasswordAndEndAllSessions(user, newPassword);
+        auditLogService.logAction(user.getEmail(), AUDIT_ACTION_RESET_PASSWORD, AUDIT_DESC_RESET_PASSWORD);
 
-        log.info("Password reset via OTP, userId={}", user.getId());
+        log.info("Password reset via OTP, userId={}, credentialsVersion={}", user.getId(), user.getCredentialsVersion());
     }
 
     /**
@@ -149,12 +188,15 @@ public class AuthService {
 
     /**
      * Changes the password of the authenticated caller; the user comes from the SecurityContext, never from the request.
-     * The access token that authorised the call is revoked in the same transaction, so the session that knew the old
-     * password cannot outlive it and the client has to sign in again.
+     * The row is locked and read again first, so two changes at the same time queue up and the second one is checked
+     * against the password the first one set. The credentials version goes up in the same transaction, which ends every
+     * session opened with the old password on every device (the access token of this request also goes on the
+     * blacklist), and the caller gets a new token pair so that this device stays signed in. The PASSWORD_CHANGED audit
+     * row joins the same transaction: if it cannot be written, the new password is rolled back with it.
      */
     @Transactional
-    public void changePassword(ChangePasswordRequestDto request, String accessToken) {
-        User user = currentUserProvider.getCurrentUser();
+    public AuthTokenResponseDto changePassword(ChangePasswordRequestDto request, String accessToken) {
+        User user = lockUser(currentUserProvider.getCurrentUser());
 
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
             log.warn("Change password rejected: wrong old password, userId={}", user.getId());
@@ -165,12 +207,12 @@ public class AuthService {
             throw new InvalidPasswordException(MSG_NEW_PASSWORD_SAME_AS_OLD);
         }
 
-        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        userRepository.save(user);
+        replacePasswordAndEndAllSessions(user, request.getNewPassword());
         tokenBlacklistService.revoke(accessToken);
 
         auditLogService.logAction(user.getEmail(), AUDIT_ACTION_CHANGE_PASSWORD, AUDIT_DESC_CHANGE_PASSWORD);
-        log.info("Password changed, userId={}", user.getId());
+        log.info("Password changed, userId={}, credentialsVersion={}", user.getId(), user.getCredentialsVersion());
+        return issueTokens(user);
     }
 
     /**
@@ -188,5 +230,104 @@ public class AuthService {
 
         auditLogService.logAction(user.getEmail(), AUDIT_ACTION_LOGOUT, AUDIT_DESC_LOGOUT);
         log.info("User logged out, userId={}", user.getId());
+    }
+
+    /**
+     * Trades a refresh token for a new pair and revokes it in the same transaction (rotation), so a refresh token works
+     * once. Only a signed, unexpired token of type REFRESH that carries a credentials version gets past the first check;
+     * an access token is refused here like any other unusable token. The user's row is locked BEFORE the blacklist is
+     * read: two refreshes with the same token queue up on that lock, on one instance or several, and the second one reads
+     * the blacklist only after the first has committed (then it gets 401) or rolled back (then it goes ahead). A locked
+     * account, and a token issued for an older credentials version (the password changed since), are refused too.
+     * Nothing is issued unless the revocation has been written.
+     */
+    @Transactional
+    public AuthTokenResponseDto refresh(String refreshToken) {
+        TokenClaims claims = verifiedRefreshToken(refreshToken);
+        User user = lockUser(ownerOf(claims.subject()));
+
+        if (CustomUserDetailsService.isLocked(user)) {
+            throw refreshRefused("account locked", user.getId());
+        }
+        if (tokenBlacklistService.isRevoked(refreshToken)) {
+            throw refreshRefused("token already used or revoked", user.getId());
+        }
+        if (!user.hasCredentialsVersion(claims.credentialsVersion())) {
+            throw refreshRefused("token issued before the last password change", user.getId());
+        }
+        tokenBlacklistService.revoke(refreshToken);
+
+        log.info("Tokens refreshed, userId={}", user.getId());
+        return issueTokens(user);
+    }
+
+    /** What a usable refresh token says. Anything else (missing, garbage, expired, an access token...) is refused. */
+    private TokenClaims verifiedRefreshToken(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw refreshRefused("no token", null);
+        }
+        try {
+            return jwtUtil.parse(refreshToken, TokenType.REFRESH);
+        } catch (JwtException | IllegalArgumentException e) {
+            throw refreshRefused("unusable token (" + e.getClass().getSimpleName() + ")", null);
+        }
+    }
+
+    /** The account a verified token was issued to. A token whose account is gone is refused like any other. */
+    private User ownerOf(String subject) {
+        try {
+            return userDetailsService.loadApplicationUser(subject);
+        } catch (UsernameNotFoundException e) {
+            throw refreshRefused("unknown subject", null);
+        }
+    }
+
+    private InvalidTokenException refreshRefused(String reason, Long userId) {
+        log.warn("Refresh refused: {}, userId={}", reason, userId);
+        return new InvalidTokenException(MSG_REFRESH_TOKEN_INVALID);
+    }
+
+    /**
+     * Locks the user's row until the end of the transaction and returns it as the database has it now. The copy read
+     * earlier in this transaction is detached first: locking it in place would keep the password and the credentials
+     * version it was read with, and whatever another request committed in between would be missed. Same idiom as the
+     * wallet lock of TransactionService (a refresh would cascade to every transaction of the user).
+     */
+    private User lockUser(User user) {
+        entityManager.detach(user);
+        User locked = entityManager.find(User.class, user.getId(), LockModeType.PESSIMISTIC_WRITE);
+        if (locked == null) {
+            throw new UserNotFoundException(MSG_USER_NOT_FOUND);
+        }
+        return locked;
+    }
+
+    /**
+     * Stores the new password and ends every session opened so far, on every device: the hash and credentials version
+     * + 1 go into the row in ONE UPDATE, so they commit or roll back together. The UPDATE is guarded by the version the
+     * caller locked. Under the lock it always matches; should it not, nothing has been written and the change is refused
+     * instead of being applied on top of one it did not see. Neither column is updatable through the entity, which only
+     * mirrors the new values so that the tokens issued next carry the new version.
+     */
+    private void replacePasswordAndEndAllSessions(User lockedUser, String newPassword) {
+        String passwordHash = passwordEncoder.encode(newPassword);
+        Integer lockedVersion = lockedUser.getCredentialsVersion();
+
+        int updated = userRepository.updatePasswordAndEndSessions(lockedUser.getId(), passwordHash, lockedVersion);
+        if (updated != ROWS_OF_ONE_USER) {
+            log.error("Credentials left unchanged: the guarded UPDATE matched {} rows, userId={}, expectedVersion={}",
+                    updated, lockedUser.getId(), lockedVersion);
+            throw new CredentialsChangeConflictException(MSG_CREDENTIALS_CHANGED_MEANWHILE);
+        }
+        lockedUser.setPassword(passwordHash);
+        lockedUser.setCredentialsVersion(lockedVersion + 1);
+    }
+
+    /** A new token pair carrying the credentials version the account has right now. */
+    private AuthTokenResponseDto issueTokens(User user) {
+        return AuthTokenResponseDto.builder()
+                .token(jwtUtil.generateToken(user.getEmail(), user.getCredentialsVersion()))
+                .refreshToken(jwtUtil.generateRefreshToken(user.getEmail(), user.getCredentialsVersion()))
+                .build();
     }
 }

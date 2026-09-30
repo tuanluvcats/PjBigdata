@@ -1,5 +1,6 @@
 package vn.edu.huit.finance.core.Controller;
 
+import io.jsonwebtoken.MalformedJwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -27,6 +28,8 @@ import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
+import vn.edu.huit.finance.core.Security.TokenClaims;
+import vn.edu.huit.finance.core.Security.TokenType;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.NotificationService;
 import vn.edu.huit.finance.core.Service.TokenBlacklistService;
@@ -76,12 +79,9 @@ class NotificationControllerTest {
 
     @BeforeEach
     void stubJwtForAlice() {
-        when(jwtUtil.extractUsername(TOKEN)).thenReturn(USERNAME);
-        when(jwtUtil.validateToken(TOKEN)).thenReturn(true);
-        when(jwtUtil.extractUsername(BAD_TOKEN)).thenReturn(USERNAME);
-        when(jwtUtil.validateToken(BAD_TOKEN)).thenReturn(false);
-        when(jwtUtil.extractUsername(REVOKED_TOKEN)).thenReturn(USERNAME);
-        when(jwtUtil.validateToken(REVOKED_TOKEN)).thenReturn(true);
+        when(jwtUtil.parse(TOKEN, TokenType.ACCESS)).thenReturn(new TokenClaims(USERNAME, 0));
+        when(jwtUtil.parse(BAD_TOKEN, TokenType.ACCESS)).thenThrow(new MalformedJwtException("not a valid token"));
+        when(jwtUtil.parse(REVOKED_TOKEN, TokenType.ACCESS)).thenReturn(new TokenClaims(USERNAME, 0));
         when(tokenBlacklistService.isRevoked(REVOKED_TOKEN)).thenReturn(true);
 
         User alice = new User();

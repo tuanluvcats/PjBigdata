@@ -106,10 +106,14 @@ void main() {
     testWidgets(
       'sends the old and the new password, nothing else, then confirms and closes the form',
       (tester) async {
+        // The change ends every session of the account; the answer carries the pair this device goes on with.
         backend.on(
           'PUT',
           _changePasswordPath,
-          (_) => okResponse(null, message: 'Đổi mật khẩu thành công!'),
+          (_) => okResponse({
+            'token': 'changed-access',
+            'refreshToken': 'changed-refresh',
+          }, message: 'Đổi mật khẩu thành công!'),
         );
         await openPasswordForm(tester);
         await fillForm(tester);
@@ -129,6 +133,8 @@ void main() {
 
         expect(find.byType(TextField), findsNothing);
         expect(SessionService.currentUserId, 1);
+        expect(SessionService.currentToken, 'changed-access');
+        expect(SessionService.currentRefreshToken, 'changed-refresh');
       },
     );
 

@@ -1,8 +1,11 @@
 package vn.edu.huit.finance.core.Service;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -11,18 +14,25 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
+import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
 import vn.edu.huit.finance.core.Dto.ChangePasswordRequestDto;
 import vn.edu.huit.finance.core.Entity.User;
+import vn.edu.huit.finance.core.Exception.CredentialsChangeConflictException;
 import vn.edu.huit.finance.core.Exception.InvalidPasswordException;
 import vn.edu.huit.finance.core.Exception.UserNotFoundException;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Security.JwtUtil;
+import vn.edu.huit.finance.core.Security.TokenClaims;
+import vn.edu.huit.finance.core.Security.TokenType;
 
 import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -30,20 +40,29 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceChangePasswordTest {
 
+    private static final long USER_ID = 1L;
     private static final String EMAIL = "alice@example.com";
     private static final String OLD_PASSWORD = "OldPass123";
     private static final String NEW_PASSWORD = "NewPass456";
-    // The access token that authorised the request; the service has to revoke it once the password has changed.
+    // What a concurrent change had already committed by the time this request got the row lock.
+    private static final String PASSWORD_SET_MEANWHILE = "Meanwhile789";
+    private static final int VERSION_BEFORE = 4;
+    // The access token that authorised the request; the service puts it on the blacklist once the password has changed.
     private static final String ACCESS_TOKEN = "access.jwt.token";
 
     @Mock private UserRepository userRepository;
     @Mock private CurrentUserProvider currentUserProvider;
     @Mock private AuditLogService auditLogService;
     @Mock private TokenBlacklistService tokenBlacklistService;
+    @Mock private EntityManager entityManager;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
+    // Real: the tokens handed back are read to check the version they carry.
+    private final JwtUtil jwtUtil = new JwtUtil();
     private AuthService service;
-    private User user;
+    // The copy the request read before it asked for the lock, and the row as the lock hands it over.
+    private User readBefore;
+    private User lockedRow;
 
     @BeforeEach
     void setUp() {
@@ -53,12 +72,43 @@ class AuthServiceChangePasswordTest {
         ReflectionTestUtils.setField(service, "currentUserProvider", currentUserProvider);
         ReflectionTestUtils.setField(service, "auditLogService", auditLogService);
         ReflectionTestUtils.setField(service, "tokenBlacklistService", tokenBlacklistService);
+        ReflectionTestUtils.setField(service, "jwtUtil", jwtUtil);
+        ReflectionTestUtils.setField(service, "entityManager", entityManager);
 
-        user = new User();
-        user.setId(1L);
+        readBefore = alice(OLD_PASSWORD, VERSION_BEFORE);
+        lockedRow = alice(OLD_PASSWORD, VERSION_BEFORE);
+    }
+
+    private User alice(String password, int credentialsVersion) {
+        User user = new User();
+        user.setId(USER_ID);
         user.setUsername("alice");
         user.setEmail(EMAIL);
-        user.setPassword(passwordEncoder.encode(OLD_PASSWORD));
+        user.setPassword(passwordEncoder.encode(password));
+        user.setCredentialsVersion(credentialsVersion);
+        return user;
+    }
+
+    private void callerIsAlice() {
+        when(currentUserProvider.getCurrentUser()).thenReturn(readBefore);
+        when(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE)).thenReturn(lockedRow);
+    }
+
+    /** The row still has the version the lock returned, so the guarded UPDATE changes it. */
+    private void theGuardedUpdateApplies() {
+        when(userRepository.updatePasswordAndEndSessions(eq(USER_ID), anyString(), eq(VERSION_BEFORE))).thenReturn(1);
+    }
+
+    /** The hash the one UPDATE wrote, next to the new version. */
+    private String storedHash() {
+        ArgumentCaptor<String> hash = ArgumentCaptor.forClass(String.class);
+        verify(userRepository).updatePasswordAndEndSessions(eq(USER_ID), hash.capture(), eq(VERSION_BEFORE));
+        return hash.getValue();
+    }
+
+    private void assertNothingWritten() {
+        verify(userRepository, never()).updatePasswordAndEndSessions(anyLong(), anyString(), anyInt());
+        verify(userRepository, never()).save(any());
     }
 
     private ChangePasswordRequestDto request(String oldPassword, String newPassword) {
@@ -70,32 +120,126 @@ class AuthServiceChangePasswordTest {
 
     @Test
     void changePassword_storesBcryptHashOfNewPasswordAndAudits_whenOldPasswordMatches() {
-        when(currentUserProvider.getCurrentUser()).thenReturn(user);
+        callerIsAlice();
+        theGuardedUpdateApplies();
 
         service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN);
 
-        assertNotEquals(NEW_PASSWORD, user.getPassword());
-        assertTrue(user.getPassword().startsWith("$2"), "expected a BCrypt hash");
-        assertTrue(passwordEncoder.matches(NEW_PASSWORD, user.getPassword()));
-        assertFalse(passwordEncoder.matches(OLD_PASSWORD, user.getPassword()));
-        verify(userRepository).save(user);
-        verify(auditLogService).logAction(eq(EMAIL), eq("CHANGE_PASSWORD"), anyString());
+        String stored = storedHash();
+        assertNotEquals(NEW_PASSWORD, stored);
+        assertTrue(stored.startsWith("$2"), "expected a BCrypt hash");
+        assertTrue(passwordEncoder.matches(NEW_PASSWORD, stored));
+        assertFalse(passwordEncoder.matches(OLD_PASSWORD, stored));
+        // The entity mirrors the row; it is never saved (neither column is updatable through it).
+        assertEquals(stored, lockedRow.getPassword());
+        verify(userRepository, never()).save(any());
+        verify(auditLogService).logAction(eq(EMAIL), eq("PASSWORD_CHANGED"), anyString());
+    }
+
+    @Test
+    void changePassword_writesThePasswordChangedAuditRow_afterTheUpdate_withoutAnyPasswordHashOrToken() {
+        callerIsAlice();
+        theGuardedUpdateApplies();
+
+        AuthTokenResponseDto tokens = service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN);
+
+        // Envers never sees the bulk UPDATE, so this row is the audit trail; written once the UPDATE has applied.
+        InOrder inOrder = inOrder(userRepository, auditLogService);
+        inOrder.verify(userRepository).updatePasswordAndEndSessions(eq(USER_ID), anyString(), eq(VERSION_BEFORE));
+        ArgumentCaptor<String> description = ArgumentCaptor.forClass(String.class);
+        inOrder.verify(auditLogService).logAction(eq(EMAIL), eq("PASSWORD_CHANGED"), description.capture());
+        for (String secret : List.of(OLD_PASSWORD, NEW_PASSWORD, storedHash(), ACCESS_TOKEN, tokens.getToken(),
+                tokens.getRefreshToken())) {
+            assertFalse(description.getValue().contains(secret), "the audit row must not contain " + secret);
+        }
+    }
+
+    @Test
+    void changePassword_writesThePasswordAndRaisesTheCredentialsVersionOnce_inOneUpdateGuardedByTheLockedVersion() {
+        callerIsAlice();
+        theGuardedUpdateApplies();
+
+        service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN);
+
+        verify(userRepository, times(1)).updatePasswordAndEndSessions(eq(USER_ID), anyString(), eq(VERSION_BEFORE));
+        assertEquals(VERSION_BEFORE + 1, lockedRow.getCredentialsVersion());
+    }
+
+    @Test
+    void changePassword_isRefusedWithAConflict_andIssuesAndRevokesNothing_whenTheGuardedUpdateMatchesNoRow() {
+        callerIsAlice();
+        // The credentials changed between the lock and the UPDATE: impossible under the lock, refused all the same.
+        when(userRepository.updatePasswordAndEndSessions(eq(USER_ID), anyString(), eq(VERSION_BEFORE))).thenReturn(0);
+
+        assertThrows(CredentialsChangeConflictException.class,
+                () -> service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN));
+
+        assertTrue(passwordEncoder.matches(OLD_PASSWORD, lockedRow.getPassword()));
+        assertEquals(VERSION_BEFORE, lockedRow.getCredentialsVersion());
+        verifyNoInteractions(auditLogService, tokenBlacklistService);
+    }
+
+    @Test
+    void changePassword_handsBackATokenPairOfTheNewVersion_soThisDeviceStaysSignedIn() {
+        callerIsAlice();
+        theGuardedUpdateApplies();
+
+        AuthTokenResponseDto tokens = service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN);
+
+        TokenClaims access = jwtUtil.parse(tokens.getToken(), TokenType.ACCESS);
+        TokenClaims refresh = jwtUtil.parse(tokens.getRefreshToken(), TokenType.REFRESH);
+        for (TokenClaims claims : List.of(access, refresh)) {
+            assertEquals(EMAIL, claims.subject());
+            assertEquals(VERSION_BEFORE + 1, claims.credentialsVersion());
+        }
+        assertNotEquals(tokens.getToken(), tokens.getRefreshToken());
+    }
+
+    @Test
+    void changePassword_locksTheRowAndReadsItAgain_beforeAnythingIsChecked() {
+        callerIsAlice();
+        theGuardedUpdateApplies();
+
+        service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN);
+
+        // Detached first: a lock on the copy read before would keep the password and version it was read with.
+        InOrder inOrder = inOrder(entityManager, userRepository);
+        inOrder.verify(entityManager).detach(readBefore);
+        inOrder.verify(entityManager).find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE);
+        inOrder.verify(userRepository).updatePasswordAndEndSessions(eq(USER_ID), anyString(), eq(VERSION_BEFORE));
+    }
+
+    @Test
+    void changePassword_checksTheOldPasswordAgainstTheLockedRow_soAChangeCommittedMeanwhileIsNotOverwritten() {
+        // Another device changed the password while this request waited for the lock; its copy still has the old hash.
+        lockedRow = alice(PASSWORD_SET_MEANWHILE, VERSION_BEFORE + 1);
+        callerIsAlice();
+
+        assertThrows(InvalidPasswordException.class,
+                () -> service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN));
+
+        assertTrue(passwordEncoder.matches(PASSWORD_SET_MEANWHILE, lockedRow.getPassword()));
+        assertEquals(VERSION_BEFORE + 1, lockedRow.getCredentialsVersion());
+        assertNothingWritten();
+        verifyNoInteractions(auditLogService, tokenBlacklistService);
     }
 
     @Test
     void changePassword_revokesTheAccessTokenOfTheRequest_afterThePasswordIsSaved() {
-        when(currentUserProvider.getCurrentUser()).thenReturn(user);
+        callerIsAlice();
+        theGuardedUpdateApplies();
 
         service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN);
 
         InOrder inOrder = inOrder(userRepository, tokenBlacklistService);
-        inOrder.verify(userRepository).save(user);
+        inOrder.verify(userRepository).updatePasswordAndEndSessions(eq(USER_ID), anyString(), eq(VERSION_BEFORE));
         inOrder.verify(tokenBlacklistService).revoke(ACCESS_TOKEN);
     }
 
     @Test
     void changePassword_doesNotSwallowAFailedRevocation_soTheTransactionRollsTheNewPasswordBack() {
-        when(currentUserProvider.getCurrentUser()).thenReturn(user);
+        callerIsAlice();
+        theGuardedUpdateApplies();
         doThrow(new IllegalStateException("database went away")).when(tokenBlacklistService).revoke(ACCESS_TOKEN);
 
         assertThrows(IllegalStateException.class, () -> service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN));
@@ -119,25 +263,26 @@ class AuthServiceChangePasswordTest {
 
     @Test
     void changePassword_throwsInvalidPassword_andKeepsHash_whenOldPasswordIsWrong() {
-        when(currentUserProvider.getCurrentUser()).thenReturn(user);
-        String hashBefore = user.getPassword();
+        callerIsAlice();
+        String hashBefore = lockedRow.getPassword();
 
         assertThrows(InvalidPasswordException.class, () -> service.changePassword(request("wrong-old", NEW_PASSWORD), ACCESS_TOKEN));
 
-        assertEquals(hashBefore, user.getPassword());
-        verify(userRepository, never()).save(any());
+        assertEquals(hashBefore, lockedRow.getPassword());
+        assertEquals(VERSION_BEFORE, lockedRow.getCredentialsVersion());
+        assertNothingWritten();
         verifyNoInteractions(auditLogService, tokenBlacklistService);
     }
 
     @Test
     void changePassword_throwsInvalidPassword_whenNewPasswordEqualsOld() {
-        when(currentUserProvider.getCurrentUser()).thenReturn(user);
-        String hashBefore = user.getPassword();
+        callerIsAlice();
+        String hashBefore = lockedRow.getPassword();
 
         assertThrows(InvalidPasswordException.class, () -> service.changePassword(request(OLD_PASSWORD, OLD_PASSWORD), ACCESS_TOKEN));
 
-        assertEquals(hashBefore, user.getPassword());
-        verify(userRepository, never()).save(any());
+        assertEquals(hashBefore, lockedRow.getPassword());
+        assertNothingWritten();
         verifyNoInteractions(auditLogService, tokenBlacklistService);
     }
 
@@ -147,6 +292,6 @@ class AuthServiceChangePasswordTest {
 
         assertThrows(UserNotFoundException.class, () -> service.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), ACCESS_TOKEN));
 
-        verifyNoInteractions(userRepository, auditLogService, tokenBlacklistService);
+        verifyNoInteractions(userRepository, auditLogService, tokenBlacklistService, entityManager);
     }
 }

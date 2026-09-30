@@ -99,5 +99,9 @@
   "notificationTypeOther": "Notification",
   "@notificationTypeOther": {
     "description": "Heading of a notification whose kind this version of the app does not know."
+  },
+  "sessionEnded": "Your session has ended, for example because your password was changed. Please sign in again.",
+  "@sessionEnded": {
+    "description": "SnackBar shown on the login screen after the app signed the user out because the session could not be renewed, e.g. the password was changed or reset on another device."
   }
 }

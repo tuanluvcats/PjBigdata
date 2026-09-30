@@ -14,6 +14,8 @@ public final class Roles {
     public static final String PREFIX = "ROLE_";
     public static final String USER = PREFIX + "USER";
     public static final String ADMIN = PREFIX + "ADMIN";
+    /** Given to an account an administrator has locked: it can no longer sign in or renew its session. */
+    public static final String LOCKED = PREFIX + "LOCKED";
 
     /** For @PreAuthorize, which needs a compile-time constant. */
     public static final String HAS_ADMIN = "hasRole('" + ADMIN + "')";

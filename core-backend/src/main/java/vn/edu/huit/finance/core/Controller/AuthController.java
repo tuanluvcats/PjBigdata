@@ -10,8 +10,10 @@ import org.springframework.security.authentication.LockedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import vn.edu.huit.finance.core.Dto.ApiResponse;
+import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
 import vn.edu.huit.finance.core.Dto.ChangePasswordRequestDto;
 import vn.edu.huit.finance.core.Dto.LogoutRequestDto;
+import vn.edu.huit.finance.core.Dto.RefreshTokenRequestDto;
 import vn.edu.huit.finance.core.Dto.RegisterRequestDto;
 import vn.edu.huit.finance.core.Dto.ResetPasswordRequestDto;
 import vn.edu.huit.finance.core.Entity.User;
@@ -23,7 +25,6 @@ import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
-import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 
 import java.time.LocalDateTime;
 
@@ -32,7 +33,9 @@ import java.time.LocalDateTime;
 public class AuthController {
     private static final String CHANGE_PASSWORD_SUCCESS_MESSAGE = "Đổi mật khẩu thành công!";
     private static final String LOGOUT_SUCCESS_MESSAGE = "Đăng xuất thành công!";
+    private static final String REFRESH_SUCCESS_MESSAGE = "Refresh token thành công";
     private static final String MSG_TOKEN_MISSING = "Thiếu token xác thực";
+    private static final String MSG_ACCOUNT_NOT_FOUND = "Không tìm thấy tài khoản với email này!";
 
     @Autowired  private org.springframework.security.authentication.AuthenticationManager authenticationManager;
     @Autowired  private UserRepository userRepository;
@@ -42,7 +45,6 @@ public class AuthController {
     @Autowired  private AuditLogService auditLogService;
     @Autowired  private AuthService authService;
     @Autowired  private vn.edu.huit.finance.core.Service.SocialAuthService socialAuthService;
-    @Autowired  private TokenBlacklistService tokenBlacklistService;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDto request) {
@@ -89,16 +91,21 @@ public class AuthController {
         try {
             loginAttemptService.assertLoginAllowed(email, ipAddress);
 
+            // Read BEFORE the password check: if the password is changed or reset while the check runs, the tokens carry
+            // the version the checked password belonged to and are refused, instead of outliving the change.
+            java.util.Optional<Integer> checkedVersion = userRepository.findByEmail(email).map(User::getCredentialsVersion);
+
             authenticationManager.authenticate(
                     new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(email, password)
             );
             loginAttemptService.recordSuccess(email, ipAddress);
 
-            String token = jwtUtil.generateToken(email); 
-            String refreshToken = jwtUtil.generateRefreshToken(email);
-
             User user = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản với email này!"));
+                    .orElseThrow(() -> new RuntimeException(MSG_ACCOUNT_NOT_FOUND));
+            Integer credentialsVersion = checkedVersion.orElseThrow(() -> new RuntimeException(MSG_ACCOUNT_NOT_FOUND));
+
+            String token = jwtUtil.generateToken(email, credentialsVersion);
+            String refreshToken = jwtUtil.generateRefreshToken(email, credentialsVersion);
 
             LocalDateTime now = LocalDateTime.now();
             user.setLastLoginTime(now);
@@ -156,8 +163,8 @@ public class AuthController {
             user.setLastActionTime(now);
             userRepository.save(user);
             auditLogService.logAction(user.getEmail(), "LOGIN_SUCCESS", "Người dùng đăng nhập App qua: " + provider);
-            String jwt = jwtUtil.generateToken(user.getEmail());
-            String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+            String jwt = jwtUtil.generateToken(user.getEmail(), user.getCredentialsVersion());
+            String refreshToken = jwtUtil.generateRefreshToken(user.getEmail(), user.getCredentialsVersion());
 
             java.util.Map<String, Object> userData = new java.util.HashMap<>();
             userData.put("id", user.getId());
@@ -203,17 +210,13 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
-    // The token of this very request is handed over to be revoked; the client signs in again with the new password.
+    // Every session opened with the old password ends, on every device; this one continues with the token pair returned.
     @PutMapping(AuthPaths.CHANGE_PASSWORD)
-    public ResponseEntity<ApiResponse<Void>> changePassword(
+    public ResponseEntity<ApiResponse<AuthTokenResponseDto>> changePassword(
             @Valid @RequestBody ChangePasswordRequestDto request,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
-        authService.changePassword(request, bearerTokenOf(authorization));
-
-        return ResponseEntity.ok(ApiResponse.<Void>builder()
-                .code(HttpStatus.OK.value())
-                .message(CHANGE_PASSWORD_SUCCESS_MESSAGE)
-                .build());
+        AuthTokenResponseDto tokens = authService.changePassword(request, bearerTokenOf(authorization));
+        return ApiResponses.respond(HttpStatus.OK, CHANGE_PASSWORD_SUCCESS_MESSAGE, tokens);
     }
 
     // The body is optional: a client that sends its refresh token gets that one revoked too.
@@ -240,27 +243,11 @@ public class AuthController {
         }
         return request.getRemoteAddr();
     }
+    // Same answer as before ({code, message, data: {token, refreshToken}}); the refresh token sent is used up. A refused
+    // token is an InvalidTokenException, i.e. 401.
     @PostMapping("/refresh")
-    public ResponseEntity<?> refreshToken(@RequestBody java.util.Map<String, String> request) {
-        String refreshToken = request.get("refreshToken");
-        
-        // A refresh token that was revoked at logout must not mint new tokens.
-        if (refreshToken != null && jwtUtil.validateToken(refreshToken) && !tokenBlacklistService.isRevoked(refreshToken)) {
-            String email = jwtUtil.extractUsername(refreshToken);
-            String newToken = jwtUtil.generateToken(email);
-            String newRefreshToken = jwtUtil.generateRefreshToken(email);
-            
-            java.util.Map<String, Object> data = new java.util.HashMap<>();
-            data.put("token", newToken);
-            data.put("refreshToken", newRefreshToken); 
-            
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
-            response.put("code", 200);
-            response.put("message", "Refresh token thành công");
-            response.put("data", data);
-            
-            return ResponseEntity.ok(response);
-        }
-        return ResponseEntity.status(401).body(java.util.Map.of("message", "Refresh token không hợp lệ hoặc đã hết hạn"));
+    public ResponseEntity<ApiResponse<AuthTokenResponseDto>> refreshToken(@Valid @RequestBody RefreshTokenRequestDto request) {
+        AuthTokenResponseDto tokens = authService.refresh(request.getRefreshToken());
+        return ApiResponses.respond(HttpStatus.OK, REFRESH_SUCCESS_MESSAGE, tokens);
     }
 }

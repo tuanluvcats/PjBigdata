@@ -87,4 +87,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get notificationTypeOther => 'Notification';
+
+  @override
+  String get sessionEnded =>
+      'Your session has ended, for example because your password was changed. Please sign in again.';
 }

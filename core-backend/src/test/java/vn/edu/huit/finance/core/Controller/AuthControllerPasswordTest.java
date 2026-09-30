@@ -1,5 +1,6 @@
 package vn.edu.huit.finance.core.Controller;
 
+import io.jsonwebtoken.MalformedJwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -17,6 +18,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import vn.edu.huit.finance.core.Config.SecurityConfig;
+import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.GlobalExceptionHandler;
 import vn.edu.huit.finance.core.Exception.InvalidOtpException;
@@ -27,6 +29,8 @@ import vn.edu.huit.finance.core.Security.AuthPaths;
 import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
+import vn.edu.huit.finance.core.Security.TokenClaims;
+import vn.edu.huit.finance.core.Security.TokenType;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
@@ -48,6 +52,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -93,10 +98,8 @@ class AuthControllerPasswordTest {
 
     @BeforeEach
     void stubJwtForAlice() {
-        when(jwtUtil.extractUsername(TOKEN)).thenReturn(USERNAME);
-        when(jwtUtil.validateToken(TOKEN)).thenReturn(true);
-        when(jwtUtil.extractUsername(BAD_TOKEN)).thenReturn(USERNAME);
-        when(jwtUtil.validateToken(BAD_TOKEN)).thenReturn(false);
+        when(jwtUtil.parse(TOKEN, TokenType.ACCESS)).thenReturn(new TokenClaims(USERNAME, 0));
+        when(jwtUtil.parse(BAD_TOKEN, TokenType.ACCESS)).thenThrow(new MalformedJwtException("not a valid token"));
 
         User alice = new User();
         alice.setUsername(USERNAME);
@@ -113,8 +116,7 @@ class AuthControllerPasswordTest {
         bob.setUsername(LOCKED_USERNAME);
         bob.setActive(false);
         bob.setRole("ROLE_USER");
-        when(jwtUtil.extractUsername(LOCKED_TOKEN)).thenReturn(LOCKED_USERNAME);
-        when(jwtUtil.validateToken(LOCKED_TOKEN)).thenReturn(true);
+        when(jwtUtil.parse(LOCKED_TOKEN, TokenType.ACCESS)).thenReturn(new TokenClaims(LOCKED_USERNAME, 0));
         when(userDetailsService.loadApplicationUser(LOCKED_USERNAME)).thenReturn(bob);
     }
 
@@ -170,6 +172,23 @@ class AuthControllerPasswordTest {
     }
 
     @Test
+    void changePassword_answersWithTheNewTokenPair_underTheKeysOfTheLoginAnswer() throws Exception {
+        when(authService.changePassword(any(), eq(TOKEN))).thenReturn(AuthTokenResponseDto.builder()
+                .token("new.access.token")
+                .refreshToken("new.refresh.token")
+                .build());
+
+        mockMvc.perform(authorizedPut(BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("Đổi mật khẩu thành công!"))
+                .andExpect(jsonPath("$.data.token").value("new.access.token"))
+                .andExpect(jsonPath("$.data.refreshToken").value("new.refresh.token"))
+                // "token", like login and refresh: the app reads that key, a renamed one would log it out.
+                .andExpect(jsonPath("$.data.accessToken").doesNotExist());
+    }
+
+    @Test
     void rejectsRequestWithoutToken_andNeverReachesTheService() throws Exception {
         mockMvc.perform(changePasswordRequest(BODY))
                 .andExpect(status().is4xxClientError());
@@ -191,6 +210,17 @@ class AuthControllerPasswordTest {
                 .andExpect(status().isOk());
 
         verify(authService).generateAndSendOtp("a@b.c");
+    }
+
+    @Test
+    void aTokenOfALockedAccount_getsAJson403_andNeverReachesTheService() throws Exception {
+        mockMvc.perform(changePasswordRequest(BODY).header(HttpHeaders.AUTHORIZATION, "Bearer " + LOCKED_TOKEN))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.message").value("Tài khoản đã bị khóa."));
+
+        verifyNoInteractions(authService);
     }
 
     @Test

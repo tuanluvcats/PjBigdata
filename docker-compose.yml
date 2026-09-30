@@ -1,10 +1,12 @@
 services:
-  # 0. DATABASE POSTGRESQL Local
+  # 0. DATABASE: PostgreSQL self-hosted on the same VPS (no cloud database).
+  # core-api reaches it on the Docker network as db:5432. The host port is bound to 127.0.0.1 only, for admin
+  # work on the VPS itself (psql, pg_dump); it is never published on the public interface.
   db:
     image: postgres:15-alpine
     container_name: finance-postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_DB=finance_db
       - POSTGRES_USER=${DB_USERNAME}
@@ -103,4 +105,5 @@ networks:
     driver: bridge
 
 volumes:
+  # All database data lives here and survives rebuilds and restarts. Never run "docker compose down -v": it deletes it.
   postgres_data:

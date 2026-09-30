@@ -24,5 +24,6 @@
   "notificationTypeBudgetExceeded": "Đã vượt ngân sách",
   "notificationTypeTransactionAlert": "Cảnh báo giao dịch",
   "notificationTypeReceiptProcessed": "Hóa đơn đã được xử lý",
-  "notificationTypeOther": "Thông báo"
+  "notificationTypeOther": "Thông báo",
+  "sessionEnded": "Phiên đăng nhập đã kết thúc, có thể do mật khẩu vừa được thay đổi. Vui lòng đăng nhập lại."
 }

@@ -1,7 +1,12 @@
 package vn.edu.huit.finance.core.Controller;
 
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.UnsupportedJwtException;
+import io.jsonwebtoken.security.SignatureException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -13,6 +18,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import vn.edu.huit.finance.core.Config.SecurityConfig;
+import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.GlobalExceptionHandler;
 import vn.edu.huit.finance.core.Exception.InvalidTokenException;
@@ -21,6 +27,8 @@ import vn.edu.huit.finance.core.Security.AuthPaths;
 import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
+import vn.edu.huit.finance.core.Security.TokenClaims;
+import vn.edu.huit.finance.core.Security.TokenType;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
@@ -31,19 +39,23 @@ import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Token revocation through the real security filter chain + JwtAuthFilter + GlobalExceptionHandler: POST /api/auth/logout,
- * the 401 that a revoked token gets on every protected endpoint, and /api/auth/refresh refusing a revoked refresh token.
- * Explicit context classes keep the app class (@EnableJpaAuditing) out of the slice.
+ * the JSON 401 that every unusable access token gets on every protected endpoint (revoked, expired, badly signed, a
+ * refresh token, no type or no credentials version, an older credentials version, an account that is gone), and the
+ * envelope of /api/auth/refresh (its checks are in AuthService, see
+ * AuthServiceRefreshTest and CrossSessionTokenRevocationTest). Explicit context classes keep the app class
+ * (@EnableJpaAuditing) out of the slice.
  */
 @WebMvcTest(AuthController.class)
 @ContextConfiguration(classes = {
@@ -59,9 +71,21 @@ class AuthControllerLogoutTest {
     private static final String REVOKED_TOKEN = "revoked.jwt.token";
     private static final String BAD_TOKEN = "invalid.jwt.token";
     private static final String REFRESH_TOKEN = "valid.refresh.token";
+    // Signed, not expired, not revoked, but issued before the password was last changed.
+    private static final String OUTDATED_TOKEN = "outdated.jwt.token";
+    // Signed, not expired, not revoked, but from the release before credentials versions: no claim at all.
+    private static final String UNVERSIONED_TOKEN = "unversioned.jwt.token";
+    // Signed and of the right type, but past its expiry.
+    private static final String EXPIRED_TOKEN = "expired.jwt.token";
     private static final String USERNAME = "alice";
+    // Not 0 on purpose: a stub that forgot the claim would answer 0 and must not pass by accident.
+    private static final int CURRENT_VERSION = 3;
     private static final String CHANGE_PASSWORD_BODY = "{\"oldPassword\":\"OldPass123\",\"newPassword\":\"NewPass456\"}";
     private static final String REVOKED_MESSAGE = "Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.";
+    private static final String OUTDATED_MESSAGE = "Phiên đăng nhập đã hết hiệu lực. Vui lòng đăng nhập lại.";
+    private static final String EXPIRED_MESSAGE = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+    private static final String INVALID_MESSAGE = "Token xác thực không hợp lệ. Vui lòng đăng nhập lại.";
+    private static final String REFRESH_REFUSED_MESSAGE = "Refresh token không hợp lệ hoặc đã hết hạn";
 
     @Autowired private MockMvc mockMvc;
 
@@ -80,15 +104,19 @@ class AuthControllerLogoutTest {
         // Signed and not expired, but on the blacklist.
         stubValidToken(REVOKED_TOKEN);
         when(tokenBlacklistService.isRevoked(REVOKED_TOKEN)).thenReturn(true);
-        // Not valid (bad signature or expired): the blacklist is never asked about it.
-        when(jwtUtil.extractUsername(BAD_TOKEN)).thenReturn(USERNAME);
-        when(jwtUtil.validateToken(BAD_TOKEN)).thenReturn(false);
+        // Not usable as an access token, each for another reason: the blacklist is never asked about any of them.
+        when(jwtUtil.parse(BAD_TOKEN, TokenType.ACCESS)).thenThrow(new SignatureException("signature does not match"));
+        when(jwtUtil.parse(EXPIRED_TOKEN, TokenType.ACCESS)).thenThrow(new ExpiredJwtException(null, null, "expired"));
+        when(jwtUtil.parse(UNVERSIONED_TOKEN, TokenType.ACCESS)).thenThrow(new UnsupportedJwtException("no type"));
+        when(jwtUtil.parse(REFRESH_TOKEN, TokenType.ACCESS)).thenThrow(new UnsupportedJwtException("a refresh token"));
+        when(jwtUtil.parse(OUTDATED_TOKEN, TokenType.ACCESS)).thenReturn(new TokenClaims(USERNAME, CURRENT_VERSION - 1));
 
         User alice = new User();
         alice.setUsername(USERNAME);
         alice.setActive(true);
         alice.setRole("ROLE_USER");
         alice.setLastActionTime(LocalDateTime.now());
+        alice.setCredentialsVersion(CURRENT_VERSION);
         when(userDetailsService.loadApplicationUser(USERNAME)).thenReturn(alice);
         when(userDetailsService.loadUserByUsername(USERNAME)).thenReturn(
                 new org.springframework.security.core.userdetails.User(
@@ -96,8 +124,7 @@ class AuthControllerLogoutTest {
     }
 
     private void stubValidToken(String token) {
-        when(jwtUtil.extractUsername(token)).thenReturn(USERNAME);
-        when(jwtUtil.validateToken(token)).thenReturn(true);
+        when(jwtUtil.parse(token, TokenType.ACCESS)).thenReturn(new TokenClaims(USERNAME, CURRENT_VERSION));
     }
 
     // MockMvc leaves getServletPath() empty, unlike a real container; JwtAuthFilter branches on it, so set it explicitly.
@@ -192,9 +219,20 @@ class AuthControllerLogoutTest {
     void aRevokedToken_getsA401_onLogout_andNeverReachesTheService() throws Exception {
         mockMvc.perform(withToken(logoutRequest(), REVOKED_TOKEN))
                 .andExpect(status().isUnauthorized())
-                .andExpect(result -> assertEquals(REVOKED_MESSAGE, result.getResponse().getErrorMessage()));
+                .andExpect(jsonPath("$.message").value(REVOKED_MESSAGE));
 
         verifyNoInteractions(authService);
+    }
+
+    @Test
+    void theA401IsTheJsonApiResponseEnvelope_notSpringsErrorPage() throws Exception {
+        mockMvc.perform(withToken(logoutRequest(), REVOKED_TOKEN))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value(REVOKED_MESSAGE))
+                // Written into the body, not handed to sendError (which would render the container's error page).
+                .andExpect(result -> assertNull(result.getResponse().getErrorMessage()));
     }
 
     @Test
@@ -223,12 +261,90 @@ class AuthControllerLogoutTest {
         verify(tokenBlacklistService).isRevoked(TOKEN);
     }
 
-    @Test
-    void theBlacklistIsOnlyAskedAboutTokensThatAreValid_soAnInvalidTokenKeepsItsOldAnswer() throws Exception {
-        mockMvc.perform(withToken(logoutRequest(), BAD_TOKEN))
-                .andExpect(result -> assertNotEquals(401, result.getResponse().getStatus()));
+    // ------------------------------------------------ a token that cannot be used as an access token gets a JSON 401
 
-        verify(tokenBlacklistService, never()).isRevoked(BAD_TOKEN);
+    @Test
+    void anExpiredAccessToken_getsAJson401_notThe403OfAnAnonymousRequest_soTheAppRenewsTheSession() throws Exception {
+        mockMvc.perform(withToken(get(OTHER_PROTECTED_URL).servletPath(OTHER_PROTECTED_URL), EXPIRED_TOKEN))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value(EXPIRED_MESSAGE))
+                .andExpect(result -> assertNull(result.getResponse().getErrorMessage()));
+
+        verify(userDetailsService, never()).loadApplicationUser(any());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {BAD_TOKEN, UNVERSIONED_TOKEN, REFRESH_TOKEN})
+    void aTokenThatIsNotAUsableAccessToken_getsAJson401_withoutTheBlacklistOrTheUserBeingAsked(String token) throws Exception {
+        // A bad signature, a token without a type or a credentials version, and a refresh token presented as a bearer.
+        mockMvc.perform(withToken(logoutRequest(), token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value(INVALID_MESSAGE))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        verify(tokenBlacklistService, never()).isRevoked(any());
+        verify(userDetailsService, never()).loadApplicationUser(any());
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void aTokenWhoseAccountIsGone_getsAJson401_thatDoesNotNameTheAccount() throws Exception {
+        String strangersToken = "stranger.jwt.token";
+        when(jwtUtil.parse(strangersToken, TokenType.ACCESS)).thenReturn(new TokenClaims("mallory", CURRENT_VERSION));
+        when(userDetailsService.loadApplicationUser("mallory"))
+                .thenThrow(new org.springframework.security.core.userdetails.UsernameNotFoundException("User not found: mallory"));
+
+        mockMvc.perform(withToken(logoutRequest(), strangersToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value(INVALID_MESSAGE));
+
+        verifyNoInteractions(authService);
+    }
+
+    // ----------------------------------------------- a token of an older credentials version, or of none, gets 401 too
+
+    @Test
+    void aTokenIssuedBeforeThePasswordWasChanged_getsAJson401_andNeverReachesTheService() throws Exception {
+        mockMvc.perform(withToken(logoutRequest(), OUTDATED_TOKEN))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value(OUTDATED_MESSAGE));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void aTokenWithoutACredentialsVersion_getsAJson401_beforeTheUserIsEvenLoaded() throws Exception {
+        mockMvc.perform(withToken(get(OTHER_PROTECTED_URL).servletPath(OTHER_PROTECTED_URL), UNVERSIONED_TOKEN))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value(INVALID_MESSAGE));
+
+        verify(userDetailsService, never()).loadApplicationUser(any());
+    }
+
+    @Test
+    void anOutdatedToken_isRefusedOnChangePasswordToo() throws Exception {
+        mockMvc.perform(withToken(withJson(put(CHANGE_PASSWORD_URL).servletPath(CHANGE_PASSWORD_URL), CHANGE_PASSWORD_BODY),
+                        OUTDATED_TOKEN))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void aTokenOfTheCurrentCredentialsVersion_getsThrough() throws Exception {
+        mockMvc.perform(withToken(logoutRequest(), TOKEN))
+                .andExpect(status().isOk());
+
+        verify(jwtUtil).parse(TOKEN, TokenType.ACCESS);
+        verify(authService).logout(TOKEN, null);
     }
 
     @Test
@@ -243,39 +359,50 @@ class AuthControllerLogoutTest {
     // ------------------------------------------------------------------------------------------------------- refresh
 
     @Test
-    void refresh_issuesNewTokens_forARefreshTokenThatWasNotRevoked() throws Exception {
-        when(jwtUtil.validateToken(REFRESH_TOKEN)).thenReturn(true);
-        when(jwtUtil.extractUsername(REFRESH_TOKEN)).thenReturn(USERNAME);
-        when(jwtUtil.generateToken(USERNAME)).thenReturn("new.access.token");
-        when(jwtUtil.generateRefreshToken(USERNAME)).thenReturn("new.refresh.token");
+    void refresh_answersWithTheNewPair_underTheKeysItHasAlwaysUsed() throws Exception {
+        when(authService.refresh(REFRESH_TOKEN)).thenReturn(AuthTokenResponseDto.builder()
+                .token("new.access.token")
+                .refreshToken("new.refresh.token")
+                .build());
 
         mockMvc.perform(refreshRequest(REFRESH_TOKEN))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("Refresh token thành công"))
                 .andExpect(jsonPath("$.data.token").value("new.access.token"))
-                .andExpect(jsonPath("$.data.refreshToken").value("new.refresh.token"));
+                .andExpect(jsonPath("$.data.refreshToken").value("new.refresh.token"))
+                .andExpect(jsonPath("$.data.accessToken").doesNotExist());
 
-        verify(tokenBlacklistService).isRevoked(REFRESH_TOKEN);
+        // Revoked, outdated and double-spent tokens are the service's to refuse, inside its transaction.
+        verify(authService).refresh(REFRESH_TOKEN);
+        verifyNoInteractions(tokenBlacklistService);
     }
 
     @Test
-    void refresh_returns401_forARefreshTokenThatWasRevokedAtLogout_andIssuesNothing() throws Exception {
-        when(jwtUtil.validateToken(REFRESH_TOKEN)).thenReturn(true);
-        when(tokenBlacklistService.isRevoked(REFRESH_TOKEN)).thenReturn(true);
+    void refresh_answersAJson401_whenTheServiceRefusesTheToken() throws Exception {
+        when(authService.refresh(REFRESH_TOKEN)).thenThrow(new InvalidTokenException(REFRESH_REFUSED_MESSAGE));
 
         mockMvc.perform(refreshRequest(REFRESH_TOKEN))
-                .andExpect(status().isUnauthorized());
-
-        verify(jwtUtil, never()).generateToken(any());
-        verify(jwtUtil, never()).generateRefreshToken(any());
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value(REFRESH_REFUSED_MESSAGE));
     }
 
     @Test
-    void refresh_returns401_forAnInvalidRefreshToken_withoutAskingTheBlacklist() throws Exception {
-        when(jwtUtil.validateToken(REFRESH_TOKEN)).thenReturn(false);
+    void refresh_handsAMissingTokenToTheService_soItKeepsItsOld401() throws Exception {
+        when(authService.refresh(null)).thenThrow(new InvalidTokenException(REFRESH_REFUSED_MESSAGE));
 
-        mockMvc.perform(refreshRequest(REFRESH_TOKEN))
+        mockMvc.perform(withJson(post(REFRESH_URL).servletPath(REFRESH_URL), "{}"))
                 .andExpect(status().isUnauthorized());
+    }
 
-        verify(tokenBlacklistService, never()).isRevoked(any());
+    @Test
+    void refresh_returns400_andSkipsTheService_whenTheTokenIsAbsurdlyLong() throws Exception {
+        mockMvc.perform(refreshRequest("a".repeat(2049)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verifyNoInteractions(authService);
     }
 }

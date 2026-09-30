@@ -22,7 +22,7 @@ public class CustomUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String usernameOrEmail) throws UsernameNotFoundException {
         User user = loadApplicationUser(usernameOrEmail);
 
-        if (!user.isActive() || "ROLE_LOCKED".equals(user.getRole())) {
+        if (isLocked(user)) {
             throw new DisabledException("Account is locked");
         }
 
@@ -34,9 +34,17 @@ public class CustomUserDetailsService implements UserDetailsService {
                 user.isActive(),
                 true,
                 true,
-                !"ROLE_LOCKED".equals(user.getRole()),
+                !Roles.LOCKED.equals(user.getRole()),
                 Collections.singletonList(new SimpleGrantedAuthority(role))
         );
+    }
+
+    /**
+     * True for an account that must not use the API any more: deactivated, or given the locked role. Static on purpose:
+     * the sign-in, the JWT filter and the token refresh all apply this one rule, also where this service is mocked.
+     */
+    public static boolean isLocked(User user) {
+        return !user.isActive() || Roles.LOCKED.equals(user.getRole());
     }
 
     public User loadApplicationUser(String usernameOrEmail) throws UsernameNotFoundException {

@@ -247,6 +247,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Notification'**
   String get notificationTypeOther;
+
+  /// SnackBar shown on the login screen after the app signed the user out because the session could not be renewed, e.g. the password was changed or reset on another device.
+  ///
+  /// In en, this message translates to:
+  /// **'Your session has ended, for example because your password was changed. Please sign in again.'**
+  String get sessionEnded;
 }
 
 class _AppLocalizationsDelegate

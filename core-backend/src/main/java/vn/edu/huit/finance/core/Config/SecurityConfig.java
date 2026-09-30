@@ -1,5 +1,6 @@
 package vn.edu.huit.finance.core.Config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,6 +21,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.filter.OncePerRequestFilter;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.AuthPaths;
+import vn.edu.huit.finance.core.Security.JsonAuthenticationEntryPoint;
 import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 
@@ -38,6 +40,8 @@ public class SecurityConfig {
     private LoginAttemptService loginAttemptService;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -110,6 +114,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasAuthority("ROLE_ADMIN")
                         .anyRequest().authenticated()
                 )
+                // A protected URL without an authenticated caller (no token, or one JwtAuthFilter could not use): JSON 401,
+                // or 403 for a locked account. Public URLs never get here, they serve such a request anonymously.
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(new JsonAuthenticationEntryPoint(objectMapper)))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

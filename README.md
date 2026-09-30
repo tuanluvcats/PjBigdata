@@ -14,7 +14,7 @@ app, and AI service developed and deployed as separate components.
 - **Framework:** Spring Boot 3.x (Spring Web, Spring Security, Spring Data JPA)
 - **Language:** Java 21 (JDK 21)
 - **Authentication:** OAuth2 login via Google (Facebook OAuth in progress), JWT-based session handling
-- **Database:** PostgreSQL (hosted on Neon), accessed via Hibernate ORM
+- **Database:** PostgreSQL 15, self-hosted in Docker on the same VPS as the backend and the AI service (see [Database](#6-database-postgresql-on-the-vps)), accessed via Hibernate ORM
 - **Optimization:** JVM memory tuning (`-XX:MaxRAMPercentage=75.0`), dedicated `prod` Spring profile
 
 ### AI Service
@@ -72,4 +72,41 @@ app, and AI service developed and deployed as separate components.
 4. **Verify deployment:**
 ```bash
    curl -f http://localhost:8080/actuator/health
+```
+
+## 6. Database (PostgreSQL on the VPS)
+PostgreSQL runs as the `db` service of `docker-compose.yml` (`postgres:15-alpine`) on the same VPS as the backend and
+the AI service. No cloud-hosted database is used.
+
+- **Network:** the backend reaches it over the internal Docker network `finance-network` as
+  `jdbc:postgresql://db:5432/finance_db` (set in `docker-compose.yml`; never `localhost` from inside a container).
+  The host port is bound to `127.0.0.1:5432` only, so the database is not reachable from the Internet; use SSH on
+  the VPS for admin work.
+- **Persistence:** the data lives in the named volume `postgres_data` and survives rebuilds and restarts.
+  Never run `docker compose down -v`: it deletes the volume and every row with it.
+- **Credentials:** `DB_USERNAME` and `DB_PASSWORD` come from the `.env` file on the VPS (git-ignored) or from your
+  secret store. Never commit real credentials.
+- **Schema changes:** there is no Flyway/Liquibase. Hibernate runs with `ddl-auto: update`, and manual SQL
+  migrations are applied by hand (take a backup first):
+```bash
+   docker compose exec -T db psql -U "$DB_USERNAME" -d finance_db -v ON_ERROR_STOP=1 < migration.sql
+```
+
+### Health checks
+```bash
+   docker compose ps                                             # db and core-api should be "healthy"
+   docker compose exec db pg_isready -U "$DB_USERNAME" -d finance_db
+   curl -f http://localhost:8080/actuator/health
+```
+
+### Backup and restore (manual)
+Take a backup before every deployment that changes the schema, and copy it off the VPS.
+```bash
+   # Backup (custom format, compressed)
+   docker compose exec -T db pg_dump -U "$DB_USERNAME" -d finance_db -Fc > "finance_db_$(date +%F_%H%M).dump"
+
+   # Restore into the running database: this OVERWRITES the objects in the dump, so stop core-api first
+   docker compose stop core-api
+   docker compose exec -T db pg_restore -U "$DB_USERNAME" -d finance_db --clean --if-exists < finance_db_YYYY-MM-DD_HHMM.dump
+   docker compose start core-api
 ```

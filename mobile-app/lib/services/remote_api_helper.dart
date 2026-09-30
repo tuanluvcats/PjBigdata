@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:finance_ai_app/config/app_config.dart';
 import 'package:finance_ai_app/di/injection_container.dart';
+import 'package:finance_ai_app/l10n/app_localizations.dart';
 import 'package:finance_ai_app/repositories/settings_repository.dart';
 import 'package:finance_ai_app/services/language_interceptor.dart';
 import 'package:finance_ai_app/services/session_service.dart';
+import 'package:finance_ai_app/models/app_language.dart';
 import 'package:finance_ai_app/models/app_notification.dart';
 import 'package:finance_ai_app/models/budget_model.dart';
 import 'package:finance_ai_app/models/transaction_model.dart';
@@ -14,15 +16,50 @@ import 'package:flutter/material.dart';
 import 'package:finance_ai_app/main.dart';
 import 'package:finance_ai_app/screens/auth/login_page.dart';
 
+/// The two tokens of a login, refresh or change-password answer.
+typedef _TokenPair = ({String token, String refreshToken});
+
 class RemoteApiHelper {
   static final RemoteApiHelper instance = RemoteApiHelper._();
   RemoteApiHelper._();
 
+  static const String _loginPath = '/api/auth/login';
+  static const String _socialLoginPath = '/api/auth/social-login';
+  static const String _registerPath = '/api/auth/register';
+  static const String _forgotPasswordPath = '/api/auth/forgot-password';
+  static const String _resetPasswordPath = '/api/auth/reset-password';
+  static const String _refreshPath = '/api/auth/refresh';
+  static const String _changePasswordPath = '/api/auth/change-password';
+  static const String _logoutPath = '/api/auth/logout';
+
+  /// A 401 of these is never answered with a refresh and a retry: on the sign-in and recovery endpoints the 401 is the
+  /// answer itself, the refresh cannot renew itself, and a logout ends the session anyway.
+  static const Set<String> _pathsWithoutRenewal = {
+    _loginPath,
+    _socialLoginPath,
+    _registerPath,
+    _forgotPasswordPath,
+    _resetPasswordPath,
+    _refreshPath,
+    _logoutPath,
+  };
+
+  static const String _authorizationHeader = 'Authorization';
+
+  /// Marks a request repeated after a renewal, so that it is repeated at most once.
+  static const String _repeatedAfterRenewal = 'repeatedAfterRenewal';
+
   late final Dio _dio;
   late final Dio _mlDio;
+  // No interceptors: a 401 of the refresh itself must never come back into the renewal.
+  late final Dio _refreshDio;
 
   bool _initialized = false;
   bool _languageInterceptorAttached = false;
+  // Also picks the language of the SnackBar shown when a session ends.
+  SettingsRepository? _settings;
+  // The renewal in flight: a 401 that arrives meanwhile waits for it instead of starting another refresh.
+  Future<String?>? _renewal;
   final ValueNotifier<int> dataChangedNotifier = ValueNotifier(0);
 
   /// [httpClientAdapter] replaces the real network layer of the core API, of the AI service and of the token refresh; only
@@ -39,79 +76,30 @@ class RemoteApiHelper {
     }
     _initialized = true;
 
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: AppConfig.apiBaseUrl,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 30),
-        headers: {'Content-Type': 'application/json'},
-      ),
+    final coreApiOptions = BaseOptions(
+      baseUrl: AppConfig.apiBaseUrl,
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 30),
+      headers: {'Content-Type': 'application/json'},
     );
+    _dio = Dio(coreApiOptions);
     if (httpClientAdapter != null) _dio.httpClientAdapter = httpClientAdapter;
+    // Same base as _dio: the paths already start with /api, so adding apiVersion here would call /api/api/...
+    _refreshDio = Dio(coreApiOptions.copyWith());
+    if (httpClientAdapter != null) {
+      _refreshDio.httpClientAdapter = httpClientAdapter;
+    }
 
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
           final token = SessionService.currentToken;
           if (token != null) {
-            options.headers['Authorization'] = 'Bearer $token';
+            options.headers[_authorizationHeader] = _bearer(token);
           }
           handler.next(options);
         },
-        onError: (DioException e, handler) async {
-          if (e.response?.statusCode == 401) {
-            final refreshToken = SessionService.currentRefreshToken;
-
-            if (refreshToken != null) {
-              try {
-                // Same base as _dio: the paths below already start with /api, so adding apiVersion here would call /api/api/...
-                final refreshDio = Dio(
-                  BaseOptions(
-                    baseUrl: AppConfig.apiBaseUrl,
-                    headers: {'Content-Type': 'application/json'},
-                  ),
-                );
-                if (httpClientAdapter != null) {
-                  refreshDio.httpClientAdapter = httpClientAdapter;
-                }
-                final res = await refreshDio.post(
-                  '/api/auth/refresh',
-                  data: {'refreshToken': refreshToken},
-                );
-
-                final newToken = res.data['data']['token'];
-                await SessionService.setTokens(newToken, refreshToken);
-
-                final options = e.requestOptions;
-                options.headers['Authorization'] = 'Bearer $newToken';
-
-                final cloneReq = await refreshDio.request(
-                  options.path,
-                  options: Options(
-                    method: options.method,
-                    headers: options.headers,
-                  ),
-                  data: options.data,
-                  queryParameters: options.queryParameters,
-                );
-                return handler.resolve(cloneReq);
-              } catch (refreshError) {
-                await SessionService.clearSession();
-                navigatorKey.currentState?.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
-            } else {
-              await SessionService.clearSession();
-              navigatorKey.currentState?.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (route) => false,
-              );
-            }
-          }
-          handler.next(e);
-        },
+        onError: _renewSessionOn401,
       ),
     );
 
@@ -143,12 +131,167 @@ class RemoteApiHelper {
     _dio.interceptors.add(interceptor);
     _mlDio.interceptors.add(interceptor);
     _languageInterceptorAttached = true;
+    _settings = settings;
+  }
+
+  static String _bearer(String token) => 'Bearer $token';
+
+  /// A 401 on a request that carried a session: the session is renewed once, however many requests failed together,
+  /// and the request is repeated once with the newest token. When the session cannot be renewed the request fails with
+  /// its own 401.
+  Future<void> _renewSessionOn401(
+    DioException e,
+    ErrorInterceptorHandler handler,
+  ) async {
+    if (!_mayRenew(e)) {
+      handler.next(e);
+      return;
+    }
+    final String? token;
+    try {
+      token = await _renewedAccessToken(e.requestOptions);
+    } catch (error) {
+      // The handler must be called whatever happens: Dio would wait for it forever.
+      debugPrint('RemoteApiHelper: the session could not be renewed: $error');
+      handler.next(e);
+      return;
+    }
+    if (token == null) {
+      handler.next(e);
+      return;
+    }
+    try {
+      handler.resolve(await _dio.fetch<dynamic>(_repeatable(e.requestOptions)));
+    } on DioException catch (repeatError) {
+      // The repeat failed on its own (400, 500...): that is its answer, not a failed renewal, so the session stays.
+      handler.next(repeatError);
+    }
+  }
+
+  bool _mayRenew(DioException e) {
+    final options = e.requestOptions;
+    return e.response?.statusCode == HttpStatus.unauthorized &&
+        !_pathsWithoutRenewal.contains(options.path) &&
+        options.extra[_repeatedAfterRenewal] != true;
+  }
+
+  /// The access token to repeat [failed] with, or null when there is none to be had.
+  Future<String?> _renewedAccessToken(RequestOptions failed) async {
+    final current = SessionService.currentToken;
+    // Signed out meanwhile, e.g. the renewal of another request was refused: no second refresh, no second redirect.
+    if (current == null) return null;
+    // Renewed by another request while this one was on its way: repeat it with the newest token, no second refresh.
+    if (failed.headers[_authorizationHeader] != _bearer(current)) {
+      return current;
+    }
+    return _renewSession();
+  }
+
+  /// One refresh for every 401 that arrives while it is out: the first starts it, the others get the same Future. The
+  /// field is cleared in finally whatever the outcome, so a failed renewal is never handed to a later 401 (which starts
+  /// afresh) and nothing waits on it forever.
+  Future<String?> _renewSession() async {
+    final inFlight = _renewal;
+    if (inFlight != null) return inFlight;
+    final renewal = Completer<String?>();
+    _renewal = renewal.future;
+    String? token;
+    try {
+      token = await _refreshTokens();
+    } finally {
+      _renewal = null;
+      renewal.complete(token);
+    }
+    return token;
+  }
+
+  /// Trades the stored refresh token for a new pair and stores both tokens (the server uses the old refresh token up).
+  /// Returns the new access token, or null. A refusal (4xx) ends the session. When the server cannot be reached or fails
+  /// (5xx) nothing is known about the session, so it is kept and the waiting requests fail with their own error.
+  Future<String?> _refreshTokens() async {
+    final refreshToken = SessionService.currentRefreshToken;
+    if (refreshToken == null) {
+      await _endSession();
+      return null;
+    }
+    _TokenPair? pair;
+    try {
+      final res = await _refreshDio.post(
+        _refreshPath,
+        data: {'refreshToken': refreshToken},
+      );
+      pair = _tokenPairOf(res.data);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == null || status >= HttpStatus.internalServerError) {
+        debugPrint(
+          'RemoteApiHelper: the session could not be renewed now (${status ?? e.type.name}), it is kept.',
+        );
+        return null;
+      }
+    }
+    if (pair != null) {
+      try {
+        await SessionService.setTokens(pair.token, pair.refreshToken);
+        return pair.token;
+      } on SessionStorageException catch (e) {
+        // The old refresh token is used up on the server and the new pair cannot be kept: the session is over.
+        debugPrint('RemoteApiHelper: $e');
+      }
+    }
+    if (SessionService.currentRefreshToken != refreshToken) {
+      // The session changed while the refresh was out: renewed by a password change on this device (its pair is the one
+      // to use), or ended by a logout (nothing left to end).
+      return SessionService.currentToken;
+    }
+    await _endSession();
+    return null;
+  }
+
+  /// Ends a session that cannot be renewed: clears it, opens the login screen and says why in a SnackBar. It runs inside
+  /// the one shared renewal, so however many requests failed together there is one redirect and one SnackBar, and the
+  /// 401s that come later find no session and just pass their error on. No BuildContext: both go through global keys.
+  Future<void> _endSession() async {
+    await SessionService.clearSession();
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+    scaffoldMessengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(_sessionEndedMessage())));
+  }
+
+  String _sessionEndedMessage() {
+    final language = _settings?.language ?? AppLanguage.fallback;
+    return lookupAppLocalizations(language.locale).sessionEnded;
+  }
+
+  /// [failed] once more, marked so that it is not renewed a second time; onRequest puts the newest token on it.
+  RequestOptions _repeatable(RequestOptions failed) {
+    final data = failed.data;
+    return failed.copyWith(
+      // A multipart body can be sent only once; the copy reads its files again.
+      data: data is FormData ? data.clone() : data,
+      extra: {...failed.extra, _repeatedAfterRenewal: true},
+    );
+  }
+
+  /// data.token and data.refreshToken of an answer, or null when it does not carry both.
+  static _TokenPair? _tokenPairOf(Object? body) {
+    final data = body is Map ? body['data'] : null;
+    if (data is! Map) return null;
+    final token = data['token'];
+    final refreshToken = data['refreshToken'];
+    if (token is! String || token.isEmpty) return null;
+    if (refreshToken is! String || refreshToken.isEmpty) return null;
+    return (token: token, refreshToken: refreshToken);
   }
 
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final res = await _dio.post(
-        '/api/auth/login',
+        _loginPath,
         data: {'email': email, 'password': password},
       );
       return Map<String, dynamic>.from(res.data);
@@ -168,7 +311,7 @@ class RemoteApiHelper {
   }) async {
     try {
       final res = await _dio.post(
-        '/api/auth/social-login',
+        _socialLoginPath,
         data: {
           'provider': provider,
           'token': token,
@@ -203,7 +346,7 @@ class RemoteApiHelper {
   }) async {
     try {
       final res = await _dio.post(
-        '/api/auth/register',
+        _registerPath,
         data: {
           'username': email,
           'email': email,
@@ -427,10 +570,7 @@ class RemoteApiHelper {
   }
 
   Future<void> forgotPassword({required String email}) async {
-    await _dio.post(
-      '/api/auth/forgot-password',
-      queryParameters: {'email': email},
-    );
+    await _dio.post(_forgotPasswordPath, queryParameters: {'email': email});
   }
 
   /// Completes the reset started by [forgotPassword]. The OTP and the new password travel in the JSON body, never in
@@ -441,22 +581,32 @@ class RemoteApiHelper {
     required String newPassword,
   }) async {
     await _dio.post(
-      '/api/auth/reset-password',
+      _resetPasswordPath,
       data: {'email': email, 'otp': otp, 'newPassword': newPassword},
     );
   }
 
   /// Changes the password of the logged-in user (the owner comes from the login token). The server answers 400 with a
-  /// readable message when [currentPassword] is wrong or [newPassword] breaks the policy, and revokes the access token
-  /// that made the call: the next request gets a 401 and the interceptor renews the token with the stored refresh token.
+  /// readable message when [currentPassword] is wrong or [newPassword] breaks the policy. A change ends every session of
+  /// the account on every device, this one included, and hands back a new token pair: it is stored at once, so that
+  /// this device stays signed in.
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
-    await _dio.put(
-      '/api/auth/change-password',
+    final res = await _dio.put(
+      _changePasswordPath,
       data: {'oldPassword': currentPassword, 'newPassword': newPassword},
     );
+    final pair = _tokenPairOf(res.data);
+    if (pair == null) {
+      // The password has changed all the same; without a new pair the next request finds the session ended.
+      debugPrint(
+        'RemoteApiHelper: the change-password answer carries no token pair.',
+      );
+      return;
+    }
+    await SessionService.setTokens(pair.token, pair.refreshToken);
   }
 
   /// Longest the app waits for the server to revoke the tokens: signing out must not hang on a bad network.
@@ -470,7 +620,7 @@ class RemoteApiHelper {
     final refreshToken = SessionService.currentRefreshToken;
     try {
       await _dio
-          .post('/api/auth/logout', data: {'refreshToken': ?refreshToken})
+          .post(_logoutPath, data: {'refreshToken': ?refreshToken})
           .timeout(_logoutTimeout);
     } on DioException catch (e) {
       debugPrint(

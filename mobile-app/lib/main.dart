@@ -18,6 +18,10 @@ import 'package:finance_ai_app/core/constants/transaction_categories.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+/// Lets code without a BuildContext (the 401 interceptor of RemoteApiHelper) show a SnackBar on whatever screen is up.
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await configureDependencies();
@@ -110,6 +114,7 @@ class _DonutPayMaterialApp extends StatelessWidget {
             selector: (state) => state.language,
             builder: (context, language) => MaterialApp(
               navigatorKey: navigatorKey,
+              scaffoldMessengerKey: scaffoldMessengerKey,
               title: 'Donut Pay',
               debugShowCheckedModeBanner: false,
               theme: AppTheme.lightTheme,

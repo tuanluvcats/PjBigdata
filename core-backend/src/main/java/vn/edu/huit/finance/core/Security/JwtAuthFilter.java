@@ -1,5 +1,7 @@
 package vn.edu.huit.finance.core.Security;
 
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -7,7 +9,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,11 +23,19 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
+/**
+ * Turns the bearer token of an API request into the authenticated caller. It never answers a request itself: a token it
+ * cannot use (expired, bad signature, not a JWT, a refresh token, no type or no credentials version, revoked, issued
+ * before the last password change, account gone or locked) leaves the request anonymous, with the reason recorded as a
+ * {@link TokenRejection}. A public endpoint serves it like any anonymous request; on a protected one Spring Security's
+ * {@link JsonAuthenticationEntryPoint} answers with the JSON 401 (403 for a locked account).
+ */
 @Slf4j
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-    private static final String MSG_TOKEN_REVOKED = "Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.";
+    // The last action time is written at most once per this many minutes per user.
+    private static final long LAST_ACTION_UPDATE_INTERVAL_MINUTES = 5;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -48,57 +57,87 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String token = BearerToken.extract(request.getHeader(HttpHeaders.AUTHORIZATION)).orElse(null);
-        String username = null;
-
-        if (token != null) {
-            try {
-                username = jwtUtil.extractUsername(token);
-            } catch (Exception e) {
-                System.out.println("Báo động: Token không hợp lệ hoặc đã hết hạn!");
-            }
-        }
-
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            if (jwtUtil.validateToken(token)) {
-                // Signed and not expired, but revoked by a logout or a password change: 401, not the 403 of an unknown token.
-                if (tokenBlacklistService.isRevoked(token)) {
-                    log.warn("Rejected a revoked token, username={}", username);
-                    response.sendError(HttpStatus.UNAUTHORIZED.value(), MSG_TOKEN_REVOKED);
-                    return;
-                }
-                try {
-                    User user = userDetailsService.loadApplicationUser(username);
-                    if (!user.isActive() || "ROLE_LOCKED".equals(user.getRole())) {
-                        response.sendError(HttpStatus.FORBIDDEN.value(), "Account is locked");
-                        return;
-                    }
-
-                    org.springframework.security.core.userdetails.UserDetails userDetails =
-                            userDetailsService.loadUserByUsername(username);
-
-                    UsernamePasswordAuthenticationToken authToken =
-                            new UsernamePasswordAuthenticationToken(
-                                    userDetails,
-                                    null,
-                                    userDetails.getAuthorities()
-                            );
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                    
-                    // 🔥 FIX CHÍ MẠNG: Chỉ lưu Database nếu lần tương tác cuối đã quá 5 phút
-                    LocalDateTime now = LocalDateTime.now();
-                    if (user.getLastActionTime() == null || Duration.between(user.getLastActionTime(), now).toMinutes() > 5) {
-                        user.setLastActionTime(now);
-                        userRepository.save(user);
-                    }
-                    
-                } catch (AuthenticationException e) {
-                    response.sendError(HttpStatus.UNAUTHORIZED.value(), e.getMessage());
-                    return;
-                }
-            }
+        if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            authenticate(request, token);
         }
         filterChain.doFilter(request, response);
+    }
+
+    /** Authenticates the caller of a usable access token; any other token is rejected and the request stays anonymous. */
+    private void authenticate(HttpServletRequest request, String token) {
+        TokenClaims claims;
+        try {
+            // Signature, expiry, type ACCESS and a credentials version, all from one parse of the token.
+            claims = jwtUtil.parse(token, TokenType.ACCESS);
+        } catch (ExpiredJwtException e) {
+            reject(request, TokenRejection.EXPIRED);
+            return;
+        } catch (JwtException | IllegalArgumentException e) {
+            // Only the kind of failure is logged: the message could quote the token.
+            log.debug("Access token refused by the parser: {}", e.getClass().getSimpleName());
+            reject(request, TokenRejection.INVALID);
+            return;
+        }
+        // Signed, not expired and an access token, but revoked by a logout or a password change.
+        if (tokenBlacklistService.isRevoked(token)) {
+            log.warn("A revoked access token was presented");
+            reject(request, TokenRejection.REVOKED);
+            return;
+        }
+        try {
+            User user = userDetailsService.loadApplicationUser(claims.subject());
+            if (!user.hasCredentialsVersion(claims.credentialsVersion())) {
+                log.warn("Token issued before the last password change, userId={}", user.getId());
+                reject(request, TokenRejection.OUTDATED);
+                return;
+            }
+            if (CustomUserDetailsService.isLocked(user)) {
+                log.warn("Token of a locked account, userId={}", user.getId());
+                reject(request, TokenRejection.ACCOUNT_LOCKED);
+                return;
+            }
+
+            org.springframework.security.core.userdetails.UserDetails userDetails =
+                    userDetailsService.loadUserByUsername(claims.subject());
+
+            UsernamePasswordAuthenticationToken authToken =
+                    new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,
+                            userDetails.getAuthorities()
+                    );
+            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+            SecurityContextHolder.getContext().setAuthentication(authToken);
+            recordActivity(user);
+        } catch (AuthenticationException e) {
+            // The account is gone. Not e.getMessage(), which names the account.
+            log.debug("Token of an account that cannot be loaded: {}", e.getClass().getSimpleName());
+            reject(request, TokenRejection.INVALID);
+        }
+    }
+
+    /** No caller for this request; the reason is left for the entry point in case the URL turns out to be protected. */
+    private void reject(HttpServletRequest request, TokenRejection rejection) {
+        SecurityContextHolder.clearContext();
+        request.setAttribute(TokenRejection.REQUEST_ATTRIBUTE, rejection);
+        log.debug("Bearer token not accepted ({}), the request goes on anonymously", rejection);
+    }
+
+    /**
+     * One UPDATE of last_action_time only, never a save of the user: the copy read above may already be stale, and saving
+     * it would write its old balance and profile over what another request has committed meanwhile.
+     */
+    private void recordActivity(User user) {
+        // 🔥 FIX CHÍ MẠNG: Chỉ lưu Database nếu lần tương tác cuối đã quá 5 phút
+        LocalDateTime now = LocalDateTime.now();
+        if (user.getLastActionTime() != null
+                && Duration.between(user.getLastActionTime(), now).toMinutes() <= LAST_ACTION_UPDATE_INTERVAL_MINUTES) {
+            return;
+        }
+        if (userRepository.updateLastActionTime(user.getId(), now) == 0) {
+            // Deleted since it was loaded: nothing to record, and the endpoint decides what that means for the request.
+            log.debug("Last action time not recorded, the account is gone: userId={}", user.getId());
+        }
     }
 }

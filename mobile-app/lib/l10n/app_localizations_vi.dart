@@ -86,4 +86,8 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get notificationTypeOther => 'Thông báo';
+
+  @override
+  String get sessionEnded =>
+      'Phiên đăng nhập đã kết thúc, có thể do mật khẩu vừa được thay đổi. Vui lòng đăng nhập lại.';
 }
