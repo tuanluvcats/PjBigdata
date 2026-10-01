@@ -6,6 +6,7 @@ import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -14,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
 import vn.edu.huit.finance.core.Dto.ChangePasswordRequestDto;
+import vn.edu.huit.finance.core.Dto.RegisterRequestDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.CredentialsChangeConflictException;
 import vn.edu.huit.finance.core.Exception.InvalidOtpException;
@@ -24,29 +27,49 @@ import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
 import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtUtil;
+import vn.edu.huit.finance.core.Security.Roles;
 import vn.edu.huit.finance.core.Security.TokenClaims;
 import vn.edu.huit.finance.core.Security.TokenType;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
+import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Accounts and their credentials: registration, password change and reset, logout and token refresh. Every change of an
+ * account or of its sessions is recorded in action_logs inside its own transaction (AuditLogService.record): the password
+ * is written by a bulk UPDATE, which Envers never sees, so these rows are its audit trail. Every refusal (a wrong old
+ * password, a wrong OTP, a refused refresh token) is recorded too, as a SecurityAuditEvent written on its own, so that it
+ * stays although the transaction of the refused request rolls back. Descriptions are fixed texts: never a password, a
+ * hash, an OTP or a token.
+ */
 @Slf4j
 @Service
 public class AuthService {
 
-    // The password is written by a bulk UPDATE, which Envers never sees: these action_logs rows are its audit trail.
-    // Descriptions are fixed texts: never a password, hash, OTP or token.
-    private static final String AUDIT_ACTION_CHANGE_PASSWORD = "PASSWORD_CHANGED";
-    private static final String AUDIT_DESC_CHANGE_PASSWORD = "Người dùng đổi mật khẩu thành công";
-    private static final String AUDIT_ACTION_RESET_PASSWORD = "PASSWORD_RESET";
-    private static final String AUDIT_DESC_RESET_PASSWORD = "Người dùng đặt lại mật khẩu bằng mã OTP";
-    private static final String AUDIT_ACTION_LOGOUT = "LOGOUT";
-    private static final String AUDIT_DESC_LOGOUT = "Người dùng đăng xuất";
+    private static final String AUDIT_DESC_REGISTERED = "Người dùng tự đăng ký tài khoản qua App Mobile";
+    private static final String AUDIT_DESC_SOCIAL_REGISTERED = "Tài khoản được tạo khi đăng nhập lần đầu qua %s";
+    private static final String AUDIT_DESC_CHANGE_PASSWORD = "Người dùng đổi mật khẩu; mọi phiên đăng nhập cũ đã kết thúc";
+    private static final String AUDIT_DESC_CHANGE_PASSWORD_REJECTED = "Đổi mật khẩu bị từ chối: mật khẩu cũ không đúng";
+    private static final String AUDIT_DESC_RESET_REQUESTED = "Đã gửi mã OTP đặt lại mật khẩu qua email";
+    private static final String AUDIT_DESC_RESET_UNKNOWN_EMAIL = "Yêu cầu mã OTP cho một email không có tài khoản";
+    private static final String AUDIT_DESC_RESET_REJECTED = "Đặt lại mật khẩu bị từ chối: %s";
+    private static final String AUDIT_DESC_RESET_PASSWORD = "Người dùng đặt lại mật khẩu bằng mã OTP; mọi phiên đăng nhập cũ đã kết thúc";
+    private static final String AUDIT_DESC_LOGOUT = "Người dùng đăng xuất; token của phiên đã bị thu hồi";
+    private static final String AUDIT_DESC_REFRESH_REJECTED = "Làm mới phiên đăng nhập bị từ chối: %s";
+    private static final String MSG_EMAIL_NOT_REGISTERED = "Email không tồn tại trong hệ thống";
     private static final String MSG_OLD_PASSWORD_INCORRECT = "Mật khẩu cũ không chính xác";
     private static final String MSG_NEW_PASSWORD_SAME_AS_OLD = "Mật khẩu mới phải khác mật khẩu cũ";
     // One answer for every refused refresh, so a caller cannot tell which check its token failed.
@@ -56,6 +79,27 @@ public class AuthService {
             "Mật khẩu vừa được thay đổi bởi một yêu cầu khác. Vui lòng thử lại.";
     // The one row of the user: anything else means the guarded UPDATE did not apply.
     private static final int ROWS_OF_ONE_USER = 1;
+    // The prefix of the unique placeholder phone of an account created by a social sign-in ("GO_...", "FA_...").
+    private static final int SOCIAL_PHONE_PREFIX_LENGTH = 2;
+    private static final String SOCIAL_PHONE_FORMAT = "%s_%s";
+
+    /** Why a refresh token was refused: the text for the server log, and the one for the audit row. */
+    private enum RefreshRefusal {
+        NO_TOKEN("no token", "không có refresh token"),
+        UNUSABLE_TOKEN("unusable token", "token không dùng được (sai chữ ký, hết hạn hoặc không phải refresh token)"),
+        UNKNOWN_SUBJECT("unknown subject", "tài khoản của token không còn tồn tại"),
+        ACCOUNT_LOCKED("account locked", "tài khoản đã bị khóa"),
+        REVOKED("token already used or revoked", "token đã được dùng hoặc đã bị thu hồi"),
+        OUTDATED("token issued before the last password change", "token được cấp trước lần đổi mật khẩu gần nhất");
+
+        private final String logReason;
+        private final String auditReason;
+
+        RefreshRefusal(String logReason, String auditReason) {
+            this.logReason = logReason;
+            this.auditReason = auditReason;
+        }
+    }
 
     private static final int OTP_LENGTH = 6;
     private static final String OTP_FORMAT = "%0" + OTP_LENGTH + "d";
@@ -95,6 +139,9 @@ public class AuthService {
     @Autowired
     private CustomUserDetailsService userDetailsService;
 
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -120,9 +167,58 @@ public class AuthService {
     private Clock clock = Clock.systemUTC();
     private SecureRandom secureRandom = new SecureRandom();
 
+    /**
+     * Stores an account the caller registered for themselves, with its USER_CREATED audit row, in one transaction: the
+     * client chose its username, email, phone and password and nothing else (role USER, an empty wallet). The caller
+     * checks first that the email and the username are free; the unique keys refuse a race between two registrations.
+     */
+    @Transactional
+    public User register(RegisterRequestDto request) {
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setEmail(request.getEmail());
+        user.setPhone(request.getPhone());
+        user.setRole(Roles.USER);
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+
+        User registered = userRepository.save(user);
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_CREATED));
+        auditLogService.record(AuditEntry.of(AuditAction.USER_CREATED, AuditActor.of(registered), registered.getId(),
+                AUDIT_DESC_REGISTERED));
+        log.info("Account registered, userId={}", registered.getId());
+        return registered;
+    }
+
+    /**
+     * Stores the account of a first sign-in through a social provider whose identity has been verified, with its
+     * USER_CREATED audit row, in one transaction. The password is random and never told to anybody (the account signs in
+     * through the provider); the phone is a unique placeholder.
+     */
+    @Transactional
+    public User registerSocialAccount(String email, String provider) {
+        String providerName = provider.toLowerCase(Locale.ROOT);
+        User user = new User();
+        user.setEmail(email);
+        user.setUsername(email);
+        user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+        user.setPhone(String.format(SOCIAL_PHONE_FORMAT,
+                providerName.substring(0, SOCIAL_PHONE_PREFIX_LENGTH).toUpperCase(Locale.ROOT), UUID.randomUUID()));
+        user.setRole(Roles.USER);
+
+        User registered = userRepository.save(user);
+        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_CREATED));
+        auditLogService.record(AuditEntry.of(AuditAction.USER_CREATED, AuditActor.of(registered), registered.getId(),
+                String.format(AUDIT_DESC_SOCIAL_REGISTERED, providerName)));
+        log.info("Account created by a social sign-in, userId={}, provider={}", registered.getId(), providerName);
+        return registered;
+    }
+
     public void generateAndSendOtp(String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Email không tồn tại trong hệ thống"));
+        Optional<User> account = userRepository.findByEmail(email);
+        if (account.isEmpty()) {
+            publishResetRefusal(email, null, AUDIT_DESC_RESET_UNKNOWN_EMAIL);
+            throw new RuntimeException(MSG_EMAIL_NOT_REGISTERED);
+        }
 
         String otp = String.format(OTP_FORMAT, secureRandom.nextInt(OTP_BOUND));
         // A new OTP replaces the pending one, so the old code stops working and the attempt counter starts over.
@@ -133,13 +229,17 @@ public class AuthService {
         message.setSubject(OTP_MAIL_SUBJECT);
         message.setText(String.format(OTP_MAIL_TEXT, otp, OTP_VALIDITY.toMinutes()));
         mailSender.send(message);
+
+        // The requester is not signed in: whoever asked only claims the email, the account is the target.
+        eventPublisher.publishEvent(SecurityAuditEvent.of(AuditAction.AUTH_PASSWORD_RESET_REQUESTED,
+                AuditActor.unauthenticated(email), account.get().getId(), AUDIT_DESC_RESET_REQUESTED));
     }
 
     /**
      * Sets the new password and ends every session of the account, on every device (credentials version + 1): whoever
      * knew the old password is locked out. No tokens are handed out, the client signs in again with the new password.
-     * The PASSWORD_RESET audit row is written in the same transaction, once the password is: all three commit together
-     * or not at all.
+     * The AUTH_PASSWORD_RESET audit row is written in the same transaction, once the password is: all three commit
+     * together or not at all. A refused OTP is recorded as AUTH_PASSWORD_RESET_REJECTED, on its own.
      */
     @Transactional
     public void verifyOtpAndResetPassword(String email, String otp, String newPassword) {
@@ -148,7 +248,8 @@ public class AuthService {
 
         User user = lockUser(userRepository.findByEmail(email).orElseThrow());
         replacePasswordAndEndAllSessions(user, newPassword);
-        auditLogService.logAction(user.getEmail(), AUDIT_ACTION_RESET_PASSWORD, AUDIT_DESC_RESET_PASSWORD);
+        auditLogService.record(AuditEntry.of(AuditAction.AUTH_PASSWORD_RESET, AuditActor.of(user), user.getId(),
+                AUDIT_DESC_RESET_PASSWORD));
 
         log.info("Password reset via OTP, userId={}, credentialsVersion={}", user.getId(), user.getCredentialsVersion());
     }
@@ -182,8 +283,15 @@ public class AuthService {
 
         if (rejection.get() != null) {
             log.warn("Password reset rejected: {}", rejection.get());
+            publishResetRefusal(email, null, String.format(AUDIT_DESC_RESET_REJECTED, rejection.get()));
             throw new InvalidOtpException(rejection.get());
         }
+    }
+
+    /** Whoever asked is not signed in and only claims the email; the account is the target when it is known. */
+    private void publishResetRefusal(String email, Long accountId, String description) {
+        eventPublisher.publishEvent(SecurityAuditEvent.of(AuditAction.AUTH_PASSWORD_RESET_REJECTED,
+                AuditActor.unauthenticated(email), accountId, description));
     }
 
     /**
@@ -191,8 +299,9 @@ public class AuthService {
      * The row is locked and read again first, so two changes at the same time queue up and the second one is checked
      * against the password the first one set. The credentials version goes up in the same transaction, which ends every
      * session opened with the old password on every device (the access token of this request also goes on the
-     * blacklist), and the caller gets a new token pair so that this device stays signed in. The PASSWORD_CHANGED audit
-     * row joins the same transaction: if it cannot be written, the new password is rolled back with it.
+     * blacklist), and the caller gets a new token pair so that this device stays signed in. The AUTH_PASSWORD_CHANGED
+     * audit row joins the same transaction: if it cannot be written, the new password is rolled back with it. A wrong old
+     * password is recorded (AUTH_PASSWORD_CHANGE_REJECTED, on its own): somebody holding a session may be guessing.
      */
     @Transactional
     public AuthTokenResponseDto changePassword(ChangePasswordRequestDto request, String accessToken) {
@@ -200,6 +309,8 @@ public class AuthService {
 
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
             log.warn("Change password rejected: wrong old password, userId={}", user.getId());
+            eventPublisher.publishEvent(SecurityAuditEvent.of(AuditAction.AUTH_PASSWORD_CHANGE_REJECTED,
+                    AuditActor.of(user), user.getId(), AUDIT_DESC_CHANGE_PASSWORD_REJECTED));
             throw new InvalidPasswordException(MSG_OLD_PASSWORD_INCORRECT);
         }
         if (request.getOldPassword().equals(request.getNewPassword())) {
@@ -210,7 +321,8 @@ public class AuthService {
         replacePasswordAndEndAllSessions(user, request.getNewPassword());
         tokenBlacklistService.revoke(accessToken);
 
-        auditLogService.logAction(user.getEmail(), AUDIT_ACTION_CHANGE_PASSWORD, AUDIT_DESC_CHANGE_PASSWORD);
+        auditLogService.record(AuditEntry.of(AuditAction.AUTH_PASSWORD_CHANGED, AuditActor.of(user), user.getId(),
+                AUDIT_DESC_CHANGE_PASSWORD));
         log.info("Password changed, userId={}, credentialsVersion={}", user.getId(), user.getCredentialsVersion());
         return issueTokens(user);
     }
@@ -228,7 +340,7 @@ public class AuthService {
             tokenBlacklistService.revokeIfValid(refreshToken);
         }
 
-        auditLogService.logAction(user.getEmail(), AUDIT_ACTION_LOGOUT, AUDIT_DESC_LOGOUT);
+        auditLogService.record(AuditEntry.of(AuditAction.AUTH_LOGOUT, AuditActor.of(user), user.getId(), AUDIT_DESC_LOGOUT));
         log.info("User logged out, userId={}", user.getId());
     }
 
@@ -239,7 +351,8 @@ public class AuthService {
      * read: two refreshes with the same token queue up on that lock, on one instance or several, and the second one reads
      * the blacklist only after the first has committed (then it gets 401) or rolled back (then it goes ahead). A locked
      * account, and a token issued for an older credentials version (the password changed since), are refused too.
-     * Nothing is issued unless the revocation has been written.
+     * Nothing is issued unless the revocation has been written. Every refusal is recorded (AUTH_TOKEN_REFRESH_REJECTED,
+     * written on its own: this transaction rolls back); a refresh that succeeds is not, it happens every few minutes.
      */
     @Transactional
     public AuthTokenResponseDto refresh(String refreshToken) {
@@ -247,13 +360,13 @@ public class AuthService {
         User user = lockUser(ownerOf(claims.subject()));
 
         if (CustomUserDetailsService.isLocked(user)) {
-            throw refreshRefused("account locked", user.getId());
+            throw refreshRefused(RefreshRefusal.ACCOUNT_LOCKED, null, claims.subject(), user.getId());
         }
         if (tokenBlacklistService.isRevoked(refreshToken)) {
-            throw refreshRefused("token already used or revoked", user.getId());
+            throw refreshRefused(RefreshRefusal.REVOKED, null, claims.subject(), user.getId());
         }
         if (!user.hasCredentialsVersion(claims.credentialsVersion())) {
-            throw refreshRefused("token issued before the last password change", user.getId());
+            throw refreshRefused(RefreshRefusal.OUTDATED, null, claims.subject(), user.getId());
         }
         tokenBlacklistService.revoke(refreshToken);
 
@@ -264,12 +377,12 @@ public class AuthService {
     /** What a usable refresh token says. Anything else (missing, garbage, expired, an access token...) is refused. */
     private TokenClaims verifiedRefreshToken(String refreshToken) {
         if (refreshToken == null || refreshToken.isBlank()) {
-            throw refreshRefused("no token", null);
+            throw refreshRefused(RefreshRefusal.NO_TOKEN, null, null, null);
         }
         try {
             return jwtUtil.parse(refreshToken, TokenType.REFRESH);
         } catch (JwtException | IllegalArgumentException e) {
-            throw refreshRefused("unusable token (" + e.getClass().getSimpleName() + ")", null);
+            throw refreshRefused(RefreshRefusal.UNUSABLE_TOKEN, e.getClass().getSimpleName(), null, null);
         }
     }
 
@@ -278,12 +391,20 @@ public class AuthService {
         try {
             return userDetailsService.loadApplicationUser(subject);
         } catch (UsernameNotFoundException e) {
-            throw refreshRefused("unknown subject", null);
+            throw refreshRefused(RefreshRefusal.UNKNOWN_SUBJECT, null, subject, null);
         }
     }
 
-    private InvalidTokenException refreshRefused(String reason, Long userId) {
-        log.warn("Refresh refused: {}, userId={}", reason, userId);
+    /**
+     * Logs and records a refused refresh and returns the one answer every refusal gets. The caller is not signed in:
+     * the row names the subject of the token (signed by this application) only as the identity claimed, and the account
+     * as the target when it was found. {@code detail} names the kind of an unusable token, never its content.
+     */
+    private InvalidTokenException refreshRefused(RefreshRefusal refusal, String detail, String subject, Long userId) {
+        String reason = detail == null ? refusal.auditReason : refusal.auditReason + " (" + detail + ")";
+        log.warn("Refresh refused: {}{}, userId={}", refusal.logReason, detail == null ? "" : " (" + detail + ")", userId);
+        eventPublisher.publishEvent(SecurityAuditEvent.of(AuditAction.AUTH_TOKEN_REFRESH_REJECTED,
+                AuditActor.unauthenticated(subject), userId, String.format(AUDIT_DESC_REFRESH_REJECTED, reason)));
         return new InvalidTokenException(MSG_REFRESH_TOKEN_INVALID);
     }
 

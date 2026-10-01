@@ -18,6 +18,7 @@ import vn.edu.huit.finance.core.Dto.ReceiptAttemptResponseDto;
 import vn.edu.huit.finance.core.Dto.ReceiptResponseDto;
 import vn.edu.huit.finance.core.Dto.ReceiptRetryRequestDto;
 import vn.edu.huit.finance.core.Dto.ReceiptUpdateRequestDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Entity.ReceiptErrorCode;
 import vn.edu.huit.finance.core.Entity.ReceiptProcessingAttempt;
@@ -29,6 +30,8 @@ import vn.edu.huit.finance.core.Exception.TransactionAccessDeniedException;
 import vn.edu.huit.finance.core.Repository.ReceiptProcessingAttemptRepository;
 import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
@@ -46,8 +49,6 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.AdditionalAnswers.returnsFirstArg;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -118,6 +119,22 @@ class ReceiptProcessingServiceTest {
     private static void assertMoney(String expected, BigDecimal actual) {
         assertNotNull(actual, "expected " + expected + " but was null");
         assertEquals(0, new BigDecimal(expected).compareTo(actual), "expected " + expected + " but was " + actual);
+    }
+
+    /** Every row the service recorded in the transaction of the change, in order. */
+    private List<AuditEntry> recordedEntries() {
+        ArgumentCaptor<AuditEntry> entries = ArgumentCaptor.forClass(AuditEntry.class);
+        verify(auditLogService, atLeastOnce()).record(entries.capture());
+        return entries.getAllValues();
+    }
+
+    /** What the AI answered never becomes part of a row, nor anything the client wrote. */
+    private static void assertNoneContains(List<AuditEntry> entries, String... texts) {
+        for (AuditEntry entry : entries) {
+            for (String text : texts) {
+                assertFalse(entry.description().contains(text), entry.action() + " must not contain " + text);
+            }
+        }
     }
 
     // ------------------------------------------------------------------------------------------------------- feedback
@@ -256,13 +273,27 @@ class ReceiptProcessingServiceTest {
     }
 
     @Test
+    void feedbackIsRecordedWithTheOwnerAndTheAmountTheAdministratorWillApprove() {
+        signedInAsAlice();
+        repositoryHolds(receipt("FAILED", transactionOf(alice)));
+
+        service.submitFeedback(RECEIPT_ID, new BigDecimal("150000"));
+
+        AuditEntry entry = recordedEntries().get(0);
+        assertEquals(AuditAction.RECEIPT_FEEDBACK_SUBMITTED, entry.action());
+        assertEquals(AuditActor.of(alice), entry.actor());
+        assertEquals(RECEIPT_ID, entry.targetId());
+        assertEquals("Gửi số tiền đề nghị 150000.00 VNĐ để quản trị viên duyệt: FAILED → WAITING_FOR_REVIEW", entry.description());
+    }
+
+    @Test
     void refusedFeedbackReportsNothing() {
         signedInAsAlice();
         repositoryHolds(receipt("FAILED", transactionOf(bob)));
 
         assertThrows(TransactionAccessDeniedException.class, () -> service.submitFeedback(RECEIPT_ID, new BigDecimal("150000")));
 
-        verifyNoInteractions(eventPublisher);
+        verifyNoInteractions(eventPublisher, auditLogService);
     }
 
     // ------------------------------------------------------------------------------------------ rejection (administrators)
@@ -319,6 +350,29 @@ class ReceiptProcessingServiceTest {
         service.rejectReceipt(RECEIPT_ID);
 
         verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, BOB_ID));
+    }
+
+    @Test
+    void aRejectionIsRecordedWithTheAdministratorWhoCalledAsActorAndTheOwnerOnlyNamed() {
+        repositoryHolds(receipt("WAITING_FOR_REVIEW", transactionOf(bob)));
+
+        service.rejectReceipt(RECEIPT_ID);
+
+        AuditEntry entry = recordedEntries().get(0);
+        assertEquals(AuditAction.RECEIPT_REJECTED, entry.action());
+        // Never the owner as actor: the administrator is the caller of the request, looked up when the row is written.
+        assertEquals(AuditActor.currentCaller(), entry.actor());
+        assertEquals(RECEIPT_ID, entry.targetId());
+        assertEquals("Từ chối hóa đơn: WAITING_FOR_REVIEW → FAILED (REJECTED_BY_ADMIN), chủ sở hữu #2", entry.description());
+    }
+
+    @Test
+    void rejectingAReceiptThatIsFailedAlreadyRecordsNothing() {
+        repositoryHolds(receipt("FAILED", transactionOf(alice)));
+
+        service.rejectReceipt(RECEIPT_ID);
+
+        verifyNoInteractions(auditLogService);
     }
 
     @Test
@@ -389,6 +443,39 @@ class ReceiptProcessingServiceTest {
         assertNotNull(first.getCompletedAt());
         // Nothing is saved here: the transaction is saved by its caller and cascades to the receipt and the attempt.
         verifyNoInteractions(receiptRepo, attemptRepo);
+    }
+
+    @Test
+    void aSavedReceiptOfACheckoutIsRecordedAsCreatedWithTheOutcomeOfItsFirstReadingAndNotWhatTheAiAnswered() {
+        Transaction transaction = transactionOf(alice);
+        service.attachReceipt(transaction, FULL_SCAN, null);
+        transaction.getReceipt().setId(RECEIPT_ID);
+
+        service.recordAttachedReceipt(transaction.getReceipt(), AuditActor.of(alice));
+
+        List<AuditEntry> entries = recordedEntries();
+        assertEquals(List.of(AuditAction.RECEIPT_CREATED, AuditAction.RECEIPT_PROCESSING_SUCCEEDED),
+                entries.stream().map(AuditEntry::action).toList());
+        entries.forEach(entry -> {
+            assertEquals(AuditActor.of(alice), entry.actor());
+            assertEquals(RECEIPT_ID, entry.targetId());
+        });
+        assertEquals("Hóa đơn mới của giao dịch #100", entries.get(0).description());
+        assertNoneContains(entries, FULL_SCAN, "Bách Hóa Xanh", "Nguyễn Trãi", "245");
+    }
+
+    @Test
+    void aCheckoutReadingWithoutTotalIsRecordedAsAFailedProcessingWithItsReason() {
+        Transaction transaction = transactionOf(alice);
+        service.attachReceipt(transaction, UNREADABLE_TOTAL, null);
+        transaction.getReceipt().setId(RECEIPT_ID);
+
+        service.recordAttachedReceipt(transaction.getReceipt(), AuditActor.system());
+
+        AuditEntry outcome = recordedEntries().get(1);
+        assertEquals(AuditAction.RECEIPT_PROCESSING_FAILED, outcome.action());
+        assertEquals(AuditActor.system(), outcome.actor());
+        assertEquals("Lần đọc #1: AI không đọc được tổng tiền (AI_NO_TOTAL), trạng thái FAILED", outcome.description());
     }
 
     @Test
@@ -706,7 +793,12 @@ class ReceiptProcessingServiceTest {
 
         service.editMyReceipt(RECEIPT_ID, fullEdit(VERSION));
 
-        verify(auditLogService).logAction(eq("user1@example.com"), eq("UPDATE_RECEIPT"), anyString());
+        AuditEntry entry = recordedEntries().get(0);
+        assertEquals(AuditAction.RECEIPT_UPDATED, entry.action());
+        assertEquals(AuditActor.of(alice), entry.actor());
+        assertEquals(RECEIPT_ID, entry.targetId());
+        assertEquals("Sửa hóa đơn (tên cửa hàng, tổng tiền, ngày trên hóa đơn): COMPLETED_RAW → EDITED, phiên bản 3",
+                entry.description());
         verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_CONTENT, ALICE_ID));
         verifyNoMoreInteractions(eventPublisher);
     }
@@ -819,6 +911,11 @@ class ReceiptProcessingServiceTest {
         assertEquals("FAILED", attempts.get(0).getStatus());
         assertEquals("AI_UNREADABLE", attempts.get(0).getErrorCode());
         assertEquals(stillUnreadable, attempts.get(0).getAiRawData());
+        List<AuditEntry> entries = recordedEntries();
+        assertEquals(List.of(AuditAction.RECEIPT_RETRIED, AuditAction.RECEIPT_PROCESSING_FAILED),
+                entries.stream().map(AuditEntry::action).toList());
+        assertEquals("Lần đọc #2: AI không đọc được tổng tiền (AI_UNREADABLE), trạng thái FAILED", entries.get(1).description());
+        assertNoneContains(entries, stillUnreadable, "noise");
     }
 
     @ParameterizedTest
@@ -1018,8 +1115,16 @@ class ReceiptProcessingServiceTest {
 
         service.retryMyReceipt(RECEIPT_ID, retry(NEW_SCAN, null));
 
-        verify(auditLogService).logAction("user1@example.com", "RETRY_RECEIPT",
-                "Đọc lại hóa đơn #7 (lần đọc 2), kết quả: COMPLETED_RAW");
+        List<AuditEntry> entries = recordedEntries();
+        assertEquals(List.of(AuditAction.RECEIPT_RETRIED, AuditAction.RECEIPT_PROCESSING_SUCCEEDED),
+                entries.stream().map(AuditEntry::action).toList());
+        entries.forEach(entry -> {
+            assertEquals(AuditActor.of(alice), entry.actor());
+            assertEquals(RECEIPT_ID, entry.targetId());
+        });
+        assertEquals("Đọc lại hóa đơn (lần đọc #2)", entries.get(0).description());
+        assertEquals("Lần đọc #2: AI đọc được tổng tiền, trạng thái COMPLETED_RAW", entries.get(1).description());
+        assertNoneContains(entries, NEW_SCAN, "Highlands Coffee");
         verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_CONTENT, ALICE_ID));
         verifyNoMoreInteractions(eventPublisher);
     }

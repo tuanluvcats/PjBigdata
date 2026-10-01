@@ -10,7 +10,6 @@ import vn.edu.huit.finance.core.Dto.UserResponseDto;
 import vn.edu.huit.finance.core.Dto.UserUpdateDto;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.UserRepository;
-import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.UserService;
 
 @RestController
@@ -22,9 +21,6 @@ public class UserController {
 
     @Autowired
     private UserService userService;
-    
-    @Autowired
-    private AuditLogService auditLogService;
 
     private User currentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -77,12 +73,8 @@ public class UserController {
         if (!current.getId().equals(id)) {
             throw new RuntimeException("Lỗi: Bạn không có quyền chỉnh sửa tài khoản của người khác!");
         }
+        // Recorded by UserService (USER_UPDATED) in the transaction of the update: no profile change without its row.
         User updatedUser = userService.updateOwnProfile(id, dto);
-        try {
-            auditLogService.logAction(updatedUser.getEmail(), "UPDATE_PROFILE", "Người dùng tự cập nhật thông tin cá nhân trên App");
-        } catch (Exception e) {
-            System.out.println("Lỗi ghi log: " + e.getMessage());
-        }
 
         ApiResponse<UserResponseDto> response = ApiResponse.<UserResponseDto>builder()
                 .code(200)

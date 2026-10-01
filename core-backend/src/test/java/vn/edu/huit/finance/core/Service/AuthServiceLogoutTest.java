@@ -6,18 +6,22 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.UserNotFoundException;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,6 +51,17 @@ class AuthServiceLogoutTest {
         user.setEmail(EMAIL);
     }
 
+    /** The AUTH_LOGOUT row, by the caller and about the caller's account, with no token in it. */
+    private void assertLogoutRecorded() {
+        ArgumentCaptor<AuditEntry> entry = ArgumentCaptor.forClass(AuditEntry.class);
+        verify(auditLogService).record(entry.capture());
+        assertEquals(AuditAction.AUTH_LOGOUT, entry.getValue().action());
+        assertEquals(AuditActor.of(user), entry.getValue().actor());
+        assertEquals(user.getId(), entry.getValue().targetId());
+        assertFalse(entry.getValue().description().contains(ACCESS_TOKEN));
+        assertFalse(entry.getValue().description().contains(REFRESH_TOKEN));
+    }
+
     @Test
     void logout_revokesTheAccessTokenAndTheRefreshToken_andAudits() {
         when(currentUserProvider.getCurrentUser()).thenReturn(user);
@@ -55,7 +70,7 @@ class AuthServiceLogoutTest {
 
         verify(tokenBlacklistService).revoke(ACCESS_TOKEN);
         verify(tokenBlacklistService).revokeIfValid(REFRESH_TOKEN);
-        verify(auditLogService).logAction(eq(EMAIL), eq("LOGOUT"), anyString());
+        assertLogoutRecorded();
     }
 
     @Test
@@ -78,7 +93,7 @@ class AuthServiceLogoutTest {
 
         verify(tokenBlacklistService).revoke(ACCESS_TOKEN);
         verify(tokenBlacklistService, never()).revokeIfValid(any());
-        verify(auditLogService).logAction(eq(EMAIL), eq("LOGOUT"), anyString());
+        assertLogoutRecorded();
     }
 
     @Test

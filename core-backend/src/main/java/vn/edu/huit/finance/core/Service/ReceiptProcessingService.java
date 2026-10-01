@@ -10,6 +10,7 @@ import vn.edu.huit.finance.core.Dto.ReceiptAttemptResponseDto;
 import vn.edu.huit.finance.core.Dto.ReceiptResponseDto;
 import vn.edu.huit.finance.core.Dto.ReceiptRetryRequestDto;
 import vn.edu.huit.finance.core.Dto.ReceiptUpdateRequestDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Entity.ReceiptErrorCode;
 import vn.edu.huit.finance.core.Entity.ReceiptProcessingAttempt;
@@ -22,6 +23,8 @@ import vn.edu.huit.finance.core.Exception.TransactionAccessDeniedException;
 import vn.edu.huit.finance.core.Repository.ReceiptProcessingAttemptRepository;
 import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
@@ -62,6 +65,10 @@ import java.util.Objects;
  * None of them creates a transaction or moves a wallet. Approving a receipt does move the wallet, so it lives next to the
  * wallet lock, in {@code TransactionService.approveReceipt} (which this class cannot call: {@code TransactionService}
  * already depends on it).
+ * <p>
+ * Every change is recorded in action_logs inside its own database transaction, with the caller (the owner, or the
+ * administrator who rejected) and the receipt: its creation, each reading of the AI (succeeded or failed, by attempt
+ * number), an edit, a retry, a feedback and a rejection. What the AI answered is never part of a row.
  */
 @Slf4j
 @Service
@@ -76,10 +83,19 @@ public class ReceiptProcessingService {
     private static final String MSG_RETRY_NOT_FAILED = "Chỉ có thể thử lại hóa đơn đang ở trạng thái lỗi (FAILED)";
     private static final String MSG_RECEIPT_CHANGED = "Hóa đơn vừa được thay đổi bởi một yêu cầu khác, vui lòng tải lại rồi thử lại";
     private static final String MSG_REJECT_NOT_ALLOWED = "Không thể từ chối hóa đơn đang được xử lý hoặc đã bị hủy";
-    private static final String ACTION_UPDATE_RECEIPT = "UPDATE_RECEIPT";
-    private static final String ACTION_RETRY_RECEIPT = "RETRY_RECEIPT";
-    private static final String AUDIT_EDITED = "Sửa thông tin hóa đơn #%d";
-    private static final String AUDIT_RETRIED = "Đọc lại hóa đơn #%d (lần đọc %d), kết quả: %s";
+    private static final String AUDIT_CREATED = "Hóa đơn mới của giao dịch #%d";
+    private static final String AUDIT_READING_SUCCEEDED = "Lần đọc #%d: AI đọc được tổng tiền, trạng thái %s";
+    private static final String AUDIT_READING_FAILED = "Lần đọc #%d: AI không đọc được tổng tiền (%s), trạng thái %s";
+    private static final String AUDIT_EDITED = "Sửa hóa đơn (%s): %s → %s, phiên bản %d";
+    private static final String AUDIT_FIELD_VENDOR = "tên cửa hàng";
+    private static final String AUDIT_FIELD_TOTAL = "tổng tiền";
+    private static final String AUDIT_FIELD_DATE = "ngày trên hóa đơn";
+    private static final String AUDIT_NO_FIELD_CHANGED = "không có trường nào thay đổi";
+    private static final String AUDIT_RETRIED = "Đọc lại hóa đơn (lần đọc #%d)";
+    private static final String AUDIT_FEEDBACK = "Gửi số tiền đề nghị %s VNĐ để quản trị viên duyệt: %s → %s";
+    private static final String AUDIT_REJECTED = "Từ chối hóa đơn: %s → %s (%s), %s";
+    private static final String AUDIT_OWNER = "chủ sở hữu #%d";
+    private static final String AUDIT_NO_OWNER = "không thuộc giao dịch nào";
     private static final int MONEY_SCALE = 2;
 
     @Autowired
@@ -128,6 +144,26 @@ public class ReceiptProcessingService {
                 receipt.getStatus(), receipt.getErrorCode(), ReceiptProcessingAttempt.FIRST_ATTEMPT_NUMBER);
     }
 
+    /**
+     * Records a receipt {@link #attachReceipt} built, once the checkout has saved it (it has an id only then), in the
+     * checkout's transaction: RECEIPT_CREATED, and the outcome of its first reading.
+     */
+    public void recordAttachedReceipt(Receipt receipt, AuditActor actor) {
+        auditLogService.record(AuditEntry.of(AuditAction.RECEIPT_CREATED, actor, receipt.getId(),
+                String.format(AUDIT_CREATED, receipt.getTransaction().getId())));
+        recordReadingOutcome(receipt, ReceiptProcessingAttempt.FIRST_ATTEMPT_NUMBER, actor);
+    }
+
+    /** RECEIPT_PROCESSING_SUCCEEDED or _FAILED for the reading just recorded: the attempt, the reason, the new status. */
+    private void recordReadingOutcome(Receipt receipt, int attemptNumber, AuditActor actor) {
+        boolean read = ReceiptStatus.COMPLETED_RAW.matches(receipt.getStatus());
+        AuditAction outcome = read ? AuditAction.RECEIPT_PROCESSING_SUCCEEDED : AuditAction.RECEIPT_PROCESSING_FAILED;
+        String description = read
+                ? String.format(AUDIT_READING_SUCCEEDED, attemptNumber, receipt.getStatus())
+                : String.format(AUDIT_READING_FAILED, attemptNumber, receipt.getErrorCode(), receipt.getStatus());
+        auditLogService.record(AuditEntry.of(outcome, actor, receipt.getId(), description));
+    }
+
     /** One of the caller's receipts, by its own id. */
     @Transactional(readOnly = true)
     public ReceiptResponseDto getMyReceipt(Long receiptId) {
@@ -171,13 +207,20 @@ public class ReceiptProcessingService {
         }
 
         String previousStatus = receipt.getStatus();
+        List<String> changedFields = new ArrayList<>();
         if (request.getVendorName() != null) {
-            receipt.setVendorName(request.getVendorName().isBlank() ? null : request.getVendorName().trim());
+            String vendorName = request.getVendorName().isBlank() ? null : request.getVendorName().trim();
+            addIfChanged(changedFields, AUDIT_FIELD_VENDOR, receipt.getVendorName(), vendorName);
+            receipt.setVendorName(vendorName);
         }
         if (total != null) {
+            if (receipt.getExtractedTotal() == null || receipt.getExtractedTotal().compareTo(total) != 0) {
+                changedFields.add(AUDIT_FIELD_TOTAL);
+            }
             receipt.setExtractedTotal(total);
         }
         if (date != null) {
+            addIfChanged(changedFields, AUDIT_FIELD_DATE, receipt.getExtractedDate(), date);
             receipt.setExtractedDate(date);
         }
         receipt.moveTo(ReceiptStatus.EDITED);
@@ -185,7 +228,9 @@ public class ReceiptProcessingService {
         // is reported, and the answer carries the version the row has after this edit.
         Receipt saved = receiptRepo.saveAndFlush(receipt);
 
-        auditLogService.logAction(caller.getEmail(), ACTION_UPDATE_RECEIPT, String.format(AUDIT_EDITED, receiptId));
+        auditLogService.record(AuditEntry.of(AuditAction.RECEIPT_UPDATED, AuditActor.of(caller), receiptId,
+                String.format(AUDIT_EDITED, changedFields.isEmpty() ? AUDIT_NO_FIELD_CHANGED : String.join(", ", changedFields),
+                        previousStatus, saved.getStatus(), saved.getVersion())));
         eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_CONTENT, caller.getId()));
         log.info("Receipt edited, userId={}, receiptId={}, status={} -> {}, version={}",
                 caller.getId(), receiptId, previousStatus, saved.getStatus(), saved.getVersion());
@@ -242,8 +287,10 @@ public class ReceiptProcessingService {
                 request.getRawReceiptData(), clientId));
         Receipt saved = receiptRepo.saveAndFlush(current);
 
-        auditLogService.logAction(caller.getEmail(), ACTION_RETRY_RECEIPT,
-                String.format(AUDIT_RETRIED, receiptId, attemptNumber, saved.getStatus()));
+        AuditActor actor = AuditActor.of(caller);
+        auditLogService.record(AuditEntry.of(AuditAction.RECEIPT_RETRIED, actor, receiptId,
+                String.format(AUDIT_RETRIED, attemptNumber)));
+        recordReadingOutcome(saved, attemptNumber, actor);
         eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_CONTENT, caller.getId()));
         log.info("Receipt retried, userId={}, receiptId={}, attempt={}, status={} -> {}, errorCode={}, version={}",
                 caller.getId(), receiptId, attemptNumber, ReceiptStatus.FAILED, saved.getStatus(),
@@ -269,6 +316,9 @@ public class ReceiptProcessingService {
         receipt.moveTo(ReceiptStatus.WAITING_FOR_REVIEW);
         receiptRepo.save(receipt);
         eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, caller.getId()));
+        // The amount is what the administrator will approve the wallet with, so it is part of the record.
+        auditLogService.record(AuditEntry.of(AuditAction.RECEIPT_FEEDBACK_SUBMITTED, AuditActor.of(caller), receiptId,
+                String.format(AUDIT_FEEDBACK, amount.toPlainString(), ReceiptStatus.FAILED, receipt.getStatus())));
         log.info("Receipt feedback received, userId={}, receiptId={}, status={} -> {}",
                 caller.getId(), receiptId, ReceiptStatus.FAILED, receipt.getStatus());
     }
@@ -302,6 +352,10 @@ public class ReceiptProcessingService {
         Transaction carrier = receipt.getTransaction();
         Long ownerId = carrier != null ? carrier.getUser().getId() : null;
         eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, ownerId));
+        // The administrator is the caller of this request, looked up when the row is written.
+        auditLogService.record(AuditEntry.of(AuditAction.RECEIPT_REJECTED, AuditActor.currentCaller(), receiptId,
+                String.format(AUDIT_REJECTED, previousStatus, receipt.getStatus(), receipt.getErrorCode(),
+                        ownerId != null ? String.format(AUDIT_OWNER, ownerId) : AUDIT_NO_OWNER)));
         log.info("Receipt rejected, receiptId={}, ownerId={}, status={} -> {}", receiptId, ownerId, previousStatus, receipt.getStatus());
     }
 
@@ -339,6 +393,12 @@ public class ReceiptProcessingService {
         ReceiptErrorCode reason = readNothing(extracted) ? ReceiptErrorCode.AI_UNREADABLE : ReceiptErrorCode.AI_NO_TOTAL;
         receipt.failWith(reason);
         return ReceiptProcessingAttempt.failed(receipt, attemptNumber, aiRawData, clientId, reason, endedAt);
+    }
+
+    private static void addIfChanged(List<String> changedFields, String field, Object before, Object after) {
+        if (!Objects.equals(before, after)) {
+            changedFields.add(field);
+        }
     }
 
     /** True when the answer held none of the fields of a receipt (the total is known to be missing already). */

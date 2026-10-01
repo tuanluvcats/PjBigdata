@@ -4,6 +4,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import vn.edu.huit.finance.core.Entity.AuditAction;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
@@ -14,10 +16,16 @@ import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Comparator;
 
+/**
+ * Backups and restores of the database through pg_dump / pg_restore, for administrators. Their effect lies outside the
+ * application's transactions, so each one that succeeded is recorded right after it as a SecurityAuditEvent (a row of its
+ * own, naming the administrator who called); a row that cannot be written is logged and does not undo the backup.
+ */
 @Service
 public class BackupService {
-    @Autowired
-    private AuditLogService auditLogService;
+    private static final String AUDIT_BACKUP = "Sao lưu cơ sở dữ liệu (loại: %s)";
+    private static final String AUDIT_RESTORE = "Phục hồi cơ sở dữ liệu từ file: %s";
+
     @Autowired
     private ApplicationEventPublisher eventPublisher;
 
@@ -68,7 +76,8 @@ public class BackupService {
             int exitCode = process.waitFor();
 
             if (exitCode == 0) {
-                auditLogService.logAction(getCurrentUser(), "CREATE_BACKUP", "Thực hiện sao lưu Database (Loại: " + type + ")");
+                eventPublisher.publishEvent(SecurityAuditEvent.ofCurrentCaller(AuditAction.SYSTEM_BACKUP_CREATED,
+                        String.format(AUDIT_BACKUP, type)));
             }
             return exitCode == 0;
         } catch (IOException | InterruptedException e) {
@@ -95,7 +104,9 @@ public class BackupService {
             int exitCode = process.waitFor();
 
             if (exitCode == 0) {
-                auditLogService.logAction(getCurrentUser(), "RESTORE_DB", "Phục hồi Database từ file: " + fileName);
+                // Written into the restored database, after pg_restore has replaced action_logs with the backup's.
+                eventPublisher.publishEvent(SecurityAuditEvent.ofCurrentCaller(AuditAction.SYSTEM_DATABASE_RESTORED,
+                        String.format(AUDIT_RESTORE, fileName)));
                 // Every cached statistic now describes data that is gone.
                 eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.DATABASE_RESTORED));
             }
@@ -121,10 +132,5 @@ public class BackupService {
         String fileName = latestBackup(type);
         if (fileName == null) return false;
         return restoreDatabase(fileName);
-    }
-
-    private String getCurrentUser() {
-        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        return (auth != null && auth.getName() != null) ? auth.getName() : "HỆ THỐNG";
     }
 }

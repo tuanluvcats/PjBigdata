@@ -1,34 +1,26 @@
 package vn.edu.huit.finance.core.Service;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.UserRepository;
-import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
-import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.util.Map;
-import java.util.UUID;
 
 @Service
 public class SocialAuthService {
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final ApplicationEventPublisher eventPublisher;
+    private final AuthService authService;
     private final RestClient http = RestClient.create();
 
     @Value("${app.google.web-client-id:}")
     private String googleWebClientId;
 
-    public SocialAuthService(UserRepository userRepository, PasswordEncoder passwordEncoder,
-                             ApplicationEventPublisher eventPublisher) {
+    public SocialAuthService(UserRepository userRepository, AuthService authService) {
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.eventPublisher = eventPublisher;
+        this.authService = authService;
     }
 
     public User authenticate(String provider, String token) {
@@ -86,18 +78,9 @@ public class SocialAuthService {
         }
     }
 
+    /** The account of a verified email; the first sign-in creates it (with its audit row, in its own transaction). */
     private User findOrCreate(String email, String name, String provider) {
-        return userRepository.findByEmail(email).orElseGet(() -> {
-            User u = new User();
-            u.setEmail(email);
-            u.setUsername(email);
-            u.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
-            u.setPhone(provider.substring(0, 2).toUpperCase() + "_" + UUID.randomUUID());
-            u.setRole("ROLE_USER");
-            User created = userRepository.save(u);
-            eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_CREATED));
-            return created;
-        });
+        return userRepository.findByEmail(email).orElseGet(() -> authService.registerSocialAccount(email, provider));
     }
 
     private static String str(Object o) {

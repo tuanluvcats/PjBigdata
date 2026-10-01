@@ -35,6 +35,7 @@ class UserServiceRoleTest {
     @Mock private UserRepository userRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private AuditLogService auditLogService;
     @InjectMocks private UserService service;
 
     private static User user(String role, boolean active) {
@@ -296,6 +297,8 @@ class UserServiceRoleTest {
 
     @Test
     void aNewAccountIsReportedForTheAdminFigures() {
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
         service.createUser(createDto("user"));
 
         verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_CREATED));

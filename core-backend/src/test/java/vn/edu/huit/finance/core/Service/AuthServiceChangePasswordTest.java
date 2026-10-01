@@ -9,6 +9,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -16,6 +17,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
 import vn.edu.huit.finance.core.Dto.ChangePasswordRequestDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.CredentialsChangeConflictException;
 import vn.edu.huit.finance.core.Exception.InvalidPasswordException;
@@ -25,6 +27,9 @@ import vn.edu.huit.finance.core.Security.CurrentUserProvider;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Security.TokenClaims;
 import vn.edu.huit.finance.core.Security.TokenType;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -55,6 +60,7 @@ class AuthServiceChangePasswordTest {
     @Mock private AuditLogService auditLogService;
     @Mock private TokenBlacklistService tokenBlacklistService;
     @Mock private EntityManager entityManager;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
     // Real: the tokens handed back are read to check the version they carry.
@@ -74,6 +80,7 @@ class AuthServiceChangePasswordTest {
         ReflectionTestUtils.setField(service, "tokenBlacklistService", tokenBlacklistService);
         ReflectionTestUtils.setField(service, "jwtUtil", jwtUtil);
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
+        ReflectionTestUtils.setField(service, "eventPublisher", eventPublisher);
 
         readBefore = alice(OLD_PASSWORD, VERSION_BEFORE);
         lockedRow = alice(OLD_PASSWORD, VERSION_BEFORE);
@@ -106,6 +113,20 @@ class AuthServiceChangePasswordTest {
         return hash.getValue();
     }
 
+    /** The one AUTH_PASSWORD_CHANGED row the change wrote in its transaction. */
+    private AuditEntry recordedEntry() {
+        ArgumentCaptor<AuditEntry> entry = ArgumentCaptor.forClass(AuditEntry.class);
+        verify(auditLogService).record(entry.capture());
+        return entry.getValue();
+    }
+
+    /** The refusal published for a wrong old password: a row of its own, so it stays although the change rolls back. */
+    private AuditEntry publishedRefusal() {
+        ArgumentCaptor<SecurityAuditEvent> event = ArgumentCaptor.forClass(SecurityAuditEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        return event.getValue().entry();
+    }
+
     private void assertNothingWritten() {
         verify(userRepository, never()).updatePasswordAndEndSessions(anyLong(), anyString(), anyInt());
         verify(userRepository, never()).save(any());
@@ -133,7 +154,11 @@ class AuthServiceChangePasswordTest {
         // The entity mirrors the row; it is never saved (neither column is updatable through it).
         assertEquals(stored, lockedRow.getPassword());
         verify(userRepository, never()).save(any());
-        verify(auditLogService).logAction(eq(EMAIL), eq("PASSWORD_CHANGED"), anyString());
+        AuditEntry entry = recordedEntry();
+        assertEquals(AuditAction.AUTH_PASSWORD_CHANGED, entry.action());
+        assertEquals(AuditActor.of(lockedRow), entry.actor(), "the caller, as the locked row names it");
+        assertEquals(USER_ID, entry.targetId());
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -146,11 +171,12 @@ class AuthServiceChangePasswordTest {
         // Envers never sees the bulk UPDATE, so this row is the audit trail; written once the UPDATE has applied.
         InOrder inOrder = inOrder(userRepository, auditLogService);
         inOrder.verify(userRepository).updatePasswordAndEndSessions(eq(USER_ID), anyString(), eq(VERSION_BEFORE));
-        ArgumentCaptor<String> description = ArgumentCaptor.forClass(String.class);
-        inOrder.verify(auditLogService).logAction(eq(EMAIL), eq("PASSWORD_CHANGED"), description.capture());
+        ArgumentCaptor<AuditEntry> entry = ArgumentCaptor.forClass(AuditEntry.class);
+        inOrder.verify(auditLogService).record(entry.capture());
+        assertEquals(AuditAction.AUTH_PASSWORD_CHANGED, entry.getValue().action());
         for (String secret : List.of(OLD_PASSWORD, NEW_PASSWORD, storedHash(), ACCESS_TOKEN, tokens.getToken(),
                 tokens.getRefreshToken())) {
-            assertFalse(description.getValue().contains(secret), "the audit row must not contain " + secret);
+            assertFalse(entry.getValue().description().contains(secret), "the audit row must not contain " + secret);
         }
     }
 
@@ -272,6 +298,13 @@ class AuthServiceChangePasswordTest {
         assertEquals(VERSION_BEFORE, lockedRow.getCredentialsVersion());
         assertNothingWritten();
         verifyNoInteractions(auditLogService, tokenBlacklistService);
+        // No success row; the refusal is recorded on its own, with the caller and without any password.
+        AuditEntry refusal = publishedRefusal();
+        assertEquals(AuditAction.AUTH_PASSWORD_CHANGE_REJECTED, refusal.action());
+        assertEquals(AuditActor.of(lockedRow), refusal.actor());
+        assertEquals(USER_ID, refusal.targetId());
+        assertFalse(refusal.description().contains("wrong-old"));
+        assertFalse(refusal.description().contains(NEW_PASSWORD));
     }
 
     @Test
@@ -283,7 +316,8 @@ class AuthServiceChangePasswordTest {
 
         assertEquals(hashBefore, lockedRow.getPassword());
         assertNothingWritten();
-        verifyNoInteractions(auditLogService, tokenBlacklistService);
+        // The old password was right: a new one equal to it is a mistake, not a guess, so nothing is recorded.
+        verifyNoInteractions(auditLogService, tokenBlacklistService, eventPublisher);
     }
 
     @Test

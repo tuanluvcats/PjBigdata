@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
@@ -15,8 +16,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Repository.UserRepository;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 
 import java.io.IOException;
@@ -36,6 +40,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     // The last action time is written at most once per this many minutes per user.
     private static final long LAST_ACTION_UPDATE_INTERVAL_MINUTES = 5;
+    // Which token was refused, and the method and path (never the query string) of the request that carried it.
+    private static final String AUDIT_TOKEN_REJECTED = "Access token bị từ chối (%s): %s %s";
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -45,6 +51,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private UserRepository userRepository;
     @Autowired
     private TokenBlacklistService tokenBlacklistService;
+    // Only a signed token that may no longer be used is recorded (AUTH_TOKEN_REJECTED): one that is expired, garbage or of
+    // the wrong type is routine (the app renews on 401) or can be sent by anybody, and would only flood the log.
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -82,6 +92,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (tokenBlacklistService.isRevoked(token)) {
             log.warn("A revoked access token was presented");
             reject(request, TokenRejection.REVOKED);
+            auditRejection(request, TokenRejection.REVOKED, claims.subject(), null);
             return;
         }
         try {
@@ -89,11 +100,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             if (!user.hasCredentialsVersion(claims.credentialsVersion())) {
                 log.warn("Token issued before the last password change, userId={}", user.getId());
                 reject(request, TokenRejection.OUTDATED);
+                auditRejection(request, TokenRejection.OUTDATED, claims.subject(), user.getId());
                 return;
             }
             if (CustomUserDetailsService.isLocked(user)) {
                 log.warn("Token of a locked account, userId={}", user.getId());
                 reject(request, TokenRejection.ACCOUNT_LOCKED);
+                auditRejection(request, TokenRejection.ACCOUNT_LOCKED, claims.subject(), user.getId());
                 return;
             }
 
@@ -122,6 +135,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         SecurityContextHolder.clearContext();
         request.setAttribute(TokenRejection.REQUEST_ATTRIBUTE, rejection);
         log.debug("Bearer token not accepted ({}), the request goes on anonymously", rejection);
+    }
+
+    /**
+     * The request is not the account's: whoever sent it only claims the token's subject (signed by us, so it names the
+     * account the token was issued to). The account is the target when it was loaded.
+     */
+    private void auditRejection(HttpServletRequest request, TokenRejection rejection, String subject, Long accountId) {
+        eventPublisher.publishEvent(SecurityAuditEvent.of(AuditAction.AUTH_TOKEN_REJECTED,
+                AuditActor.unauthenticated(subject), accountId,
+                String.format(AUDIT_TOKEN_REJECTED, rejection, request.getMethod(), request.getRequestURI())));
     }
 
     /**

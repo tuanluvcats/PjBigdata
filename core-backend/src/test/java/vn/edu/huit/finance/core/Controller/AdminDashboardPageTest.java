@@ -15,7 +15,6 @@ import vn.edu.huit.finance.core.Dto.LowBalanceUserDto;
 import vn.edu.huit.finance.core.Dto.MonthlyTransactionCountDto;
 import vn.edu.huit.finance.core.Dto.ReceiptStatusCountDto;
 import vn.edu.huit.finance.core.Dto.TopSpenderDto;
-import vn.edu.huit.finance.core.Repository.ActionLogRepository;
 import vn.edu.huit.finance.core.Repository.AppReviewRepository;
 import vn.edu.huit.finance.core.Repository.CampaignRepository;
 import vn.edu.huit.finance.core.Repository.CategoryRepository;
@@ -23,10 +22,13 @@ import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Repository.SubscriptionPlanRepository;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Service.AdminStatisticsService;
-import vn.edu.huit.finance.core.Service.AuditLogService;
+import vn.edu.huit.finance.core.Service.AppReviewService;
+import vn.edu.huit.finance.core.Service.AuditLogQueryService;
 import vn.edu.huit.finance.core.Service.BackupService;
+import vn.edu.huit.finance.core.Service.CategoryService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.ReceiptProcessingService;
+import vn.edu.huit.finance.core.Service.SubscriptionPlanService;
 import vn.edu.huit.finance.core.Service.TransactionService;
 import vn.edu.huit.finance.core.Service.UserService;
 
@@ -67,8 +69,10 @@ class AdminDashboardPageTest {
     @MockBean private TransactionService transactionService;
     @MockBean private EntityManager entityManager;
     @MockBean private SubscriptionPlanRepository subscriptionPlanRepository;
-    @MockBean private ActionLogRepository actionLogRepository;
-    @MockBean private AuditLogService auditLogService;
+    @MockBean private SubscriptionPlanService subscriptionPlanService;
+    @MockBean private CategoryService categoryService;
+    @MockBean private AppReviewService appReviewService;
+    @MockBean private AuditLogQueryService auditLogQueryService;
     @MockBean private LoginAttemptService loginAttemptService;
     @MockBean private AppReviewRepository appReviewRepository;
 

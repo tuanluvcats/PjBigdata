@@ -21,6 +21,7 @@ import vn.edu.huit.finance.core.Dto.ReceiptResponseDto;
 import vn.edu.huit.finance.core.Dto.ReceiptRetryRequestDto;
 import vn.edu.huit.finance.core.Dto.ReceiptUpdateRequestDto;
 import vn.edu.huit.finance.core.Dto.TransactionRequestDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.Category;
 import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Entity.ReceiptProcessingAttempt;
@@ -34,6 +35,7 @@ import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Repository.TransactionRepository;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
@@ -45,8 +47,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -256,6 +257,11 @@ class ReceiptWorkflowIntegrationTest {
         return request;
     }
 
+    /** Matches the audit entry of one action by one account, whatever else the entry says. */
+    private static AuditEntry entryOf(AuditAction action, Long actorId) {
+        return argThat(entry -> entry != null && entry.action() == action && actorId.equals(entry.actor().userId()));
+    }
+
     private static void assertMoney(String expected, BigDecimal actual) {
         assertNotNull(actual, "expected " + expected + " but was null");
         assertEquals(0, new BigDecimal(expected).compareTo(actual), "expected " + expected + " but was " + actual);
@@ -364,7 +370,7 @@ class ReceiptWorkflowIntegrationTest {
         assertEquals("12 Nguyễn Trãi, Quận 1", transaction.getLocation());
         assertMoney("800000", walletOf(aliceId));
         assertEquals(1, receiptRepository.count());
-        verify(auditLogService).logAction(eq("alice@example.com"), eq("UPDATE_RECEIPT"), anyString());
+        verify(auditLogService).record(entryOf(AuditAction.RECEIPT_UPDATED, aliceId));
     }
 
     @Test
@@ -399,7 +405,7 @@ class ReceiptWorkflowIntegrationTest {
         assertMoney("245000", receipt.getExtractedTotal());
         assertEquals(LocalDate.of(2026, 5, 27), receipt.getExtractedDate());
         assertEquals(List.of(), events.heard());
-        verify(auditLogService, never()).logAction(anyString(), eq("UPDATE_RECEIPT"), anyString());
+        verify(auditLogService, never()).record(entryOf(AuditAction.RECEIPT_UPDATED, aliceId));
     }
 
     @Test
@@ -452,7 +458,7 @@ class ReceiptWorkflowIntegrationTest {
         assertEquals(CLIENT_DATE, transaction.getTransactionDate());
         assertEquals(CLIENT_LOCATION, transaction.getLocation());
         assertMoney("910000", walletOf(aliceId));
-        verify(auditLogService).logAction(eq("alice@example.com"), eq("RETRY_RECEIPT"), anyString());
+        verify(auditLogService).record(entryOf(AuditAction.RECEIPT_RETRIED, aliceId));
     }
 
     @Test
@@ -513,7 +519,7 @@ class ReceiptWorkflowIntegrationTest {
                 "select client_id from receipt_processing_attempts where receipt_id = ? and attempt_number = 2", String.class, receiptId));
         verify(ocrService, times(1)).extract(NEW_SCAN);
         verify(receiptRepository, times(1)).claimFailedForRetry(any(), any());
-        verify(auditLogService, times(1)).logAction(anyString(), eq("RETRY_RECEIPT"), anyString());
+        verify(auditLogService, times(1)).record(entryOf(AuditAction.RECEIPT_RETRIED, aliceId));
         assertEquals(List.of(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_CONTENT, aliceId)), events.heard());
         assertEquals(1, receiptRepository.count());
         assertNothingOfTheMoneyMoved(transactionId, "90000", "910000");
@@ -592,7 +598,7 @@ class ReceiptWorkflowIntegrationTest {
     void anEditThatFailsAfterItWasWrittenIsRolledBackWithItsAuditEntry() {
         Long receiptId = readReceiptOfAlice();
         events.forget();
-        doThrow(new IllegalStateException("audit log went away")).when(auditLogService).logAction(anyString(), anyString(), anyString());
+        doThrow(new IllegalStateException("audit log went away")).when(auditLogService).record(any(AuditEntry.class));
 
         assertThrows(IllegalStateException.class,
                 () -> receiptService.editMyReceipt(receiptId, edit(0L, "Bách Hóa Xanh Q1", "250000", null)));

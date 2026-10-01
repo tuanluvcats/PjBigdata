@@ -15,14 +15,17 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.InvalidTokenException;
 import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
@@ -30,6 +33,9 @@ import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Security.Roles;
 import vn.edu.huit.finance.core.Security.TokenClaims;
 import vn.edu.huit.finance.core.Security.TokenType;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 
 import java.util.stream.Stream;
 
@@ -57,6 +63,7 @@ class AuthServiceRefreshTest {
     @Mock private CustomUserDetailsService userDetailsService;
     @Mock private TokenBlacklistService tokenBlacklistService;
     @Mock private EntityManager entityManager;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private AuthService service;
     // The copy read before the lock was asked for, and the row as the lock hands it over.
@@ -70,6 +77,7 @@ class AuthServiceRefreshTest {
         ReflectionTestUtils.setField(service, "userDetailsService", userDetailsService);
         ReflectionTestUtils.setField(service, "tokenBlacklistService", tokenBlacklistService);
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
+        ReflectionTestUtils.setField(service, "eventPublisher", eventPublisher);
 
         readBefore = alice(CURRENT_VERSION);
         lockedRow = alice(CURRENT_VERSION);
@@ -91,13 +99,30 @@ class AuthServiceRefreshTest {
         when(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE)).thenReturn(lockedRow);
     }
 
-    private void assertRefusedAndNothingIssued() {
+    /** Refused with the one generic answer, nothing revoked or issued, and the refusal recorded once, on its own. */
+    private AuditEntry assertRefusedAndNothingIssued() {
         InvalidTokenException refused = assertThrows(InvalidTokenException.class, () -> service.refresh(REFRESH_TOKEN));
 
         assertEquals(REFUSED_MESSAGE, refused.getMessage());
         verify(tokenBlacklistService, never()).revoke(anyString());
         verify(jwtUtil, never()).generateToken(anyString(), anyInt());
         verify(jwtUtil, never()).generateRefreshToken(anyString(), anyInt());
+        return recordedRefusal();
+    }
+
+    private AuditEntry recordedRefusal() {
+        ArgumentCaptor<SecurityAuditEvent> event = ArgumentCaptor.forClass(SecurityAuditEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        AuditEntry entry = event.getValue().entry();
+        assertEquals(AuditAction.AUTH_TOKEN_REFRESH_REJECTED, entry.action());
+        assertFalse(entry.description().contains(REFRESH_TOKEN), "the token itself is never recorded");
+        return entry;
+    }
+
+    /** The caller is not signed in: the token's subject is only the identity claimed, the account is the target. */
+    private static void assertAboutAlicesAccount(AuditEntry refusal) {
+        assertEquals(AuditActor.unauthenticated(EMAIL), refusal.actor());
+        assertEquals(USER_ID, refusal.targetId());
     }
 
     @Test
@@ -118,6 +143,8 @@ class AuthServiceRefreshTest {
         inOrder.verify(tokenBlacklistService).revoke(REFRESH_TOKEN);
         inOrder.verify(jwtUtil).generateToken(EMAIL, CURRENT_VERSION);
         inOrder.verify(jwtUtil).generateRefreshToken(EMAIL, CURRENT_VERSION);
+        // A refresh that succeeds is not recorded: it happens every few minutes for every signed-in device.
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -126,7 +153,9 @@ class AuthServiceRefreshTest {
         lockedRow = alice(CURRENT_VERSION + 1);
         aSignedRefreshTokenOfAlice(CURRENT_VERSION);
 
-        assertRefusedAndNothingIssued();
+        AuditEntry refusal = assertRefusedAndNothingIssued();
+        assertAboutAlicesAccount(refusal);
+        assertTrue(refusal.description().contains("đổi mật khẩu"), refusal.description());
     }
 
     @Test
@@ -134,7 +163,9 @@ class AuthServiceRefreshTest {
         aSignedRefreshTokenOfAlice(CURRENT_VERSION);
         when(tokenBlacklistService.isRevoked(REFRESH_TOKEN)).thenReturn(true);
 
-        assertRefusedAndNothingIssued();
+        AuditEntry refusal = assertRefusedAndNothingIssued();
+        assertAboutAlicesAccount(refusal);
+        assertTrue(refusal.description().contains("thu hồi"), refusal.description());
     }
 
     // How JwtUtil.parse turns down each token that is not a usable refresh token.
@@ -154,8 +185,12 @@ class AuthServiceRefreshTest {
     void refresh_refusesATokenThatIsNotAUsableRefreshToken_withoutTouchingTheDatabase(String kind, RuntimeException refusal) {
         when(jwtUtil.parse(REFRESH_TOKEN, TokenType.REFRESH)).thenThrow(refusal);
 
-        assertRefusedAndNothingIssued();
+        AuditEntry recorded = assertRefusedAndNothingIssued();
         verifyNoInteractions(userDetailsService, entityManager, tokenBlacklistService);
+        // Nothing in an unusable token is trusted: nobody is named, no account is the target, only the kind of failure.
+        assertEquals(AuditActor.unauthenticated(null), recorded.actor());
+        assertNull(recorded.targetId());
+        assertTrue(recorded.description().contains(refusal.getClass().getSimpleName()), recorded.description());
     }
 
     @Test
@@ -163,8 +198,10 @@ class AuthServiceRefreshTest {
         when(jwtUtil.parse(REFRESH_TOKEN, TokenType.REFRESH)).thenReturn(new TokenClaims(EMAIL, CURRENT_VERSION));
         when(userDetailsService.loadApplicationUser(EMAIL)).thenThrow(new UsernameNotFoundException("gone"));
 
-        assertRefusedAndNothingIssued();
+        AuditEntry refusal = assertRefusedAndNothingIssued();
         verifyNoInteractions(entityManager);
+        assertEquals(AuditActor.unauthenticated(EMAIL), refusal.actor());
+        assertNull(refusal.targetId());
     }
 
     @Test
@@ -173,7 +210,7 @@ class AuthServiceRefreshTest {
         lockedRow.setActive(false);
         aSignedRefreshTokenOfAlice(CURRENT_VERSION);
 
-        assertRefusedAndNothingIssued();
+        assertAboutAlicesAccount(assertRefusedAndNothingIssued());
         verify(entityManager).find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE);
         verify(tokenBlacklistService, never()).isRevoked(anyString());
     }
@@ -183,7 +220,7 @@ class AuthServiceRefreshTest {
         lockedRow.setRole(Roles.LOCKED);
         aSignedRefreshTokenOfAlice(CURRENT_VERSION);
 
-        assertRefusedAndNothingIssued();
+        assertAboutAlicesAccount(assertRefusedAndNothingIssued());
         verify(tokenBlacklistService, never()).isRevoked(anyString());
     }
 
@@ -195,6 +232,7 @@ class AuthServiceRefreshTest {
 
         assertEquals(REFUSED_MESSAGE, refused.getMessage());
         verifyNoInteractions(jwtUtil, userDetailsService, entityManager, tokenBlacklistService);
+        assertEquals(AuditActor.unauthenticated(null), recordedRefusal().actor());
     }
 
     @Test

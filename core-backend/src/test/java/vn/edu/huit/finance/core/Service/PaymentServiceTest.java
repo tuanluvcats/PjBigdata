@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 import vn.edu.huit.finance.core.Dto.CreatePaymentRequestDto;
 import vn.edu.huit.finance.core.Dto.PaymentWebhookDto;
@@ -13,6 +14,9 @@ import vn.edu.huit.finance.core.Dto.TransactionRequestDto;
 import vn.edu.huit.finance.core.Entity.*;
 import vn.edu.huit.finance.core.Repository.PaymentOrderRepository;
 import vn.edu.huit.finance.core.Repository.UserRepository;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 import vn.edu.huit.finance.core.Service.Payment.PaymentGateway;
 import vn.edu.huit.finance.core.Service.Payment.PaymentGatewayRegistry;
 import vn.edu.huit.finance.core.Util.HmacUtil;
@@ -36,6 +40,8 @@ class PaymentServiceTest {
     @Mock private PaymentGatewayRegistry gateways;
     @Mock private PaymentGateway mockGateway;
     @Mock private TransactionService transactionService;
+    @Mock private AuditLogService auditLogService;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private PaymentService service;
 
@@ -46,14 +52,23 @@ class PaymentServiceTest {
         ReflectionTestUtils.setField(service, "userRepo", userRepo);
         ReflectionTestUtils.setField(service, "gateways", gateways);
         ReflectionTestUtils.setField(service, "transactionService", transactionService);
+        ReflectionTestUtils.setField(service, "auditLogService", auditLogService);
+        ReflectionTestUtils.setField(service, "eventPublisher", eventPublisher);
         ReflectionTestUtils.setField(service, "secret", SECRET);
     }
 
     private User user(String balance) {
         User u = new User();
         u.setId(USER_ID);
+        u.setEmail("alice@example.com");
         u.setWalletBalance(new BigDecimal(balance));
         return u;
+    }
+
+    private AuditEntry recorded() {
+        ArgumentCaptor<AuditEntry> entry = ArgumentCaptor.forClass(AuditEntry.class);
+        verify(auditLogService).record(entry.capture());
+        return entry.getValue();
     }
 
     private CreatePaymentRequestDto req(String type, String amount, String provider) {
@@ -83,6 +98,13 @@ class PaymentServiceTest {
         verify(orderRepo).save(cap.capture());
         assertEquals(PaymentStatus.PENDING, cap.getValue().getStatus());
         assertEquals(PaymentType.DEPOSIT, cap.getValue().getType());
+
+        // The owner created it; the amount is money that will move; the signature is never recorded.
+        AuditEntry entry = recorded();
+        assertEquals(AuditAction.PAYMENT_CREATED, entry.action());
+        assertEquals(AuditActor.of(user("100000")), entry.actor());
+        assertEquals("Tạo đơn DEPOSIT 50000 VNĐ qua MOCK, mã đơn " + data.get("orderCode"), entry.description());
+        assertFalse(entry.description().contains(cap.getValue().getSignature()));
     }
 
     @Test
@@ -104,6 +126,7 @@ class PaymentServiceTest {
                 () -> service.createOrder(req("WITHDRAW", "50000", "MOCK"), USER_ID));
         assertTrue(ex.getMessage().contains("khong du"));
         verify(orderRepo, never()).save(any());
+        verifyNoInteractions(auditLogService);
     }
 
     @Test
@@ -155,6 +178,13 @@ class PaymentServiceTest {
         verify(transactionService).createTransaction(cap.capture(), org.mockito.ArgumentMatchers.eq(USER_ID));
         assertFalse(cap.getValue().isExpense()); // DEPOSIT -> thu nhap
         assertEquals(0, cap.getValue().getAmount().compareTo(new BigDecimal("50000")));
+
+        // Nobody is signed in on a webhook: the system records the gateway's confirmation.
+        AuditEntry entry = recorded();
+        assertEquals(AuditAction.PAYMENT_COMPLETED, entry.action());
+        assertEquals(AuditActor.system(), entry.actor());
+        assertEquals("Cổng MOCK xác nhận thanh toán DEPOSIT 50000 VNĐ, mã đơn PAY123, mã giao dịch cổng TXN1",
+                entry.description());
     }
 
     @Test
@@ -180,6 +210,9 @@ class PaymentServiceTest {
 
         assertEquals(PaymentStatus.FAILED, order.getStatus());
         verify(transactionService, never()).createTransaction(any(), any());
+        AuditEntry entry = recorded();
+        assertEquals(AuditAction.PAYMENT_FAILED, entry.action());
+        assertEquals("Cổng MOCK báo thanh toán thất bại (mã kết quả 99), mã đơn PAY123", entry.description());
     }
 
     @Test
@@ -188,6 +221,14 @@ class PaymentServiceTest {
                 () -> service.handleWebhook(webhook("PAY123", "TXN1", "00", "50000", false)));
         assertTrue(ex.getMessage().contains("chu ky"));
         verify(orderRepo, never()).findByOrderCode(any());
+
+        // Recorded on its own (this transaction rolls back), naming nobody: the request proves nothing about its sender.
+        verifyNoInteractions(auditLogService);
+        ArgumentCaptor<SecurityAuditEvent> event = ArgumentCaptor.forClass(SecurityAuditEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertEquals(AuditAction.PAYMENT_WEBHOOK_REJECTED, event.getValue().entry().action());
+        assertEquals(AuditActor.unauthenticated(null), event.getValue().entry().actor());
+        assertFalse(event.getValue().entry().description().contains("badsig"));
     }
 
     @Test
@@ -200,6 +241,7 @@ class PaymentServiceTest {
 
         verify(transactionService, never()).createTransaction(any(), any()); // khong tao giao dich lan 2
         verify(orderRepo, never()).save(any());
+        verifyNoInteractions(auditLogService); // a repeated webhook changes nothing, so it records nothing
     }
 
     @Test
@@ -213,6 +255,9 @@ class PaymentServiceTest {
         assertEquals(PaymentStatus.FAILED, order.getStatus());
         verify(transactionService, never()).createTransaction(any(), any()); // khong tao giao dich
         verify(orderRepo).save(order);          // co luu FAILED
+        AuditEntry entry = recorded();
+        assertEquals(AuditAction.PAYMENT_FAILED, entry.action());
+        assertEquals("Cổng MOCK xác nhận số tiền 999 VNĐ khác số tiền của đơn 50000 VNĐ, mã đơn PAY123", entry.description());
     }
 
     // ---------- getStatus / cancel ----------
@@ -230,6 +275,10 @@ class PaymentServiceTest {
         when(orderRepo.findByOrderCode("PAY123")).thenReturn(Optional.of(order));
         Map<String, Object> data = service.cancel("PAY123", USER_ID);
         assertEquals("CANCELLED", data.get("status"));
+        AuditEntry entry = recorded();
+        assertEquals(AuditAction.PAYMENT_CANCELED, entry.action());
+        assertEquals(AuditActor.currentCaller(), entry.actor(), "the owner, i.e. the signed-in caller");
+        assertEquals("Hủy đơn DEPOSIT 50000 VNĐ, mã đơn PAY123", entry.description());
     }
 
     @Test
@@ -239,5 +288,6 @@ class PaymentServiceTest {
         when(orderRepo.findByOrderCode("PAY123")).thenReturn(Optional.of(order));
         Map<String, Object> data = service.cancel("PAY123", USER_ID);
         assertEquals("SUCCESS", data.get("status"));
+        verifyNoInteractions(auditLogService); // nothing changed, nothing recorded
     }
 }

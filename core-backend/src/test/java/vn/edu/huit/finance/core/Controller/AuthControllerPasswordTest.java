@@ -14,15 +14,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.event.ApplicationEvents;
-import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import vn.edu.huit.finance.core.Config.SecurityConfig;
 import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
+import vn.edu.huit.finance.core.Dto.RegisterRequestDto;
 import vn.edu.huit.finance.core.Entity.User;
+import vn.edu.huit.finance.core.Exception.AuditLogWriteException;
 import vn.edu.huit.finance.core.Exception.GlobalExceptionHandler;
 import vn.edu.huit.finance.core.Exception.InvalidOtpException;
 import vn.edu.huit.finance.core.Exception.InvalidPasswordException;
@@ -34,25 +33,20 @@ import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Security.TokenClaims;
 import vn.edu.huit.finance.core.Security.TokenType;
-import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
-import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
-import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.SocialAuthService;
 import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -69,7 +63,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(AuthController.class)
 @ContextConfiguration(classes = {
         AuthController.class, GlobalExceptionHandler.class, SecurityConfig.class, JwtAuthFilter.class})
-@RecordApplicationEvents
 class AuthControllerPasswordTest {
 
     private static final String URL = AuthPaths.CHANGE_PASSWORD_URL;
@@ -91,15 +84,12 @@ class AuthControllerPasswordTest {
     private static final String BODY = "{\"userId\":999,\"oldPassword\":\"OldPass123\",\"newPassword\":\"" + STRONG_PASSWORD + "\"}";
 
     @Autowired private MockMvc mockMvc;
-    @Autowired private PasswordEncoder passwordEncoder;
-    @Autowired private ApplicationEvents events;
 
     @MockBean private AuthService authService;
     @MockBean private JwtUtil jwtUtil;
     @MockBean private CustomUserDetailsService userDetailsService;
     @MockBean private UserRepository userRepository;
     @MockBean private LoginAttemptService loginAttemptService;
-    @MockBean private AuditLogService auditLogService;
     @MockBean private SocialAuthService socialAuthService;
     @MockBean private TokenBlacklistService tokenBlacklistService;
 
@@ -333,7 +323,7 @@ class AuthControllerPasswordTest {
     }
 
     @Test
-    void register_savesAHashedPassword_andIgnoresFieldsTheClientMustNotControl() throws Exception {
+    void register_handsOnlyTheFieldsOfTheRequestToTheService_andIgnoresFieldsTheClientMustNotControl() throws Exception {
         String bodyWithForbiddenFields = registerBody(STRONG_PASSWORD, NEW_USER_PHONE)
                 .replace("}", ",\"role\":\"ROLE_ADMIN\",\"walletBalance\":999999999,\"active\":false}");
 
@@ -342,17 +332,14 @@ class AuthControllerPasswordTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("Đăng ký thành công!"));
 
-        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(saved.capture());
-        User user = saved.getValue();
-        assertEquals(NEW_USER_EMAIL, user.getEmail());
-        assertEquals(NEW_USER_EMAIL, user.getUsername());
-        assertEquals(NEW_USER_PHONE, user.getPhone());
-        assertNotEquals(STRONG_PASSWORD, user.getPassword());
-        assertTrue(passwordEncoder.matches(STRONG_PASSWORD, user.getPassword()));
-        assertEquals("ROLE_USER", user.getRole());
-        assertEquals(0, BigDecimal.ZERO.compareTo(user.getWalletBalance()));
-        assertTrue(user.isActive());
+        // The DTO has no role, wallet or active field: AuthService builds the account (AuthServiceRegisterTest).
+        ArgumentCaptor<RegisterRequestDto> registered = ArgumentCaptor.forClass(RegisterRequestDto.class);
+        verify(authService).register(registered.capture());
+        assertEquals(NEW_USER_EMAIL, registered.getValue().getEmail());
+        assertEquals(NEW_USER_EMAIL, registered.getValue().getUsername());
+        assertEquals(NEW_USER_PHONE, registered.getValue().getPhone());
+        assertEquals(STRONG_PASSWORD, registered.getValue().getPassword());
+        verify(userRepository, never()).save(any());
     }
 
     @ParameterizedTest
@@ -363,7 +350,7 @@ class AuthControllerPasswordTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value(startsWith(VALIDATION_MESSAGE_PREFIX)));
 
-        verify(userRepository, never()).save(any());
+        verify(authService, never()).register(any());
     }
 
     @Test
@@ -375,7 +362,7 @@ class AuthControllerPasswordTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("Email đã được đăng ký. Vui lòng dùng email khác."));
 
-        verify(userRepository, never()).save(any());
+        verify(authService, never()).register(any());
     }
 
     @Test
@@ -386,7 +373,7 @@ class AuthControllerPasswordTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Tên đăng nhập đã tồn tại."));
 
-        verify(userRepository, never()).save(any());
+        verify(authService, never()).register(any());
     }
 
     @Test
@@ -395,35 +382,30 @@ class AuthControllerPasswordTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(containsString("10 chữ số")));
 
-        verify(userRepository, never()).save(any());
-    }
-
-    private long accountsCreatedAnnounced() {
-        return events.stream(StatisticsChangedEvent.class)
-                .filter(event -> event.change() == StatisticsChange.ACCOUNT_CREATED)
-                .count();
+        verify(authService, never()).register(any());
     }
 
     @Test
-    void register_announcesTheNewAccountToTheStatisticsCache_onceItIsSaved() throws Exception {
-        mockMvc.perform(registerRequest(registerBody(STRONG_PASSWORD, NEW_USER_PHONE)))
-                .andExpect(status().isOk());
+    void register_answersTheUsualMessage_whenTheDatabaseRefusesADuplicateThatSlippedPastTheChecks() throws Exception {
+        when(authService.register(any())).thenThrow(new DataIntegrityViolationException("uk_users_phone"));
 
-        assertEquals(1, accountsCreatedAnnounced());
-    }
-
-    @Test
-    void register_announcesNothing_whenNoAccountWasCreated() throws Exception {
-        when(userRepository.findByEmail(NEW_USER_EMAIL)).thenReturn(Optional.of(new User()));
-        mockMvc.perform(registerRequest(registerBody(STRONG_PASSWORD, NEW_USER_PHONE)))
-                .andExpect(status().isBadRequest());
-
-        reset(userRepository);
-        when(userRepository.save(any(User.class))).thenThrow(new DataIntegrityViolationException("uk_users_phone"));
         mockMvc.perform(registerRequest(registerBody(STRONG_PASSWORD, NEW_USER_PHONE)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Email hoặc số điện thoại đã tồn tại."));
+    }
 
-        assertEquals(0, accountsCreatedAnnounced());
+    @Test
+    void register_answersAFixed500_withoutTheCause_whenTheAuditRowCannotBeWritten() throws Exception {
+        // AuthService rolled the account back with its row: the client learns that it failed, not why.
+        when(authService.register(any())).thenThrow(new AuditLogWriteException(
+                "Không thể ghi nhật ký hệ thống, thao tác chưa được thực hiện. Vui lòng thử lại sau.",
+                new IllegalStateException("ERROR: relation \"action_logs\" does not exist")));
+
+        mockMvc.perform(registerRequest(registerBody(STRONG_PASSWORD, NEW_USER_PHONE)))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(jsonPath("$.message").value(
+                        "Không thể ghi nhật ký hệ thống, thao tác chưa được thực hiện. Vui lòng thử lại sau."))
+                .andExpect(content().string(not(containsString("action_logs"))));
     }
 }

@@ -17,6 +17,7 @@ import vn.edu.huit.finance.core.Dto.TransactionFilterRequestDto;
 import vn.edu.huit.finance.core.Dto.TransactionRequestDto;
 import vn.edu.huit.finance.core.Dto.TransactionResponseDto;
 import vn.edu.huit.finance.core.Dto.TransactionUpdateRequestDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.Category;
 import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Entity.ReceiptStatus;
@@ -31,13 +32,17 @@ import vn.edu.huit.finance.core.Exception.TransactionNotFoundException;
 import vn.edu.huit.finance.core.Exception.UserNotFoundException;
 import vn.edu.huit.finance.core.Repository.*;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -48,6 +53,11 @@ import java.util.Optional;
  * an id (createTransaction for the payment webhook, the *Of methods for administrators) trust their caller to have checked
  * it, and so does approveReceipt, which is for administrators too. Every write also names what it changed for the cached
  * statistics (StatisticsChangedEvent), and the stale entries are evicted once its transaction has committed.
+ * <p>
+ * Every change is recorded in action_logs inside its own database transaction (AuditLogService.record): the row names the
+ * caller (an administrator for an approval, the system for the payment webhook) and the transaction or receipt, and
+ * commits or rolls back with the change. Descriptions carry ids, statuses and the amounts that moved the wallet, never a
+ * note, the AI's answer or anything else the client wrote.
  */
 @Slf4j
 @Service
@@ -77,6 +87,26 @@ public class TransactionService {
     private static final String MSG_RECEIPT_NOT_APPROVABLE = "Hóa đơn đang ở trạng thái không thể xác nhận";
     private static final String MSG_RECEIPT_NO_TOTAL = "Hóa đơn chưa có tổng tiền hợp lệ nên không thể đối soát";
     private static final String MSG_USER_NOT_FOUND = "Không tìm thấy người dùng";
+
+    private static final String AUDIT_EXPENSE = "chi";
+    private static final String AUDIT_INCOME = "thu";
+    private static final String AUDIT_CREATED = "Tạo giao dịch %s %s VNĐ, danh mục #%d, của người dùng #%d%s";
+    private static final String AUDIT_CREATED_WITH_RECEIPT = ", kèm hóa đơn";
+    private static final String AUDIT_UPDATED = "Sửa giao dịch: %s";
+    private static final String AUDIT_CHANGE_AMOUNT = "số tiền %s → %s VNĐ";
+    private static final String AUDIT_CHANGE_DIRECTION = "loại %s → %s";
+    private static final String AUDIT_CHANGE_CATEGORY = "danh mục #%d → #%d";
+    private static final String AUDIT_CHANGE_NOTE = "ghi chú";
+    private static final String AUDIT_CHANGE_DATE = "ngày giao dịch";
+    private static final String AUDIT_CHANGE_PAYMENT_METHOD = "phương thức thanh toán";
+    private static final String AUDIT_NO_CHANGE = "không có trường nào thay đổi";
+    private static final String AUDIT_WALLET_CHANGE = "; ví %s%s VNĐ";
+    private static final String AUDIT_DELETED = "Xóa giao dịch %s %s VNĐ, danh mục #%d; ví %s%s VNĐ";
+    private static final String AUDIT_RECEIPT_CANCELED = "Hủy hóa đơn: %s → %s";
+    private static final String AUDIT_RECEIPT_APPROVED = "Duyệt hóa đơn của giao dịch #%d (người dùng #%d): %s → %s, tổng tiền %s VNĐ";
+    private static final String AUDIT_RECONCILED = "Đối soát theo hóa đơn #%d đã duyệt: số tiền %s → %s VNĐ; ví %s%s VNĐ";
+    private static final String AUDIT_CATEGORY_CREATED = "Tạo danh mục \"%s\" (%s) theo tên khi ghi giao dịch";
+    private static final String PLUS = "+";
 
     @Autowired
     private ReceiptRepository receiptRepo;
@@ -108,9 +138,26 @@ public class TransactionService {
      * whatever the rest of its body says. The wallet row is locked before the id is looked up, so two requests that arrive
      * together (a double tap, a retry while the first attempt is still running) run one after the other and the second
      * one finds what the first one committed; the unique key on user and client id backs that up in the database.
+     * <p>
+     * For a caller without a signed-in user (the payment webhook): its audit rows name the system as the actor.
      */
     @Transactional
     public Map<String, Object> createTransaction(TransactionRequestDto request, Long userId) {
+        return create(request, userId, AuditActor.system());
+    }
+
+    /** Same as {@link #createTransaction} for the signed-in caller. Transactional itself, because it calls that method directly. */
+    @Transactional
+    public Map<String, Object> createMyTransaction(TransactionRequestDto request) {
+        User caller = currentUserProvider.getCurrentUser();
+        return create(request, caller.getId(), AuditActor.of(caller));
+    }
+
+    /**
+     * The checkout itself. A replay of an id already recorded writes no audit row: it changes nothing. Otherwise the rows
+     * (the transaction; the receipt and the AI's reading when one came with it; a category created by name) commit with it.
+     */
+    private Map<String, Object> create(TransactionRequestDto request, Long userId, AuditActor actor) {
         User user = userRepo.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy User"));
 
@@ -125,7 +172,7 @@ public class TransactionService {
             }
         }
 
-        Category category = resolveCategory(request.getCategoryId(), request.getCategoryName(), request.isExpense());
+        Category category = resolveCategory(request.getCategoryId(), request.getCategoryName(), request.isExpense(), actor);
 
         BigDecimal finalAmount = request.getAmount();
 
@@ -170,22 +217,15 @@ public class TransactionService {
         budgetAlertService.notifyAfterCreate(transaction);
         eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.TRANSACTION_TOTALS, userId));
 
-        try {
-            if (request.getRawReceiptData() != null && !request.getRawReceiptData().isEmpty()) {
-                auditLogService.logAction(user.getEmail(), "CREATE_RECEIPT", "Quét hóa đơn AI & Lưu giao dịch: " + finalAmount + " VNĐ");
-            } else {
-                auditLogService.logAction(user.getEmail(), "CREATE_TRANSACTION", "Thêm giao dịch thủ công: " + finalAmount + " VNĐ");
-            }
-        } catch (Exception e) {
+        Receipt receipt = transaction.getReceipt();
+        auditLogService.record(AuditEntry.of(AuditAction.TRANSACTION_CREATED, actor, transaction.getId(),
+                String.format(AUDIT_CREATED, direction(transaction.isExpense()), finalAmount.toPlainString(),
+                        category.getId(), userId, receipt != null ? AUDIT_CREATED_WITH_RECEIPT : "")));
+        if (receipt != null) {
+            receiptProcessingService.recordAttachedReceipt(receipt, actor);
         }
 
         return checkoutResponse(transaction, user);
-    }
-
-    /** Same as {@link #createTransaction} for the signed-in caller. Transactional itself, because it calls that method directly. */
-    @Transactional
-    public Map<String, Object> createMyTransaction(TransactionRequestDto request) {
-        return createTransaction(request, currentUserProvider.getCurrentUser().getId());
     }
 
     /**
@@ -203,15 +243,18 @@ public class TransactionService {
 
         BigDecimal newAmount = request.getAmount() != null ? request.getAmount() : transaction.getAmount();
         boolean newExpense = request.getExpense() != null ? request.getExpense() : transaction.isExpense();
+        AuditActor actor = AuditActor.of(caller);
         // Looked up before anything is written, so a request that is going to be rejected has not touched the wallet.
         Category newCategory = hasCategory(request)
-                ? resolveCategory(request.getCategoryId(), request.getCategoryName(), newExpense)
+                ? resolveCategory(request.getCategoryId(), request.getCategoryName(), newExpense, actor)
                 : null;
 
         BigDecimal walletChange = signedAmount(newAmount, newExpense)
                 .subtract(signedAmount(transaction.getAmount(), transaction.isExpense()));
         boolean dateChanges = request.getTransactionDate() != null
                 && !request.getTransactionDate().equals(transaction.getTransactionDate());
+        // Described before the entity changes: the row names what was there before and what is there now.
+        String changes = describeChanges(transaction, request, newAmount, newExpense, newCategory, dateChanges);
         if (walletChange.signum() != 0) {
             User owner = lockWallet(caller);
             transaction.setUser(owner);
@@ -241,6 +284,8 @@ public class TransactionService {
                 ? StatisticsChange.TRANSACTION_TOTALS
                 : StatisticsChange.TRANSACTION_DETAILS;
         eventPublisher.publishEvent(StatisticsChangedEvent.of(change, caller.getId()));
+        auditLogService.record(AuditEntry.of(AuditAction.TRANSACTION_UPDATED, actor, transactionId,
+                String.format(AUDIT_UPDATED, changes) + walletChangeText(walletChange)));
 
         log.info("Transaction updated, userId={}, transactionId={}, walletChange={}", caller.getId(), transactionId, walletChange);
         return TransactionResponseDto.from(saved);
@@ -257,13 +302,17 @@ public class TransactionService {
         writeWallet(owner, owner.getWalletBalance().add(undo));
         transactionRepo.delete(transaction);
         eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.TRANSACTION_TOTALS, caller.getId()));
+        auditLogService.record(AuditEntry.of(AuditAction.TRANSACTION_DELETED, AuditActor.of(caller), transactionId,
+                String.format(AUDIT_DELETED, direction(transaction.isExpense()), transaction.getAmount().toPlainString(),
+                        categoryIdOf(transaction), sign(undo), undo.toPlainString())));
 
         log.info("Transaction deleted, userId={}, transactionId={}, walletChange={}", caller.getId(), transactionId, undo);
     }
 
     @Transactional
     public void cancelMyReceipt(Long receiptId) {
-        Long userId = currentUserProvider.getCurrentUser().getId();
+        User caller = currentUserProvider.getCurrentUser();
+        Long userId = caller.getId();
         Receipt receipt = receiptRepo.findById(receiptId).orElseThrow(() -> {
             log.warn("Receipt not found, userId={}, receiptId={}", userId, receiptId);
             return new ReceiptNotFoundException(MSG_RECEIPT_NOT_FOUND);
@@ -279,9 +328,12 @@ public class TransactionService {
             throw new IllegalStateException(MSG_RECEIPT_NOT_PENDING);
         }
 
+        String previousStatus = receipt.getStatus();
         receipt.moveTo(ReceiptStatus.CANCELED);
         receiptRepo.save(receipt);
         eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, userId));
+        auditLogService.record(AuditEntry.of(AuditAction.RECEIPT_CANCELED, AuditActor.of(caller), receiptId,
+                String.format(AUDIT_RECEIPT_CANCELED, previousStatus, receipt.getStatus())));
         log.info("Receipt canceled, userId={}, receiptId={}", userId, receiptId);
     }
 
@@ -291,7 +343,9 @@ public class TransactionService {
      * feedback) becomes the amount of the transaction and the owner's wallet moves by the difference, all or nothing: the
      * wallet is locked and written first and the rows after it, so a failure of any write is undone together with the
      * others. The transaction and the receipt are read again once the wallet is locked, so two requests that approve the
-     * same receipt at the same time move the wallet once, and approving a receipt again changes nothing.
+     * same receipt at the same time move the wallet once, and approving a receipt again changes nothing. The approval is
+     * recorded with the administrator who made it (RECEIPT_APPROVED), and a change of the amount as TRANSACTION_UPDATED of
+     * the transaction it reconciled, both in this transaction.
      */
     @Transactional
     public void approveReceipt(Long receiptId) {
@@ -331,6 +385,15 @@ public class TransactionService {
         eventPublisher.publishEvent(StatisticsChangedEvent.of(walletChange.signum() != 0
                 ? StatisticsChange.TRANSACTION_TOTALS
                 : StatisticsChange.RECEIPT_STATUS, owner.getId()));
+        // The administrator is the caller of this request, looked up when the rows are written.
+        auditLogService.record(AuditEntry.of(AuditAction.RECEIPT_APPROVED, AuditActor.currentCaller(), receiptId,
+                String.format(AUDIT_RECEIPT_APPROVED, saved.getId(), owner.getId(), previousStatus, receipt.getStatus(),
+                        finalAmount.toPlainString())));
+        if (walletChange.signum() != 0) {
+            auditLogService.record(AuditEntry.of(AuditAction.TRANSACTION_UPDATED, AuditActor.currentCaller(), saved.getId(),
+                    String.format(AUDIT_RECONCILED, receiptId, previousAmount.toPlainString(), finalAmount.toPlainString(),
+                            sign(walletChange), walletChange.toPlainString())));
+        }
 
         log.info("Receipt approved, receiptId={}, transactionId={}, userId={}, status={} -> {}, previousAmount={}, finalAmount={}, walletChange={}",
                 receiptId, saved.getId(), owner.getId(), previousStatus, receipt.getStatus(), previousAmount, finalAmount, walletChange);
@@ -457,8 +520,11 @@ public class TransactionService {
                 || (request.getCategoryName() != null && !request.getCategoryName().isBlank());
     }
 
-    /** By id, or by name; a name that does not exist yet creates the category, typed after the transaction. */
-    private Category resolveCategory(Long categoryId, String categoryName, boolean isExpense) {
+    /**
+     * By id, or by name; a name that does not exist yet creates the category, typed after the transaction. A category is
+     * shared by every user, so its creation is recorded (CATEGORY_CREATED) with whoever caused it.
+     */
+    private Category resolveCategory(Long categoryId, String categoryName, boolean isExpense, AuditActor actor) {
         if (categoryId != null) {
             return categoryRepo.findById(categoryId)
                     .orElseThrow(() -> new InvalidCategoryException(MSG_CATEGORY_NOT_FOUND));
@@ -469,10 +535,60 @@ public class TransactionService {
                 Category created = new Category();
                 created.setName(name);
                 created.setType(isExpense ? CATEGORY_TYPE_EXPENSE : CATEGORY_TYPE_INCOME);
-                return categoryRepo.save(created);
+                Category saved = categoryRepo.save(created);
+                auditLogService.record(AuditEntry.of(AuditAction.CATEGORY_CREATED, actor, saved.getId(),
+                        String.format(AUDIT_CATEGORY_CREATED, saved.getName(), saved.getType())));
+                return saved;
             });
         }
         throw new InvalidCategoryException(MSG_CATEGORY_REQUIRED);
+    }
+
+    /** What an edit changes, field by field: the amount, the direction and the category with their values, the rest by name. */
+    private static String describeChanges(Transaction transaction, TransactionUpdateRequestDto request, BigDecimal newAmount,
+                                          boolean newExpense, Category newCategory, boolean dateChanges) {
+        List<String> changes = new ArrayList<>();
+        if (newAmount.compareTo(transaction.getAmount()) != 0) {
+            changes.add(String.format(AUDIT_CHANGE_AMOUNT, transaction.getAmount().toPlainString(), newAmount.toPlainString()));
+        }
+        if (newExpense != transaction.isExpense()) {
+            changes.add(String.format(AUDIT_CHANGE_DIRECTION, direction(transaction.isExpense()), direction(newExpense)));
+        }
+        Long categoryBefore = categoryIdOf(transaction);
+        if (newCategory != null && !Objects.equals(newCategory.getId(), categoryBefore)) {
+            changes.add(String.format(AUDIT_CHANGE_CATEGORY, categoryBefore, newCategory.getId()));
+        }
+        if (request.getNote() != null) {
+            String noteAfter = request.getNote().isBlank() ? null : request.getNote().trim();
+            if (!Objects.equals(noteAfter, transaction.getNote())) {
+                changes.add(AUDIT_CHANGE_NOTE);
+            }
+        }
+        if (dateChanges) {
+            changes.add(AUDIT_CHANGE_DATE);
+        }
+        if (request.getPaymentMethod() != null && !request.getPaymentMethod().trim().equals(transaction.getPaymentMethod())) {
+            changes.add(AUDIT_CHANGE_PAYMENT_METHOD);
+        }
+        return changes.isEmpty() ? AUDIT_NO_CHANGE : String.join(", ", changes);
+    }
+
+    private static Long categoryIdOf(Transaction transaction) {
+        return transaction.getCategory() != null ? transaction.getCategory().getId() : null;
+    }
+
+    private static String direction(boolean isExpense) {
+        return isExpense ? AUDIT_EXPENSE : AUDIT_INCOME;
+    }
+
+    /** "+" before a positive amount; a negative one carries its own sign. */
+    private static String sign(BigDecimal amount) {
+        return amount.signum() > 0 ? PLUS : "";
+    }
+
+    /** "; ví +20000 VNĐ" for an edit that moved the wallet, nothing for one that did not. */
+    private static String walletChangeText(BigDecimal walletChange) {
+        return walletChange.signum() == 0 ? "" : String.format(AUDIT_WALLET_CHANGE, sign(walletChange), walletChange.toPlainString());
     }
 
     /** What a transaction does to the wallet: an income adds its amount, an expense takes it away. */

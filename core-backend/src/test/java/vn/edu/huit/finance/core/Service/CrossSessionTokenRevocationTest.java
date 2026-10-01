@@ -43,6 +43,7 @@ import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Security.Roles;
 import vn.edu.huit.finance.core.Security.TokenRejection;
 import vn.edu.huit.finance.core.Security.TokenType;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -60,6 +61,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
@@ -588,7 +590,7 @@ class CrossSessionTokenRevocationTest {
                 awaitQuietly(firstMayCommit);
             }
             return null;
-        }).when(auditLogService).logAction(anyString(), anyString(), anyString());
+        }).when(auditLogService).record(any(AuditEntry.class));
         ExecutorService pool = Executors.newFixedThreadPool(2);
         AuthTokenResponseDto winner;
         try {

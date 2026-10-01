@@ -12,8 +12,11 @@ import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import vn.edu.huit.finance.core.Dto.AiReceiptResponse;
 import vn.edu.huit.finance.core.Dto.ReceiptDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Repository.ReceiptRepository;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 import vn.edu.huit.finance.core.Service.Storage.FileStorageService;
 
 import java.io.IOException;
@@ -31,6 +34,8 @@ import java.time.LocalDate;
 @Deprecated
 @Service
 public class ReceiptService {
+    private static final String AUDIT_CREATED = "Hóa đơn mới (luồng cũ, không gắn với giao dịch nào)";
+
     @Autowired
     private AuditLogService auditLogService;
     @Autowired
@@ -72,11 +77,9 @@ public class ReceiptService {
 
 
             Receipt savedReceipt = receiptRepository.save(newReceipt);
-            try {
-                String currentUser = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
-                auditLogService.logAction(currentUser, "CREATE_RECEIPT", "Quét hóa đơn AI thành công với số tiền: " + savedReceipt.getExtractedTotal() + " VNĐ");
-            } catch (Exception e) {
-            }
+            // In the transaction of the save: no receipt without its row, no row without its receipt.
+            auditLogService.record(AuditEntry.of(AuditAction.RECEIPT_CREATED, AuditActor.currentCaller(),
+                    savedReceipt.getId(), AUDIT_CREATED));
             ReceiptDto responseDto = new ReceiptDto();
             responseDto.setId(savedReceipt.getId());
             responseDto.setVendorName(savedReceipt.getVendorName());

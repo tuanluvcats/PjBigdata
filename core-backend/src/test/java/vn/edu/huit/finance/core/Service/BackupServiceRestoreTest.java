@@ -5,11 +5,16 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
+import vn.edu.huit.finance.core.Entity.AuditAction;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
@@ -17,6 +22,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verify;
@@ -28,7 +34,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class BackupServiceRestoreTest {
 
     @TempDir private Path pgBin;
-    @Mock private AuditLogService auditLogService;
     @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private BackupService service;
 
@@ -48,6 +53,21 @@ class BackupServiceRestoreTest {
         assertTrue(service.restoreDatabase("FULL_backup_20260930_120000.sql"));
 
         verify(eventPublisher).publishEvent(StatisticsChangedEvent.of(StatisticsChange.DATABASE_RESTORED));
+    }
+
+    @Test
+    void aRestoreThatSucceededIsRecordedOnItsOwnWithTheAdministratorWhoCalled() throws IOException {
+        pgRestoreExitsWith(0);
+
+        service.restoreDatabase("FULL_backup_20260930_120000.sql");
+
+        ArgumentCaptor<SecurityAuditEvent> event = ArgumentCaptor.forClass(SecurityAuditEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        AuditEntry entry = event.getValue().entry();
+        assertEquals(AuditAction.SYSTEM_DATABASE_RESTORED, entry.action());
+        assertEquals(AuditActor.currentCaller(), entry.actor());
+        assertEquals("Phục hồi cơ sở dữ liệu từ file: FULL_backup_20260930_120000.sql", entry.description());
+        assertFalse(entry.description().contains("test-only"), "never the database password");
     }
 
     @Test

@@ -8,7 +8,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.LockedException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import vn.edu.huit.finance.core.Dto.ApiResponse;
 import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
@@ -17,20 +16,28 @@ import vn.edu.huit.finance.core.Dto.LogoutRequestDto;
 import vn.edu.huit.finance.core.Dto.RefreshTokenRequestDto;
 import vn.edu.huit.finance.core.Dto.RegisterRequestDto;
 import vn.edu.huit.finance.core.Dto.ResetPasswordRequestDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.InvalidTokenException;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.AuthPaths;
 import vn.edu.huit.finance.core.Security.BearerToken;
+import vn.edu.huit.finance.core.Security.ClientIp;
 import vn.edu.huit.finance.core.Security.JwtUtil;
-import vn.edu.huit.finance.core.Service.AuditLogService;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 import vn.edu.huit.finance.core.Service.AuthService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
-import vn.edu.huit.finance.core.Service.Cache.StatisticsChange;
-import vn.edu.huit.finance.core.Service.Cache.StatisticsChangedEvent;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
+import java.util.Set;
 
+/**
+ * Sign-up, sign-in and the credentials of the caller. Every sign-in attempt is recorded as a SecurityAuditEvent (a row of
+ * its own, whatever becomes of the request): success, wrong credentials, lockout. Account and credential changes are
+ * recorded by AuthService inside their transactions.
+ */
 @RestController
 @RequestMapping(AuthPaths.BASE)
 public class AuthController {
@@ -40,51 +47,47 @@ public class AuthController {
     private static final String MSG_TOKEN_MISSING = "Thiếu token xác thực";
     private static final String MSG_ACCOUNT_NOT_FOUND = "Không tìm thấy tài khoản với email này!";
 
+    private static final String AUDIT_LOGIN_SUCCESS = "Đăng nhập App Mobile bằng mật khẩu";
+    private static final String AUDIT_LOGIN_FAILED = "Sai thông tin đăng nhập hoặc tài khoản không dùng được";
+    private static final String AUDIT_LOCKED_ATTEMPT = "Tài khoản hoặc IP đang bị khóa vẫn gửi lệnh đăng nhập";
+    private static final String AUDIT_LOCK_TRIGGERED = "Khóa đăng nhập 15 phút sau quá nhiều lần nhập sai (brute-force)";
+    private static final String AUDIT_SOCIAL_LOGIN_SUCCESS = "Đăng nhập App Mobile qua %s";
+    private static final String AUDIT_SOCIAL_LOGIN_FAILED = "Đăng nhập qua %s thất bại";
+    // A provider name the client sent is only repeated in the audit row when it is one the server supports.
+    private static final Set<String> SOCIAL_PROVIDERS = Set.of("google", "facebook");
+    private static final String UNSUPPORTED_PROVIDER = "nhà cung cấp không hỗ trợ";
+
     @Autowired  private org.springframework.security.authentication.AuthenticationManager authenticationManager;
     @Autowired  private UserRepository userRepository;
-    @Autowired  private PasswordEncoder passwordEncoder;
     @Autowired  private JwtUtil jwtUtil;
     @Autowired  private LoginAttemptService loginAttemptService;
-    @Autowired  private AuditLogService auditLogService;
     @Autowired  private AuthService authService;
     @Autowired  private vn.edu.huit.finance.core.Service.SocialAuthService socialAuthService;
     @Autowired  private ApplicationEventPublisher eventPublisher;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDto request) {
-        // Built from the DTO on purpose: the client must not be able to set the wallet balance, role or any other User field.
-        User user = new User();
-        user.setUsername(request.getUsername());
-        user.setEmail(request.getEmail());
-        user.setPhone(request.getPhone());
-
-        if (user.getEmail() != null && userRepository.findByEmail(user.getEmail()).isPresent()) {
+        if (request.getEmail() != null && userRepository.findByEmail(request.getEmail()).isPresent()) {
             return ResponseEntity.status(400).body(java.util.Map.of(
                     "code", 400, "message", "Email đã được đăng ký. Vui lòng dùng email khác."));
         }
-        if (user.getUsername() != null && userRepository.findByUsername(user.getUsername()).isPresent()) {
+        if (request.getUsername() != null && userRepository.findByUsername(request.getUsername()).isPresent()) {
             return ResponseEntity.status(400).body(java.util.Map.of(
                     "code", 400, "message", "Tên đăng nhập đã tồn tại."));
         }
 
-        user.setRole("ROLE_USER");
-
-        String hashedPassword = passwordEncoder.encode(request.getPassword());
-        user.setPassword(hashedPassword);
-
+        // The account is built from the DTO by AuthService (role, wallet and every other field are the server's) and stored
+        // with its audit row in one transaction.
         try {
-            userRepository.save(user);
+            authService.register(request);
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
             return ResponseEntity.status(400).body(java.util.Map.of(
                     "code", 400, "message", "Email hoặc số điện thoại đã tồn tại."));
         }
-        // The save committed on its own, so the admin summary (user count, low-balance list) is evicted right away.
-        eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.ACCOUNT_CREATED));
 
         java.util.Map<String, Object> response = new java.util.HashMap<>();
         response.put("code", 200);
         response.put("message", "Đăng ký thành công!");
-        auditLogService.logAction(user.getEmail(), "CREATE_USER", "Người dùng tự đăng ký tài khoản qua App Mobile");
         return ResponseEntity.ok(response);
     }
 
@@ -92,7 +95,7 @@ public class AuthController {
     public ResponseEntity<?> login(@RequestBody java.util.Map<String, String> loginRequest, HttpServletRequest request) {
         String email = loginRequest.get("email");
         String password = loginRequest.get("password");
-        String ipAddress = clientIp(request);
+        String ipAddress = ClientIp.of(request);
 
         try {
             loginAttemptService.assertLoginAllowed(email, ipAddress);
@@ -117,7 +120,8 @@ public class AuthController {
             user.setLastLoginTime(now);
             user.setLastActionTime(now);
             userRepository.save(user);
-            auditLogService.logAction(user.getEmail(), "LOGIN_SUCCESS", "Đăng nhập hợp lệ vào App Mobile", ipAddress);
+            eventPublisher.publishEvent(SecurityAuditEvent.of(AuditAction.AUTH_LOGIN_SUCCESS, AuditActor.of(user),
+                    user.getId(), AUDIT_LOGIN_SUCCESS));
 
             java.util.Map<String, Object> userData = new java.util.HashMap<>();
             userData.put("id", user.getId());
@@ -137,19 +141,30 @@ public class AuthController {
             return ResponseEntity.ok(response);
 
         } catch (LockedException e) {
-            auditLogService.logAction(email, "LOGIN_LOCKED", "Thiết bị đang bị khóa vẫn cố tình gửi lệnh đăng nhập", ipAddress);
+            publishLoginRefusal(AuditAction.AUTH_LOGIN_LOCKED, email, AUDIT_LOCKED_ATTEMPT);
             return ResponseEntity.status(429).body(java.util.Map.of("message", "Tài khoản hoặc IP của bạn đang bị tạm khóa 15 phút do nhập sai quá 5 lần!"));
         } catch (org.springframework.security.core.AuthenticationException e) {
             loginAttemptService.recordFailure(email, ipAddress);
             try {
                 loginAttemptService.assertLoginAllowed(email, ipAddress);
             } catch (LockedException lockedException) {
-                auditLogService.logAction(email, "LOGIN_LOCKED", "Hệ thống tự động kích hoạt khóa IP do phát hiện Brute-force", ipAddress);
+                publishLoginRefusal(AuditAction.AUTH_LOGIN_LOCKED, email, AUDIT_LOCK_TRIGGERED);
                 return ResponseEntity.status(429).body(java.util.Map.of("message", "Tài khoản hoặc IP của bạn đang bị tạm khóa 15 phút do nhập sai quá 5 lần!"));
             }
-            auditLogService.logAction(email, "LOGIN_FAILED", "Nhập sai mật khẩu tài khoản", ipAddress);
+            publishLoginRefusal(AuditAction.AUTH_LOGIN_FAILED, email, AUDIT_LOGIN_FAILED);
             return ResponseEntity.status(401).body(java.util.Map.of("message", "Sai email hoặc mật khẩu!"));
         }
+    }
+
+    /** A refused sign-in: the email typed in is only the claimed identity, no account is looked up for it. */
+    private void publishLoginRefusal(AuditAction action, String claimedEmail, String description) {
+        eventPublisher.publishEvent(SecurityAuditEvent.of(action, AuditActor.unauthenticated(claimedEmail), null, description));
+    }
+
+    /** The provider as the audit row names it: lower case, and only when the server supports it. */
+    private static String providerName(String provider) {
+        String name = provider == null ? "" : provider.trim().toLowerCase(Locale.ROOT);
+        return SOCIAL_PROVIDERS.contains(name) ? name : UNSUPPORTED_PROVIDER;
     }
 
 
@@ -168,7 +183,8 @@ public class AuthController {
             user.setLastLoginTime(now);
             user.setLastActionTime(now);
             userRepository.save(user);
-            auditLogService.logAction(user.getEmail(), "LOGIN_SUCCESS", "Người dùng đăng nhập App qua: " + provider);
+            eventPublisher.publishEvent(SecurityAuditEvent.of(AuditAction.AUTH_LOGIN_SUCCESS, AuditActor.of(user),
+                    user.getId(), String.format(AUDIT_SOCIAL_LOGIN_SUCCESS, providerName(provider))));
             String jwt = jwtUtil.generateToken(user.getEmail(), user.getCredentialsVersion());
             String refreshToken = jwtUtil.generateRefreshToken(user.getEmail(), user.getCredentialsVersion());
 
@@ -189,6 +205,9 @@ public class AuthController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            // The provider's token is opaque: nobody is named, only the provider (when it is one the server supports).
+            publishLoginRefusal(AuditAction.AUTH_LOGIN_FAILED, null,
+                    String.format(AUDIT_SOCIAL_LOGIN_FAILED, providerName(req.get("provider"))));
             return ResponseEntity.status(401).body(java.util.Map.of("message", "Lỗi xác thực: " + e.getMessage()));
         }
     }
@@ -240,14 +259,6 @@ public class AuthController {
 
     private String bearerTokenOf(String authorizationHeader) {
         return BearerToken.extract(authorizationHeader).orElseThrow(() -> new InvalidTokenException(MSG_TOKEN_MISSING));
-    }
-
-    private String clientIp(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
     // Same answer as before ({code, message, data: {token, refreshToken}}); the refresh token sent is used up. A refused
     // token is an InvalidTokenException, i.e. 401.

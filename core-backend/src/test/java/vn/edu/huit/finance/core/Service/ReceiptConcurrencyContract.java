@@ -15,6 +15,7 @@ import vn.edu.huit.finance.core.Dto.ReceiptResponseDto;
 import vn.edu.huit.finance.core.Dto.ReceiptRetryRequestDto;
 import vn.edu.huit.finance.core.Dto.ReceiptUpdateRequestDto;
 import vn.edu.huit.finance.core.Dto.TransactionRequestDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.Category;
 import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Entity.User;
@@ -24,6 +25,7 @@ import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Repository.TransactionRepository;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -38,8 +40,7 @@ import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -69,7 +70,6 @@ abstract class ReceiptConcurrencyContract {
     private static final String UNREADABLE_TOTAL = "{\"seller\": {\"seller_name\": \"Highlands\"}}";
     private static final String ONE_SCAN = "{\"seller\": {\"seller_name\": \"Highlands Coffee\", \"total_cost_number\": 95000}}";
     private static final String OTHER_SCAN = "{\"seller\": {\"seller_name\": \"Highlands Coffee\", \"total_cost_number\": 59000}}";
-    private static final String ACTION_UPDATE_RECEIPT = "UPDATE_RECEIPT";
 
     @Autowired private TransactionService transactionService;
     @Autowired private ReceiptProcessingService receiptService;
@@ -196,13 +196,18 @@ abstract class ReceiptConcurrencyContract {
         }).when(ocrService).extract(rawReceiptData);
     }
 
+    /** Matches the audit entry of one action, whatever else the entry says. */
+    private static AuditEntry entryOf(AuditAction action) {
+        return argThat(entry -> entry != null && entry.action() == action);
+    }
+
     /** Holds an edit inside its transaction right after its UPDATE was sent: the row is locked there, and nothing is committed. */
     private void holdTheEditAfterItsWrite(CountDownLatch hasWritten, CountDownLatch mayGoOn) {
         doAnswer(invocation -> {
             hasWritten.countDown();
             awaitQuietly(mayGoOn);
             return null;
-        }).when(auditLogService).logAction(anyString(), eq(ACTION_UPDATE_RECEIPT), anyString());
+        }).when(auditLogService).record(entryOf(AuditAction.RECEIPT_UPDATED));
     }
 
     // --------------------------------------------------------------------------------------------------- retry / retry
@@ -282,7 +287,7 @@ abstract class ReceiptConcurrencyContract {
         assertEquals(2L, stored(receiptId).getVersion());
         assertEquals(List.of(UNREADABLE_TOTAL, ONE_SCAN), answersInDatabase(receiptId), "one reading for the key, not two");
         verify(ocrService, times(1)).extract(ONE_SCAN);
-        verify(auditLogService, times(1)).logAction(anyString(), eq("RETRY_RECEIPT"), anyString());
+        verify(auditLogService, times(1)).record(entryOf(AuditAction.RECEIPT_RETRIED));
         assertEquals(1, receiptRepository.count());
     }
 
@@ -324,7 +329,7 @@ abstract class ReceiptConcurrencyContract {
         assertMoney("59000", receipt.getExtractedTotal());
         assertEquals(List.of(UNREADABLE_TOTAL, OTHER_SCAN), answersInDatabase(receiptId), "nothing of the first request remains");
         assertEquals(List.of("attempt-b"), keysInDatabase(receiptId));
-        verify(auditLogService, times(1)).logAction(anyString(), eq("RETRY_RECEIPT"), anyString());
+        verify(auditLogService, times(1)).record(entryOf(AuditAction.RECEIPT_RETRIED));
         assertEquals(1, receiptRepository.count());
         assertEquals(1, transactionRepository.count());
         assertMoney("90000", amountOf(transactionId));
@@ -365,7 +370,7 @@ abstract class ReceiptConcurrencyContract {
         assertMoney("250000", receipt.getExtractedTotal());
         assertEquals(1L, receipt.getVersion());
         assertEquals(List.of(FULL_SCAN), answersInDatabase(receiptId));
-        verify(auditLogService, times(1)).logAction(anyString(), eq(ACTION_UPDATE_RECEIPT), anyString());
+        verify(auditLogService, times(1)).record(entryOf(AuditAction.RECEIPT_UPDATED));
     }
 
     // ------------------------------------------------------------------------------------------------- edit / approval

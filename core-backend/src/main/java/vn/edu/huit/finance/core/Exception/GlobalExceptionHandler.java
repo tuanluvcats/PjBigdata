@@ -2,6 +2,8 @@ package vn.edu.huit.finance.core.Exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.servlet.ModelAndView;
 import vn.edu.huit.finance.core.Dto.ApiResponse;
+import vn.edu.huit.finance.core.Security.AuditingAccessDeniedHandler;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 
 import java.util.stream.Collectors;
 
@@ -20,6 +24,12 @@ public class GlobalExceptionHandler {
 
     private static final String MSG_CONCURRENT_CHANGE =
             "Dữ liệu vừa được thay đổi bởi một yêu cầu khác, vui lòng tải lại rồi thử lại";
+    private static final String REASON_NOT_OWNER = "Dữ liệu thuộc về người dùng khác";
+    private static final String REASON_ROLE = "Phân quyền theo vai trò";
+
+    // Every 403 is recorded (AUTH_ACCESS_DENIED), in a row written on its own: the request's transaction has rolled back.
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     private boolean isJsonRequest(HttpServletRequest request) {
         String uri = request.getRequestURI();
@@ -103,7 +113,15 @@ public class GlobalExceptionHandler {
     // 403 and not 404: the caller is signed in and the record exists, but it belongs to somebody else.
     @ExceptionHandler(TransactionAccessDeniedException.class)
     public Object handleTransactionAccessDenied(TransactionAccessDeniedException ex, HttpServletRequest request) {
+        eventPublisher.publishEvent(SecurityAuditEvent.accessDenied(REASON_NOT_OWNER, request.getMethod(), request.getRequestURI()));
         return buildErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
+    // 500 with a fixed text: the change was rolled back because its audit row could not be written. The cause (SQL, the
+    // database's own message) was logged by AuditLogService and is never sent to the client.
+    @ExceptionHandler(AuditLogWriteException.class)
+    public Object handleAuditLogWrite(AuditLogWriteException ex, HttpServletRequest request) {
+        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage(), request);
     }
 
     // 409: the receipt is not in a state that allows the request, or another request changed it first; nothing was written.
@@ -148,10 +166,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
     public Object handleAccessDeniedException(org.springframework.security.access.AccessDeniedException ex, HttpServletRequest request) {
+        eventPublisher.publishEvent(SecurityAuditEvent.accessDenied(REASON_ROLE, request.getMethod(), request.getRequestURI()));
         if (isJsonRequest(request)) {
             return ResponseEntity.status(403).body(ApiResponse.<String>builder()
                     .code(403)
-                    .message("Bảo mật: Bạn không có quyền (Role) để thực hiện hành động này!")
+                    .message(AuditingAccessDeniedHandler.MSG_ACCESS_DENIED)
                     .build());
         }
         return new ModelAndView("error").addObject("errorMessage", "Bạn không có quyền truy cập tính năng này.");

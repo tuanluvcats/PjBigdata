@@ -10,6 +10,7 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.huit.finance.core.Dto.BudgetRequestDto;
 import vn.edu.huit.finance.core.Dto.BudgetResponseDto;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.Budget;
 import vn.edu.huit.finance.core.Entity.BudgetPeriodType;
 import vn.edu.huit.finance.core.Entity.Category;
@@ -21,6 +22,8 @@ import vn.edu.huit.finance.core.Exception.UserNotFoundException;
 import vn.edu.huit.finance.core.Repository.BudgetRepository;
 import vn.edu.huit.finance.core.Repository.CategoryRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -45,6 +48,7 @@ class BudgetServiceTest {
     @Mock private BudgetRepository budgetRepository;
     @Mock private CategoryRepository categoryRepository;
     @Mock private CurrentUserProvider currentUserProvider;
+    @Mock private AuditLogService auditLogService;
     @InjectMocks private BudgetService service;
 
     private final User alice = user(ALICE_ID);
@@ -87,6 +91,18 @@ class BudgetServiceTest {
 
     private void signedInAsAlice() {
         when(currentUserProvider.getCurrentUser()).thenReturn(alice);
+    }
+
+    /** The one row of a change: by the caller, about the budget, naming the period and the category, never the amount. */
+    private AuditEntry recorded(AuditAction action) {
+        ArgumentCaptor<AuditEntry> entry = ArgumentCaptor.forClass(AuditEntry.class);
+        verify(auditLogService).record(entry.capture());
+        assertEquals(action, entry.getValue().action());
+        assertEquals(AuditActor.of(alice), entry.getValue().actor());
+        assertEquals(BUDGET_ID, entry.getValue().targetId());
+        assertFalse(entry.getValue().description().contains("2000000"));
+        assertFalse(entry.getValue().description().contains("1000000"));
+        return entry.getValue();
     }
 
     // ---- reads ----
@@ -158,6 +174,8 @@ class BudgetServiceTest {
         assertEquals(END, saved.getValue().getEndDate());
         assertEquals(BUDGET_ID, result.getId());
         assertEquals("Ăn uống", result.getCategoryName());
+        assertEquals("Tạo ngân sách kỳ MONTH từ 2026-09-01, danh mục #10",
+                recorded(AuditAction.BUDGET_CREATED).description());
     }
 
     @Test
@@ -182,6 +200,7 @@ class BudgetServiceTest {
         assertThrows(DuplicateBudgetException.class, () -> service.createBudget(request(FOOD_ID)));
 
         verify(budgetRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(auditLogService);
     }
 
     @Test
@@ -216,6 +235,8 @@ class BudgetServiceTest {
         assertEquals(START, existing.getStartDate());
         assertEquals(END, existing.getEndDate());
         assertEquals(BUDGET_ID, result.getId());
+        assertEquals("Sửa ngân sách kỳ MONTH từ 2026-09-01, danh mục #10",
+                recorded(AuditAction.BUDGET_UPDATED).description());
     }
 
     @Test
@@ -227,7 +248,7 @@ class BudgetServiceTest {
 
         verify(budgetRepository, never()).saveAndFlush(any());
         verify(budgetRepository, never()).existsDuplicateExcluding(any(), anyLong(), any(), any(), any());
-        verifyNoInteractions(categoryRepository);
+        verifyNoInteractions(categoryRepository, auditLogService);
     }
 
     @Test
@@ -270,6 +291,7 @@ class BudgetServiceTest {
         service.deleteBudget(BUDGET_ID);
 
         verify(budgetRepository).delete(existing);
+        assertEquals("Xóa ngân sách kỳ WEEK từ 2026-08-12, danh mục #10", recorded(AuditAction.BUDGET_DELETED).description());
     }
 
     @Test
@@ -280,6 +302,7 @@ class BudgetServiceTest {
         assertThrows(BudgetNotFoundException.class, () -> service.deleteBudget(BUDGET_ID));
 
         verify(budgetRepository, never()).delete(any());
+        verifyNoInteractions(auditLogService);
     }
 
     // ---- identity and transactions ----
@@ -294,7 +317,7 @@ class BudgetServiceTest {
         assertThrows(UserNotFoundException.class, () -> service.updateBudget(BUDGET_ID, request(FOOD_ID)));
         assertThrows(UserNotFoundException.class, () -> service.deleteBudget(BUDGET_ID));
 
-        verifyNoInteractions(budgetRepository, categoryRepository);
+        verifyNoInteractions(budgetRepository, categoryRepository, auditLogService);
     }
 
     @Test

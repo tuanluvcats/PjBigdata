@@ -53,6 +53,7 @@ class UserControllerRoleTest {
     @Autowired private MockMvc mockMvc;
 
     @MockBean private UserRepository userRepository;
+    // UserService is real here and records every change it makes; what it records is UserServiceAuditTest's business.
     @MockBean private AuditLogService auditLogService;
     @MockBean private JwtUtil jwtUtil;
     @MockBean private CustomUserDetailsService userDetailsService;

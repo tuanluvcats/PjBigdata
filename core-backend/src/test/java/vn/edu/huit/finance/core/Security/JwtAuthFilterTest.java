@@ -16,22 +16,32 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vn.edu.huit.finance.core.Config.SecurityConfig;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.GlobalExceptionHandler;
 import vn.edu.huit.finance.core.Repository.UserRepository;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.TokenBlacklistService;
 
 import java.security.Principal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -50,6 +60,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(JwtAuthFilterTest.ProbeController.class)
 @ContextConfiguration(classes = {
         JwtAuthFilterTest.ProbeController.class, GlobalExceptionHandler.class, SecurityConfig.class, JwtAuthFilter.class})
+@RecordApplicationEvents
 class JwtAuthFilterTest {
 
     private static final String PUBLIC_URL = "/api/categories";
@@ -77,6 +88,7 @@ class JwtAuthFilterTest {
     }
 
     @Autowired private MockMvc mockMvc;
+    @Autowired private ApplicationEvents events;
 
     @MockBean private JwtUtil jwtUtil;
     @MockBean private CustomUserDetailsService userDetailsService;
@@ -187,6 +199,59 @@ class JwtAuthFilterTest {
         mockMvc.perform(to(PROTECTED_URL, VALID_TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(content().string(ALICE));
+    }
+
+    // --------------------------------------------------------------------------------------------- audit of refusals
+
+    private List<AuditEntry> recordedRefusals() {
+        return events.stream(SecurityAuditEvent.class).map(SecurityAuditEvent::entry).toList();
+    }
+
+    static Stream<Arguments> tokensThatMayNoLongerBeUsed() {
+        return Stream.of(
+                Arguments.of(REVOKED_TOKEN, ALICE, null, "REVOKED"),
+                Arguments.of(OUTDATED_TOKEN, ALICE, ALICE_ID, "OUTDATED"),
+                Arguments.of(LOCKED_ACCOUNT_TOKEN, BOB, 2L, "ACCOUNT_LOCKED"));
+    }
+
+    @ParameterizedTest(name = "{3}")
+    @MethodSource("tokensThatMayNoLongerBeUsed")
+    void aSignedTokenThatMayNoLongerBeUsedIsRecordedOnce_withTheIdentityItClaimsAndThePath_neverTheToken(
+            String token, String subject, Long accountId, String reason) throws Exception {
+        mockMvc.perform(to(PROTECTED_URL, token));
+
+        List<AuditEntry> refusals = recordedRefusals();
+        assertEquals(1, refusals.size());
+        AuditEntry refusal = refusals.get(0);
+        assertEquals(AuditAction.AUTH_TOKEN_REJECTED, refusal.action());
+        // Refused, so not signed in: the subject is only claimed, the account (once loaded) is the target.
+        assertEquals(AuditActor.unauthenticated(subject), refusal.actor());
+        assertEquals(accountId, refusal.targetId());
+        assertTrue(refusal.description().contains(reason), refusal.description());
+        assertTrue(refusal.description().contains("GET " + PROTECTED_URL), refusal.description());
+        assertFalse(refusal.description().contains(token));
+    }
+
+    @Test
+    void aRevokedTokenIsRecordedOnAPublicUrlToo_althoughThatUrlServesTheRequestAnonymously() throws Exception {
+        mockMvc.perform(to(PUBLIC_URL, REVOKED_TOKEN)).andExpect(status().isOk());
+
+        assertEquals(List.of(AuditAction.AUTH_TOKEN_REJECTED), recordedRefusals().stream().map(AuditEntry::action).toList());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {EXPIRED_TOKEN, BADLY_SIGNED_TOKEN, REFRESH_TOKEN, VALID_TOKEN})
+    void anExpiredGarbageOrUsableTokenIsNotRecorded_routineOrSendableByAnybody(String token) throws Exception {
+        mockMvc.perform(to(PROTECTED_URL, token));
+
+        assertEquals(List.of(), recordedRefusals());
+    }
+
+    @Test
+    void noTokenAtAllIsNotRecorded() throws Exception {
+        mockMvc.perform(to(PROTECTED_URL, null)).andExpect(status().isUnauthorized());
+
+        assertEquals(List.of(), recordedRefusals());
     }
 
     // ---------------------------------------------------------------------------------------------- last action time

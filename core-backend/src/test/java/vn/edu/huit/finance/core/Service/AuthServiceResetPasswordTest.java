@@ -11,6 +11,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -18,10 +19,14 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
+import vn.edu.huit.finance.core.Entity.AuditAction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.CredentialsChangeConflictException;
 import vn.edu.huit.finance.core.Exception.InvalidOtpException;
 import vn.edu.huit.finance.core.Repository.UserRepository;
+import vn.edu.huit.finance.core.Service.Audit.AuditActor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditEvent;
 
 import java.lang.reflect.Method;
 import java.security.SecureRandom;
@@ -80,6 +85,7 @@ class AuthServiceResetPasswordTest {
     @Mock private JavaMailSender mailSender;
     @Mock private EntityManager entityManager;
     @Mock private AuditLogService auditLogService;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
     private AuthService service;
@@ -93,6 +99,7 @@ class AuthServiceResetPasswordTest {
         ReflectionTestUtils.setField(service, "mailSender", mailSender);
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
         ReflectionTestUtils.setField(service, "auditLogService", auditLogService);
+        ReflectionTestUtils.setField(service, "eventPublisher", eventPublisher);
         timeIs(ISSUED_AT);
 
         user = new User();
@@ -135,6 +142,19 @@ class AuthServiceResetPasswordTest {
     private InvalidOtpException rejectionOf(String otp) {
         return assertThrows(InvalidOtpException.class,
                 () -> service.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD));
+    }
+
+    /** Every row published to be written on its own (requests and refusals), in order. */
+    private List<AuditEntry> publishedEntries() {
+        ArgumentCaptor<SecurityAuditEvent> events = ArgumentCaptor.forClass(SecurityAuditEvent.class);
+        verify(eventPublisher, atLeastOnce()).publishEvent(events.capture());
+        return events.getAllValues().stream().map(SecurityAuditEvent::entry).toList();
+    }
+
+    private static void assertContainsNone(String text, String... secrets) {
+        for (String secret : secrets) {
+            assertFalse(text.contains(secret), "the audit row must not contain " + secret);
+        }
     }
 
     /** The hash the one guarded UPDATE wrote, together with the new credentials version. */
@@ -192,20 +212,58 @@ class AuthServiceResetPasswordTest {
         // Envers never sees the bulk UPDATE, so this row is the audit trail; written once the UPDATE has applied.
         InOrder inOrder = inOrder(userRepository, auditLogService);
         inOrder.verify(userRepository).updatePasswordAndEndSessions(eq(1L), anyString(), eq(0));
-        ArgumentCaptor<String> description = ArgumentCaptor.forClass(String.class);
-        inOrder.verify(auditLogService).logAction(eq(EMAIL), eq("PASSWORD_RESET"), description.capture());
-        for (String secret : new String[] {otp, OLD_PASSWORD, NEW_PASSWORD, storedHash()}) {
-            assertFalse(description.getValue().contains(secret), "the audit row must not contain " + secret);
-        }
+        ArgumentCaptor<AuditEntry> entry = ArgumentCaptor.forClass(AuditEntry.class);
+        inOrder.verify(auditLogService).record(entry.capture());
+        assertEquals(AuditAction.AUTH_PASSWORD_RESET, entry.getValue().action());
+        // The OTP proved the account: the row names it as the actor and as the target.
+        assertEquals(AuditActor.of(user), entry.getValue().actor());
+        assertEquals(1L, entry.getValue().targetId());
+        assertContainsNone(entry.getValue().description(), otp, OLD_PASSWORD, NEW_PASSWORD, storedHash());
     }
 
     @Test
-    void verifyOtpAndResetPassword_writesNoAuditRow_whenTheOtpIsRefused() {
-        requestOtp();
+    void verifyOtpAndResetPassword_writesNoSuccessRow_butRecordsTheRefusalOnItsOwn_whenTheOtpIsRefused() {
+        String otp = requestOtp();
 
         rejectionOf(WRONG_OTP);
 
         verifyNoInteractions(auditLogService);
+        List<AuditEntry> published = publishedEntries();
+        assertEquals(List.of(AuditAction.AUTH_PASSWORD_RESET_REQUESTED, AuditAction.AUTH_PASSWORD_RESET_REJECTED),
+                published.stream().map(AuditEntry::action).toList());
+        AuditEntry refusal = published.get(1);
+        // Nobody is signed in: the email is only claimed, no account id is taken from it.
+        assertEquals(AuditActor.unauthenticated(EMAIL), refusal.actor());
+        assertEquals(TWO_ATTEMPTS_LEFT_MESSAGE, refusal.description().substring(refusal.description().indexOf(": ") + 2));
+        assertContainsNone(refusal.description(), otp, WRONG_OTP, NEW_PASSWORD);
+    }
+
+    @Test
+    void generateAndSendOtp_recordsTheRequest_forTheAccount_withoutTheOtp() {
+        String otp = requestOtp();
+
+        List<AuditEntry> published = publishedEntries();
+        assertEquals(1, published.size());
+        AuditEntry request = published.get(0);
+        assertEquals(AuditAction.AUTH_PASSWORD_RESET_REQUESTED, request.action());
+        assertEquals(AuditActor.unauthenticated(EMAIL), request.actor());
+        assertEquals(1L, request.targetId());
+        assertContainsNone(request.description(), otp);
+        verifyNoInteractions(auditLogService);
+    }
+
+    @Test
+    void generateAndSendOtp_recordsARequestForAnUnknownEmail_andMailsNothing() {
+        String unknown = "nobody@example.com";
+        when(userRepository.findByEmail(unknown)).thenReturn(Optional.empty());
+
+        assertThrows(RuntimeException.class, () -> service.generateAndSendOtp(unknown));
+
+        verifyNoInteractions(mailSender, auditLogService);
+        AuditEntry refusal = publishedEntries().get(0);
+        assertEquals(AuditAction.AUTH_PASSWORD_RESET_REJECTED, refusal.action());
+        assertEquals(AuditActor.unauthenticated(unknown), refusal.actor());
+        assertNull(refusal.targetId());
     }
 
     @Test

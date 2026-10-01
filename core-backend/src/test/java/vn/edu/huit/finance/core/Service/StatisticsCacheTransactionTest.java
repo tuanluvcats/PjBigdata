@@ -44,6 +44,7 @@ import vn.edu.huit.finance.core.Repository.TransactionRepository;
 import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
 import vn.edu.huit.finance.core.Service.Cache.StatisticsCacheEvictor;
+import vn.edu.huit.finance.core.Service.Audit.AuditEntry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -55,7 +56,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
@@ -275,7 +275,7 @@ class StatisticsCacheTransactionTest {
         doAnswer(invocation -> {
             stillCachedInsideTheTransaction.set(cached("user-dashboard", aliceId));
             return null;
-        }).when(auditLogService).logAction(anyString(), anyString(), anyString());
+        }).when(auditLogService).record(any(AuditEntry.class));
 
         service.createMyTransaction(checkout("25000", "Cà phê"));
 

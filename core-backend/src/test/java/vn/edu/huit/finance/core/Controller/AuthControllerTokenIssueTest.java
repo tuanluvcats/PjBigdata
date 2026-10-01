@@ -22,7 +22,6 @@ import vn.edu.huit.finance.core.Security.JwtAuthFilter;
 import vn.edu.huit.finance.core.Security.JwtUtil;
 import vn.edu.huit.finance.core.Security.TokenClaims;
 import vn.edu.huit.finance.core.Security.TokenType;
-import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.AuthService;
 import vn.edu.huit.finance.core.Service.LoginAttemptService;
 import vn.edu.huit.finance.core.Service.SocialAuthService;
@@ -68,7 +67,6 @@ class AuthControllerTokenIssueTest {
     @MockBean private CustomUserDetailsService userDetailsService;
     @MockBean private UserRepository userRepository;
     @MockBean private LoginAttemptService loginAttemptService;
-    @MockBean private AuditLogService auditLogService;
     @MockBean private SocialAuthService socialAuthService;
     @MockBean private TokenBlacklistService tokenBlacklistService;
 

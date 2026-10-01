@@ -23,7 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.edu.huit.finance.core.Dto.AuthTokenResponseDto;
 import vn.edu.huit.finance.core.Dto.ChangePasswordRequestDto;
 import vn.edu.huit.finance.core.Entity.ActionLog;
+import vn.edu.huit.finance.core.Entity.AuditAction;
+import vn.edu.huit.finance.core.Entity.AuditResult;
+import vn.edu.huit.finance.core.Entity.AuditTargetType;
 import vn.edu.huit.finance.core.Entity.User;
+import vn.edu.huit.finance.core.Exception.AuditLogWriteException;
 import vn.edu.huit.finance.core.Exception.InvalidPasswordException;
 import vn.edu.huit.finance.core.Repository.ActionLogRepository;
 import vn.edu.huit.finance.core.Repository.RevokedTokenRepository;
@@ -31,6 +35,7 @@ import vn.edu.huit.finance.core.Repository.UserRepository;
 import vn.edu.huit.finance.core.Security.CurrentUserProvider;
 import vn.edu.huit.finance.core.Security.CustomUserDetailsService;
 import vn.edu.huit.finance.core.Security.JwtUtil;
+import vn.edu.huit.finance.core.Service.Audit.SecurityAuditListener;
 
 import java.util.List;
 import java.util.regex.Matcher;
@@ -45,22 +50,23 @@ import static org.mockito.Mockito.when;
 /**
  * The audit trail of a password change or reset. The password is written by a bulk UPDATE, which Hibernate Envers never
  * sees, so the action_logs row written by the real AuditLogService is the only record. It joins the transaction of the
- * change: no row for a change that did not happen, and no change without its row. Nothing runs inside a test transaction;
- * every check reads H2 again.
+ * change: no row for a change that did not happen, and no change without its row. A refusal (wrong old password, wrong
+ * OTP) is written on its own by the real SecurityAuditListener, and stays although the refused change rolls back.
+ * Nothing runs inside a test transaction; every check reads H2 again.
  */
 @DataJpaTest(properties = {
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
         "spring.jpa.hibernate.ddl-auto=create-drop"})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Import({AuthService.class, AuditLogService.class, TokenBlacklistService.class, JwtUtil.class,
+@Import({AuthService.class, AuditLogService.class, SecurityAuditListener.class, TokenBlacklistService.class, JwtUtil.class,
         CustomUserDetailsService.class, PasswordAuditTrailTest.EncoderConfig.class})
 class PasswordAuditTrailTest {
 
     private static final String EMAIL = "alice@example.com";
     private static final String OLD_PASSWORD = "OldPass123";
     private static final String NEW_PASSWORD = "NewPass456";
-    private static final String PASSWORD_CHANGED = "PASSWORD_CHANGED";
-    private static final String PASSWORD_RESET = "PASSWORD_RESET";
+    private static final String PASSWORD_CHANGED = AuditAction.AUTH_PASSWORD_CHANGED.name();
+    private static final String PASSWORD_RESET = AuditAction.AUTH_PASSWORD_RESET.name();
     private static final Pattern OTP_IN_MAIL = Pattern.compile("\\d{6}");
 
     @TestConfiguration
@@ -129,6 +135,10 @@ class PasswordAuditTrailTest {
         }
     }
 
+    private List<ActionLog> rowsOf(AuditAction action) {
+        return actionLogRepository.findAll().stream().filter(row -> action.name().equals(row.getAction())).toList();
+    }
+
     private static void assertContainsNone(ActionLog row, List<String> secrets) {
         String everything = row.getAction() + " " + row.getDescription() + " " + row.getUserEmail() + " " + row.getIpAddress();
         for (String secret : secrets) {
@@ -151,6 +161,10 @@ class PasswordAuditTrailTest {
         ActionLog row = rows.get(0);
         assertEquals(PASSWORD_CHANGED, row.getAction());
         assertEquals(EMAIL, row.getUserEmail());
+        assertEquals(aliceId, row.getUserId());
+        assertEquals(AuditTargetType.USER.name(), row.getTargetType());
+        assertEquals(aliceId, row.getTargetId());
+        assertEquals(AuditResult.SUCCESS.name(), row.getResult());
         assertNotNull(row.getTimestamp());
         assertContainsNone(row, List.of(OLD_PASSWORD, NEW_PASSWORD, aliceInDatabase().getPassword(), accessToken,
                 renewed.getToken(), renewed.getRefreshToken()));
@@ -161,8 +175,9 @@ class PasswordAuditTrailTest {
         doThrow(new IllegalStateException("action_logs unavailable")).when(actionLogRepository).save(any(ActionLog.class));
         String accessToken = jwtUtil.generateToken(EMAIL, 0);
 
-        assertThrows(IllegalStateException.class,
+        AuditLogWriteException failed = assertThrows(AuditLogWriteException.class,
                 () -> authService.changePassword(request(OLD_PASSWORD, NEW_PASSWORD), accessToken));
+        assertFalse(failed.getMessage().contains("action_logs unavailable"), "the cause stays on the server");
 
         User alice = aliceInDatabase();
         assertTrue(passwordEncoder.matches(OLD_PASSWORD, alice.getPassword()), "no password change without its audit row");
@@ -172,13 +187,21 @@ class PasswordAuditTrailTest {
     }
 
     @Test
-    void aRefusedPasswordChange_writesNoAuditRow() {
+    void aRefusedPasswordChange_writesNoSuccessRow_butItsRefusalStays_althoughTheChangeRolledBack() {
         String accessToken = jwtUtil.generateToken(EMAIL, 0);
 
         assertThrows(InvalidPasswordException.class,
                 () -> authService.changePassword(request("WrongOld123", NEW_PASSWORD), accessToken));
 
-        assertEquals(0, actionLogRepository.count());
+        assertEquals(List.of(), rowsOf(AuditAction.AUTH_PASSWORD_CHANGED));
+        List<ActionLog> refusals = rowsOf(AuditAction.AUTH_PASSWORD_CHANGE_REJECTED);
+        assertEquals(1, refusals.size(), "written in a transaction of its own, so the rollback of the change kept it");
+        ActionLog refusal = refusals.get(0);
+        assertEquals(aliceId, refusal.getUserId());
+        assertEquals(aliceId, refusal.getTargetId());
+        assertEquals(AuditResult.FAILURE.name(), refusal.getResult());
+        assertContainsNone(refusal, List.of("WrongOld123", NEW_PASSWORD, OLD_PASSWORD, accessToken));
+        assertEquals(1, actionLogRepository.count());
     }
 
     // ---------------------------------------------------------------------------------------------- reset password (OTP)
@@ -189,7 +212,9 @@ class PasswordAuditTrailTest {
 
         authService.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD);
 
-        List<ActionLog> rows = actionLogRepository.findAll();
+        // The request of the OTP has its own row; the reset has one, in its transaction.
+        assertEquals(1, rowsOf(AuditAction.AUTH_PASSWORD_RESET_REQUESTED).size());
+        List<ActionLog> rows = rowsOf(AuditAction.AUTH_PASSWORD_RESET);
         assertEquals(1, rows.size());
         ActionLog row = rows.get(0);
         assertEquals(PASSWORD_RESET, row.getAction());
@@ -204,11 +229,11 @@ class PasswordAuditTrailTest {
         String otp = mailedOtp();
         doThrow(new IllegalStateException("action_logs unavailable")).when(actionLogRepository).save(any(ActionLog.class));
 
-        assertThrows(IllegalStateException.class, () -> authService.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD));
+        assertThrows(AuditLogWriteException.class, () -> authService.verifyOtpAndResetPassword(EMAIL, otp, NEW_PASSWORD));
 
         User alice = aliceInDatabase();
         assertTrue(passwordEncoder.matches(OLD_PASSWORD, alice.getPassword()));
         assertEquals(0, alice.getCredentialsVersion(), "the other devices keep their sessions after a reset that failed");
-        assertEquals(0, actionLogRepository.count());
+        assertEquals(List.of(), rowsOf(AuditAction.AUTH_PASSWORD_RESET));
     }
 }
