@@ -484,15 +484,15 @@ class TransactionServiceTest {
     }
 
     @Test
-    void theEditedTransactionAnswersWithTheStatusOfItsReceipt() {
+    void theEditedTransactionAnswersWithTheStatusOfItsReceiptUnderTheNameTheAppKnows() {
         Transaction transaction = aliceHasOwnTransaction(HUNDRED_THOUSAND, true);
-        transaction.setReceipt(receipt(ReceiptStatus.SUCCESS.name(), transaction));
+        transaction.setReceipt(receipt(ReceiptStatus.COMPLETED_RAW.name(), transaction));
         TransactionUpdateRequestDto request = update();
         request.setNote("Bún chả");
 
         TransactionResponseDto response = service.updateTransaction(TX_ID, request);
 
-        assertEquals(ReceiptStatus.SUCCESS.name(), response.getReceiptStatus());
+        assertEquals(ReceiptStatus.LEGACY_SUCCESS, response.getReceiptStatus());
     }
 
     @Test
@@ -696,16 +696,17 @@ class TransactionServiceTest {
         verify(receiptRepo, never()).save(any());
     }
 
-    @Test
-    void aReceiptThatIsNoLongerPendingCannotBeCanceled() {
+    @ParameterizedTest
+    @ValueSource(strings = {"SUCCESS", "PROCESSING", "COMPLETED_RAW", "EDITED", "FAILED", "WAITING_FOR_REVIEW", "APPROVED", "CANCELED"})
+    void aReceiptThatIsNoLongerPendingCannotBeCanceled(String status) {
         signedInAsAlice();
-        Receipt receipt = receipt("SUCCESS", transaction(alice, HUNDRED_THOUSAND, true));
+        Receipt receipt = receipt(status, transaction(alice, HUNDRED_THOUSAND, true));
         when(receiptRepo.findById(7L)).thenReturn(Optional.of(receipt));
 
         IllegalStateException refused = assertThrows(IllegalStateException.class, () -> service.cancelMyReceipt(7L));
 
         assertTrue(refused.getMessage().contains("Chờ xử lý"));
-        assertEquals("SUCCESS", receipt.getStatus());
+        assertEquals(status, receipt.getStatus());
         verify(receiptRepo, never()).save(any());
     }
 
@@ -746,7 +747,10 @@ class TransactionServiceTest {
                 Arguments.of(true, "WAITING_FOR_REVIEW", "40000", "40000", "1060000"),         // 60,000 less spent
                 Arguments.of(false, "WAITING_FOR_REVIEW", "250000", "250000", "1150000"),      // 150,000 more earned
                 Arguments.of(false, "WAITING_FOR_REVIEW", "30000", "30000", "930000"),         // 70,000 less earned
-                Arguments.of(true, "SUCCESS", "120000", "120000", "980000"),                   // what the AI read differs from what was typed
+                Arguments.of(true, "COMPLETED_RAW", "120000", "120000", "980000"),             // what the AI read differs from what was typed
+                Arguments.of(true, "SUCCESS", "120000", "120000", "980000"),                   // the same, in a row that predates the lifecycle
+                Arguments.of(true, "EDITED", "120000", "120000", "980000"),                    // the total the owner corrected the receipt to
+                Arguments.of(true, "APPROVED", "120000", "120000", "980000"),                  // approved before, the amount was changed since
                 Arguments.of(true, "PENDING", "120000", "120000", "980000"),
                 Arguments.of(true, "FAILED", "120000", "120000", "980000"),                    // an administrator overrules an earlier rejection
                 Arguments.of(true, "WAITING_FOR_REVIEW", "100000.50", "100000.50", "999999.50"));
@@ -763,7 +767,7 @@ class TransactionServiceTest {
 
         assertMoney(amountAfter, transaction.getAmount());
         assertMoney(walletAfter, alice.getWalletBalance());
-        assertEquals("SUCCESS", receipt.getStatus());
+        assertEquals("APPROVED", receipt.getStatus());
         assertEquals(isExpense, transaction.isExpense(), "approving never changes the direction of a transaction");
         verify(userRepo).saveAndFlush(alice);
         verify(transactionRepo).save(transaction);
@@ -777,12 +781,39 @@ class TransactionServiceTest {
 
         service.approveReceipt(RECEIPT_ID);
 
-        assertEquals("SUCCESS", receipt.getStatus());
+        assertEquals("APPROVED", receipt.getStatus());
         assertMoney("100000", transaction.getAmount());
         assertMoney("1000000", alice.getWalletBalance());
         verify(userRepo, never()).saveAndFlush(any());
         verify(receiptRepo).save(receipt);
         verifyNoInteractions(budgetAlertService);
+    }
+
+    @Test
+    void anApprovalClearsTheReasonOfAnEarlierRejection() {
+        Receipt rejected = receiptToApprove(true, "FAILED", "120000");
+        rejected.setErrorCode("REJECTED_BY_ADMIN");
+
+        service.approveReceipt(RECEIPT_ID);
+
+        assertEquals("APPROVED", rejected.getStatus());
+        assertNull(rejected.getErrorCode(), "an error code only describes a FAILED receipt");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PROCESSING", "NOT_A_STATUS"})
+    void aReceiptThatIsBeingReadOrHasNoKnownStatusCannotBeApprovedAndNothingMoves(String status) {
+        Receipt receipt = receiptToApprove(true, status, "120000");
+        Transaction transaction = receipt.getTransaction();
+
+        assertThrows(IllegalStateException.class, () -> service.approveReceipt(RECEIPT_ID));
+
+        assertEquals(status, receipt.getStatus());
+        assertMoney("100000", transaction.getAmount());
+        assertMoney("1000000", alice.getWalletBalance());
+        verify(userRepo, never()).saveAndFlush(any());
+        verify(transactionRepo, never()).save(any());
+        verify(receiptRepo, never()).save(any());
     }
 
     @Test
@@ -1116,7 +1147,7 @@ class TransactionServiceTest {
         Transaction recent = transaction(alice, HUNDRED_THOUSAND, true);
         recent.setReceipt(receipt(ReceiptStatus.PENDING.name(), recent));
         Transaction biggest = transaction(alice, new BigDecimal("900000"), false);
-        biggest.setReceipt(receipt(ReceiptStatus.SUCCESS.name(), biggest));
+        biggest.setReceipt(receipt(ReceiptStatus.APPROVED.name(), biggest));
         Transaction sale = transaction(alice, new BigDecimal("5000"), true);
         when(transactionRepo.findByUserId(eq(ALICE_ID), any(Pageable.class))).thenReturn(List.of(recent));
         when(transactionRepo.findTopByUserIdOrderByAmountDesc(ALICE_ID)).thenReturn(biggest);
@@ -1125,7 +1156,7 @@ class TransactionServiceTest {
         AppDashboardResponseDto dashboard = service.getMyDashboard();
 
         assertEquals(ReceiptStatus.PENDING.name(), dashboard.getRecentTransactions().get(0).getReceiptStatus());
-        assertEquals(ReceiptStatus.SUCCESS.name(), dashboard.getBiggestTransaction().getReceiptStatus());
+        assertEquals(ReceiptStatus.LEGACY_SUCCESS, dashboard.getBiggestTransaction().getReceiptStatus());
         assertNull(dashboard.getSaleTransactions().get(0).getReceiptStatus());
     }
 

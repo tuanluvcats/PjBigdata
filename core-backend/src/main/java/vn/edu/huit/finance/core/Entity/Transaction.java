@@ -62,11 +62,18 @@ public class Transaction extends BaseEntity {
     @JsonIgnore
     private Category category;
 
-    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY)    
+    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JoinColumn(name = "receipt_id", referencedColumnName = "id")
     @JsonIgnore
     private Receipt receipt;
-    @Column(name = "raw_receipt_data", columnDefinition = "TEXT")
+
+    /**
+     * LEGACY, read-only. Where the checkout kept the answer of the AI before receipts had a lifecycle. The copy that counts
+     * is the receipt's attempts now (ReceiptProcessingAttempt). The column stays, so that the older rows lose nothing,
+     * but it is never written again, which is what keeps a second, diverging copy from appearing; what it holds is read
+     * once, to import it as the receipt's first (LEGACY) attempt. Plan: see Receipt.aiRawData, retired together.
+     */
+    @Column(name = "raw_receipt_data", columnDefinition = "TEXT", insertable = false, updatable = false)
     private String rawReceiptData;
 
     /**

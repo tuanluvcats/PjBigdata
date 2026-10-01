@@ -17,6 +17,11 @@ public enum StatisticsChange {
     TRANSACTION_DETAILS(Set.of(CacheNames.USER_DASHBOARD), Set.of()),
     /** A receipt changed status: its owner's dashboard shows the status, the admin summary counts receipts by status. */
     RECEIPT_STATUS(Set.of(CacheNames.USER_DASHBOARD), Set.of(CacheNames.ADMIN_DASHBOARD_SUMMARY)),
+    /**
+     * What a receipt says changed, and its status with it (its owner corrected it, or a retry brought a new reading): the
+     * vendor name feeds its owner's popular vendors on top of everything a status change touches.
+     */
+    RECEIPT_CONTENT(CacheNames.USER_CACHES, Set.of(CacheNames.ADMIN_DASHBOARD_SUMMARY)),
     /** An account was created: the user count and the low-balance list (a new wallet is empty) of the admin summary. */
     ACCOUNT_CREATED(Set.of(), Set.of(CacheNames.ADMIN_DASHBOARD_SUMMARY)),
     /** The name or phone of an account changed: the low-balance list and the top spenders show them. */

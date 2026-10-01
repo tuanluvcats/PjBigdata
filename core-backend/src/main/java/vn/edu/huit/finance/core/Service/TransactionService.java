@@ -55,8 +55,6 @@ public class TransactionService {
 
     private static final String CATEGORY_TYPE_EXPENSE = "EXPENSE";
     private static final String CATEGORY_TYPE_INCOME = "INCOME";
-    private static final String RECEIPT_STATUS_PENDING = "PENDING";
-    private static final String RECEIPT_STATUS_CANCELED = "CANCELED";
     /** Below this a wallet runs low: a checkout warns its owner, and the admin dashboard lists the user. */
     public static final BigDecimal LOW_BALANCE_THRESHOLD = new BigDecimal("50000");
 
@@ -76,6 +74,7 @@ public class TransactionService {
     private static final String MSG_RECEIPT_NOT_PENDING = "Chỉ có thể hủy hóa đơn đang ở trạng thái Chờ xử lý";
     private static final String MSG_RECEIPT_UNLINKED = "Hóa đơn chưa gắn với giao dịch nào nên không thể xác nhận";
     private static final String MSG_RECEIPT_CANCELED = "Hóa đơn đã bị hủy nên không thể xác nhận";
+    private static final String MSG_RECEIPT_NOT_APPROVABLE = "Hóa đơn đang ở trạng thái không thể xác nhận";
     private static final String MSG_RECEIPT_NO_TOTAL = "Hóa đơn chưa có tổng tiền hợp lệ nên không thể đối soát";
     private static final String MSG_USER_NOT_FOUND = "Không tìm thấy người dùng";
 
@@ -148,7 +147,6 @@ public class TransactionService {
 
         transaction.setTransactionDate(request.getTransactionDate());
         transaction.setExpense(request.isExpense());
-        transaction.setRawReceiptData(request.getRawReceiptData());
         transaction.setClientId(clientId);
 
         transaction.setUser(user);
@@ -277,11 +275,11 @@ public class TransactionService {
             log.warn("Receipt access denied, userId={}, receiptId={}", userId, receiptId);
             throw new TransactionAccessDeniedException(MSG_RECEIPT_FORBIDDEN);
         }
-        if (!RECEIPT_STATUS_PENDING.equalsIgnoreCase(receipt.getStatus())) {
+        if (!ReceiptStatus.PENDING.matches(receipt.getStatus())) {
             throw new IllegalStateException(MSG_RECEIPT_NOT_PENDING);
         }
 
-        receipt.setStatus(RECEIPT_STATUS_CANCELED);
+        receipt.moveTo(ReceiptStatus.CANCELED);
         receiptRepo.save(receipt);
         eventPublisher.publishEvent(StatisticsChangedEvent.of(StatisticsChange.RECEIPT_STATUS, userId));
         log.info("Receipt canceled, userId={}, receiptId={}", userId, receiptId);
@@ -323,7 +321,8 @@ public class TransactionService {
             moveWallet(owner, walletChange);
         }
         transaction.setAmount(finalAmount);
-        receipt.setStatus(ReceiptStatus.SUCCESS.name());
+        String previousStatus = receipt.getStatus();
+        receipt.moveTo(ReceiptStatus.APPROVED);
         Transaction saved = transactionRepo.save(transaction);
         receiptRepo.save(receipt);
         if (walletChange.signum() != 0) {
@@ -333,8 +332,8 @@ public class TransactionService {
                 ? StatisticsChange.TRANSACTION_TOTALS
                 : StatisticsChange.RECEIPT_STATUS, owner.getId()));
 
-        log.info("Receipt approved, receiptId={}, transactionId={}, userId={}, previousAmount={}, finalAmount={}, walletChange={}",
-                receiptId, saved.getId(), owner.getId(), previousAmount, finalAmount, walletChange);
+        log.info("Receipt approved, receiptId={}, transactionId={}, userId={}, status={} -> {}, previousAmount={}, finalAmount={}, walletChange={}",
+                receiptId, saved.getId(), owner.getId(), previousStatus, receipt.getStatus(), previousAmount, finalAmount, walletChange);
     }
 
     @Transactional(readOnly = true)
@@ -407,11 +406,19 @@ public class TransactionService {
         return transaction;
     }
 
-    /** The total a receipt is approved with: the one it holds now, positive and plausible. A canceled receipt is not approved at all. */
+    /**
+     * The total a receipt is approved with: the one it holds now (what the AI read, or what its owner corrected), positive
+     * and plausible. A canceled receipt is not approved at all, and neither is one the lifecycle knows no move to APPROVED
+     * for (it is being read, or its status is none the lifecycle knows).
+     */
     private BigDecimal approvableTotal(Receipt receipt) {
         if (ReceiptStatus.CANCELED.matches(receipt.getStatus())) {
             log.warn("Receipt approval refused, the receipt is canceled, receiptId={}", receipt.getId());
             throw new IllegalStateException(MSG_RECEIPT_CANCELED);
+        }
+        if (!receipt.canMoveTo(ReceiptStatus.APPROVED)) {
+            log.warn("Receipt approval refused, receiptId={}, status={}", receipt.getId(), receipt.getStatus());
+            throw new IllegalStateException(MSG_RECEIPT_NOT_APPROVABLE);
         }
         BigDecimal total = OcrService.validTotal(receipt.getExtractedTotal());
         // A total that rounds to zero (0.004) passes the rule above but is no total either.
@@ -434,8 +441,11 @@ public class TransactionService {
         return responseData;
     }
 
-    /** The client id as it is stored and looked up: trimmed, and null when the request sent none or only blanks. */
-    private static String normalizeClientId(String clientId) {
+    /**
+     * An idempotency key as it is stored and looked up: trimmed, and null when the request sent none or only blanks.
+     * Shared with ReceiptProcessingService, whose retry takes the same kind of key.
+     */
+    static String normalizeClientId(String clientId) {
         if (clientId == null || clientId.isBlank()) {
             return null;
         }

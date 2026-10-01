@@ -1,6 +1,8 @@
 package vn.edu.huit.finance.core.Exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -12,8 +14,13 @@ import vn.edu.huit.finance.core.Dto.ApiResponse;
 
 import java.util.stream.Collectors;
 
+@Slf4j
 @ControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final String MSG_CONCURRENT_CHANGE =
+            "Dữ liệu vừa được thay đổi bởi một yêu cầu khác, vui lòng tải lại rồi thử lại";
+
     private boolean isJsonRequest(HttpServletRequest request) {
         String uri = request.getRequestURI();
         return uri.startsWith("/api/") || uri.contains("/ajax/");
@@ -97,6 +104,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TransactionAccessDeniedException.class)
     public Object handleTransactionAccessDenied(TransactionAccessDeniedException ex, HttpServletRequest request) {
         return buildErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
+    // 409: the receipt is not in a state that allows the request, or another request changed it first; nothing was written.
+    @ExceptionHandler(ReceiptConflictException.class)
+    public Object handleReceiptConflict(ReceiptConflictException ex, HttpServletRequest request) {
+        return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    // 409: a versioned row (a receipt) was changed by another request between the read and the write of this one, and the
+    // whole transaction of this one was rolled back. The exception names the entity and its id, so the answer is a fixed text.
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public Object handleOptimisticLockingFailure(OptimisticLockingFailureException ex, HttpServletRequest request) {
+        log.warn("Optimistic locking conflict, nothing was written, uri={}", request.getRequestURI());
+        return buildErrorResponse(HttpStatus.CONFLICT, MSG_CONCURRENT_CHANGE, request);
     }
 
     @ExceptionHandler({InsufficientBalanceException.class, InvalidRoleException.class, InvalidSortFieldException.class})

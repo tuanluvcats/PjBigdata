@@ -21,6 +21,7 @@ class StatisticsChangeTest {
                 Arguments.of(StatisticsChange.TRANSACTION_TOTALS, USER_CACHES, ADMIN_CACHES),
                 Arguments.of(StatisticsChange.TRANSACTION_DETAILS, Set.of(USER_DASHBOARD), Set.of()),
                 Arguments.of(StatisticsChange.RECEIPT_STATUS, Set.of(USER_DASHBOARD), Set.of(ADMIN_DASHBOARD_SUMMARY)),
+                Arguments.of(StatisticsChange.RECEIPT_CONTENT, USER_CACHES, Set.of(ADMIN_DASHBOARD_SUMMARY)),
                 Arguments.of(StatisticsChange.ACCOUNT_CREATED, Set.of(), Set.of(ADMIN_DASHBOARD_SUMMARY)),
                 Arguments.of(StatisticsChange.ACCOUNT_PROFILE, Set.of(), Set.of(ADMIN_DASHBOARD_SUMMARY, ADMIN_TOP_SPENDERS)),
                 Arguments.of(StatisticsChange.ACCOUNT_DELETED, USER_CACHES, ADMIN_CACHES),
@@ -50,6 +51,14 @@ class StatisticsChangeTest {
     @EnumSource(value = StatisticsChange.class, names = "DATABASE_RESTORED", mode = EnumSource.Mode.EXCLUDE)
     void noChangeOfOneUsersDataClearsTheEntriesOfEveryOtherUser(StatisticsChange change) {
         assertTrue(change.clearedCaches().stream().noneMatch(USER_CACHES::contains), change + " clears a per-user cache");
+    }
+
+    @Test
+    void whatAReceiptSaysEvictsEverythingItsStatusDoesAndTheOwnersPopularVendorsOnTop() {
+        // The popular vendors of a user are counted by the vendor name of their receipts, which an edit or a retry changes.
+        assertTrue(StatisticsChange.RECEIPT_CONTENT.ownerCaches().containsAll(StatisticsChange.RECEIPT_STATUS.ownerCaches()));
+        assertTrue(StatisticsChange.RECEIPT_CONTENT.ownerCaches().contains(USER_POPULAR_VENDORS));
+        assertEquals(StatisticsChange.RECEIPT_STATUS.clearedCaches(), StatisticsChange.RECEIPT_CONTENT.clearedCaches());
     }
 
     @Test

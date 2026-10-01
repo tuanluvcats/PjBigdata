@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Entity.Transaction;
 
 import java.math.BigDecimal;
@@ -38,6 +39,8 @@ public class TransactionRequestDto {
     @JsonProperty("isExpense")
     private boolean isExpense;
     private Long campaignId;
+    /** What the AI answered for the scanned receipt, as one JSON text; it is kept as the receipt's first attempt, never on the transaction. */
+    @Size(max = Receipt.AI_RAW_DATA_MAX_LENGTH, message = "Dữ liệu AI của hóa đơn (rawReceiptData) tối đa {max} ký tự")
     private String rawReceiptData;
     private String imageUrl;
     private List<String> additionalImages;

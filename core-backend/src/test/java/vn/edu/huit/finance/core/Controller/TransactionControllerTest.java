@@ -27,6 +27,7 @@ import vn.edu.huit.finance.core.Dto.TransactionFilterRequestDto;
 import vn.edu.huit.finance.core.Dto.TransactionRequestDto;
 import vn.edu.huit.finance.core.Dto.TransactionResponseDto;
 import vn.edu.huit.finance.core.Dto.TransactionUpdateRequestDto;
+import vn.edu.huit.finance.core.Entity.Receipt;
 import vn.edu.huit.finance.core.Entity.Transaction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.GlobalExceptionHandler;
@@ -403,6 +404,34 @@ class TransactionControllerTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value(startsWith(VALIDATION_PREFIX)))
                 .andExpect(jsonPath("$.message").value(containsString("clientId")));
+
+        verifyNoInteractions(transactionService);
+    }
+
+    // ------------------------------------------------------------- POST /checkout: the answer of the AI for a scan
+
+    @Test
+    void anAnswerOfTheAiOfExactlyTheLongestLengthAReceiptKeepsIsAccepted() throws Exception {
+        when(transactionService.createMyTransaction(any())).thenReturn(Map.of("transactionId", 5));
+        String longest = "x".repeat(Receipt.AI_RAW_DATA_MAX_LENGTH);
+
+        mockMvc.perform(signedIn(withBody(HttpMethod.POST, URL + "/checkout",
+                        checkoutBodyWith(",\"rawReceiptData\":\"" + longest + "\""))))
+                .andExpect(status().isOk());
+
+        assertEquals(longest, checkoutSentToTheService().getRawReceiptData());
+    }
+
+    @Test
+    void anAnswerOfTheAiLongerThanAReceiptKeepsIsRejectedWith400AndNeverReachesTheService() throws Exception {
+        String tooLong = "x".repeat(Receipt.AI_RAW_DATA_MAX_LENGTH + 1);
+
+        mockMvc.perform(signedIn(withBody(HttpMethod.POST, URL + "/checkout",
+                        checkoutBodyWith(",\"rawReceiptData\":\"" + tooLong + "\""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value(startsWith(VALIDATION_PREFIX)))
+                .andExpect(jsonPath("$.message").value(containsString("rawReceiptData")));
 
         verifyNoInteractions(transactionService);
     }

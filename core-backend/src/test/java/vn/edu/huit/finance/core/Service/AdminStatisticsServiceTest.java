@@ -76,6 +76,21 @@ class AdminStatisticsServiceTest {
     }
 
     @Test
+    void receiptsAreCountedUnderTheNamesTheDashboardShowsSoEveryReadReceiptIsOneFigure() {
+        when(receiptRepo.getReceiptStatusStatistics()).thenReturn(List.of(
+                new Object[]{"COMPLETED_RAW", 4L}, new Object[]{"FAILED", 2L}, new Object[]{"EDITED", 3L},
+                new Object[]{"SUCCESS", 5L}, new Object[]{"APPROVED", 1L}, new Object[]{"WAITING_FOR_REVIEW", 6L},
+                new Object[]{"failed", 1L}));
+
+        AdminDashboardSummaryDto summary = service.getDashboardSummary(SEPTEMBER, THRESHOLD);
+
+        // In the order the names first appear; "SUCCESS" is the 5 rows that predate the lifecycle plus the 4 + 3 + 1 since.
+        assertEquals(List.of(new ReceiptStatusCountDto("SUCCESS", 13L), new ReceiptStatusCountDto("FAILED", 3L),
+                        new ReceiptStatusCountDto("WAITING_FOR_REVIEW", 6L)),
+                summary.getReceiptStatuses());
+    }
+
+    @Test
     void noTransactionAtAllIsAVolumeOfZeroNotANullThatWouldBeRefusedByTheCache() {
         when(transactionRepo.sumTotalVolume()).thenReturn(null);
 

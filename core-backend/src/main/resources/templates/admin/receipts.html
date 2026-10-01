@@ -44,9 +44,9 @@
                             <span th:unless="${receipt.imageUrl != null and !receipt.imageUrl.isEmpty()}" class="text-muted small badge bg-light text-dark">Chưa có ảnh</span>
                         </td>
                         <td class="text-center">
-                            <span th:if="${receipt.status == 'SUCCESS'}" class="badge bg-success rounded-pill px-3 py-2 w-100">Thành công</span>
-                            <span th:if="${receipt.status == 'FAILED'}" class="badge bg-danger rounded-pill px-3 py-2 w-100">Lỗi AI</span>
-                            <span th:if="${receipt.status != 'SUCCESS' and receipt.status != 'FAILED'}" class="badge bg-warning text-dark rounded-pill px-3 py-2 w-100">Đang xử lý</span>
+                            <span th:if="${receipt.legacyStatus == 'SUCCESS'}" class="badge bg-success rounded-pill px-3 py-2 w-100">Thành công</span>
+                            <span th:if="${receipt.legacyStatus == 'FAILED'}" class="badge bg-danger rounded-pill px-3 py-2 w-100">Lỗi AI</span>
+                            <span th:if="${receipt.legacyStatus != 'SUCCESS' and receipt.legacyStatus != 'FAILED'}" class="badge bg-warning text-dark rounded-pill px-3 py-2 w-100">Đang xử lý</span>
                         </td>
                     </tr>
                     </tbody>
@@ -308,15 +308,15 @@
             $('#receiptsTable').DataTable({
                 "pageLength": 5,
                 "lengthMenu": [5, 10, 20, 50],
-                "order": [ [0, "desc"] ], 
-                "columnDefs": [ { "orderable": false, "targets": [3] } ], 
+                "order": [ [0, "desc"] ],
+                "columnDefs": [ { "orderable": false, "targets": [3] } ],
                 "language": { "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/vi.json" }
             });
 
             $('#usersTable').DataTable({
                 "pageLength": 10,
                 "order": [ [0, "desc"] ],
-                "columnDefs": [ { "orderable": false, "targets": [5] } ], 
+                "columnDefs": [ { "orderable": false, "targets": [5] } ],
                 "language": { "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/vi.json" }
             });
         }

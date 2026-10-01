@@ -19,6 +19,16 @@ import vn.edu.huit.finance.core.Service.Storage.FileStorageService;
 import java.io.IOException;
 import java.time.LocalDate;
 
+/**
+ * Legacy flow, not in use: core-backend calling the AI itself. No controller calls this class, and the endpoint it posts
+ * to (/api/extract, field "file") is not one ai-service serves (it serves /donut/scan, field "image"). The flow that runs
+ * is the mobile app calling the AI and sending its answer with the checkout (ReceiptProcessingService.attachReceipt).
+ * Kept as it was, outside the receipt lifecycle: a receipt it created would belong to no transaction, so nobody could
+ * edit or retry it, and it holds a database transaction open across the call to the AI and the upload.
+ *
+ * @deprecated use ReceiptProcessingService; do not wire this class to an endpoint as it is.
+ */
+@Deprecated
 @Service
 public class ReceiptService {
     @Autowired

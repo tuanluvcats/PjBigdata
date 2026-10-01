@@ -40,6 +40,8 @@ backups/
 *.dump
 *.bak
 *.csv
+!core-backend/src/main/resources/db/
+!core-backend/src/main/resources/db/*.sql
 # ---------- Uploads / Media ----------
 **/uploads/
 **/media/

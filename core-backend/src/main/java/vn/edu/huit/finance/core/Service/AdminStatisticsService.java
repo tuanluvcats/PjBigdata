@@ -10,6 +10,7 @@ import vn.edu.huit.finance.core.Dto.LowBalanceUserDto;
 import vn.edu.huit.finance.core.Dto.MonthlyTransactionCountDto;
 import vn.edu.huit.finance.core.Dto.ReceiptStatusCountDto;
 import vn.edu.huit.finance.core.Dto.TopSpenderDto;
+import vn.edu.huit.finance.core.Entity.ReceiptStatus;
 import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Repository.TransactionRepository;
 import vn.edu.huit.finance.core.Repository.UserRepository;
@@ -20,7 +21,9 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The aggregates of the admin dashboard, computed across every user and cached in Redis (see Config/CacheConfig). Each
@@ -51,13 +54,26 @@ public class AdminStatisticsService {
                 .lowBalanceUsers(userRepo.findByWalletBalanceLessThan(lowBalanceThreshold).stream()
                         .map(LowBalanceUserDto::from)
                         .toList())
-                .receiptStatuses(receiptRepo.getReceiptStatusStatistics().stream()
-                        .map(row -> ReceiptStatusCountDto.builder()
-                                .status(String.valueOf(row[0]))
-                                .count(((Number) row[1]).longValue())
-                                .build())
-                        .toList())
+                .receiptStatuses(countReceiptsByStatus())
                 .build();
+    }
+
+    /**
+     * Receipts counted by status, under the names the dashboard has always shown (ReceiptStatus.legacyName): every status a
+     * receipt that was read can be in (COMPLETED_RAW, EDITED, APPROVED, and SUCCESS in rows that predate the lifecycle) is
+     * one figure, SUCCESS. In the order the statuses first appear.
+     */
+    private List<ReceiptStatusCountDto> countReceiptsByStatus() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (Object[] row : receiptRepo.getReceiptStatusStatistics()) {
+            counts.merge(ReceiptStatus.legacyNameOf(String.valueOf(row[0])), ((Number) row[1]).longValue(), Long::sum);
+        }
+        return counts.entrySet().stream()
+                .map(entry -> ReceiptStatusCountDto.builder()
+                        .status(entry.getKey())
+                        .count(entry.getValue())
+                        .build())
+                .toList();
     }
 
     /** The users who spent the most (expenses only), highest first. Key {@code <page>:<limit>}, e.g. {@code 0:5}. */

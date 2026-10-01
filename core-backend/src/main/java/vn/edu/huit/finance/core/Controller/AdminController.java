@@ -23,6 +23,7 @@ import vn.edu.huit.finance.core.Dto.UserCreateDto;
 import vn.edu.huit.finance.core.Dto.UserUpdateDto;
 import vn.edu.huit.finance.core.Entity.*;
 import vn.edu.huit.finance.core.Repository.*;
+import vn.edu.huit.finance.core.Security.Roles;
 import vn.edu.huit.finance.core.Service.AdminStatisticsService;
 import vn.edu.huit.finance.core.Service.AuditLogService;
 import vn.edu.huit.finance.core.Service.BackupService;
@@ -150,13 +151,17 @@ public class AdminController {
         return "admin/users";
     }
 
+    // Closed to everybody without ROLE_ADMIN twice, by the /admin/** rule of SecurityConfig and by @PreAuthorize: the two
+    // services behind these handlers take no user and trust their caller to be an administrator.
     @PostMapping("/receipts/approve/{id}")
+    @PreAuthorize(Roles.HAS_ADMIN)
     public String approveReceipt(@PathVariable Long id) {
         transactionService.approveReceipt(id);
         return "redirect:/admin/receipts";
     }
 
     @PostMapping("/receipts/reject/{id}")
+    @PreAuthorize(Roles.HAS_ADMIN)
     public String rejectReceipt(@PathVariable Long id) {
         receiptProcessingService.rejectReceipt(id);
         return "redirect:/admin/receipts";

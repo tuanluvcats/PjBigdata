@@ -11,6 +11,7 @@ import vn.edu.huit.finance.core.Entity.Transaction;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -69,15 +70,39 @@ class TransactionResponseDtoTest {
         assertNull(TransactionResponseDto.from(transaction("Bún bò")).getImageUrl());
     }
 
-    @ParameterizedTest
-    @EnumSource(ReceiptStatus.class)
-    void theReceiptStatusIsTheNameOfTheStatusOfTheReceipt(ReceiptStatus status) {
+    private static String receiptStatusOfATransactionWhoseReceiptIs(String storedStatus) {
         Transaction withReceipt = transaction("Bún bò");
         Receipt receipt = new Receipt();
-        receipt.setStatus(status.name());
+        receipt.setStatus(storedStatus);
         withReceipt.setReceipt(receipt);
+        return TransactionResponseDto.from(withReceipt).getReceiptStatus();
+    }
 
-        assertEquals(status.name(), TransactionResponseDto.from(withReceipt).getReceiptStatus());
+    @ParameterizedTest
+    @EnumSource(value = ReceiptStatus.class, names = {"PENDING", "PROCESSING", "FAILED", "WAITING_FOR_REVIEW", "CANCELED"})
+    void theReceiptStatusIsTheNameOfTheStatusOfTheReceipt(ReceiptStatus status) {
+        assertEquals(status.name(), receiptStatusOfATransactionWhoseReceiptIs(status.name()));
+    }
+
+    // The mobile app that is in use knows SUCCESS for a receipt that was read, and shows no badge for a name it does not know.
+    @ParameterizedTest
+    @ValueSource(strings = {"COMPLETED_RAW", "EDITED", "APPROVED", "SUCCESS", "success"})
+    void aReceiptThatWasReadIsSuccessForTheAppWhateverBecameOfItSince(String storedStatus) {
+        assertEquals("SUCCESS", receiptStatusOfATransactionWhoseReceiptIs(storedStatus));
+    }
+
+    @Test
+    void everyStatusOfTheLifecycleReachesTheAppUnderANameItKnows() {
+        Set<String> knownToTheApp = Set.of("PENDING", "PROCESSING", "SUCCESS", "FAILED", "WAITING_FOR_REVIEW", "CANCELED");
+
+        for (ReceiptStatus status : ReceiptStatus.values()) {
+            assertTrue(knownToTheApp.contains(receiptStatusOfATransactionWhoseReceiptIs(status.name())), status.name());
+        }
+    }
+
+    @Test
+    void aStatusTheLifecycleDoesNotKnowIsPassedOnAsItIsStored() {
+        assertEquals("Đang chờ", receiptStatusOfATransactionWhoseReceiptIs("Đang chờ"));
     }
 
     @Test

@@ -23,12 +23,14 @@ import vn.edu.huit.finance.core.Dto.TransactionRequestDto;
 import vn.edu.huit.finance.core.Dto.TransactionUpdateRequestDto;
 import vn.edu.huit.finance.core.Entity.Category;
 import vn.edu.huit.finance.core.Entity.Receipt;
+import vn.edu.huit.finance.core.Entity.ReceiptProcessingAttempt;
 import vn.edu.huit.finance.core.Entity.Transaction;
 import vn.edu.huit.finance.core.Entity.User;
 import vn.edu.huit.finance.core.Exception.InsufficientBalanceException;
 import vn.edu.huit.finance.core.Exception.InvalidCategoryException;
 import vn.edu.huit.finance.core.Exception.TransactionAccessDeniedException;
 import vn.edu.huit.finance.core.Repository.CategoryRepository;
+import vn.edu.huit.finance.core.Repository.ReceiptProcessingAttemptRepository;
 import vn.edu.huit.finance.core.Repository.ReceiptRepository;
 import vn.edu.huit.finance.core.Repository.TransactionRepository;
 import vn.edu.huit.finance.core.Repository.UserRepository;
@@ -36,6 +38,7 @@ import vn.edu.huit.finance.core.Security.CurrentUserProvider;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -75,6 +78,7 @@ class TransactionServiceRollbackTest {
     @Autowired private ReceiptProcessingService receiptService;
     @Autowired private UserRepository userRepository;
     @Autowired private CategoryRepository categoryRepository;
+    @Autowired private ReceiptProcessingAttemptRepository attemptRepository;
     @Autowired private EntityManagerFactory entityManagerFactory;
     @Autowired private PlatformTransactionManager transactionManager;
     @PersistenceContext private EntityManager entityManager;
@@ -314,7 +318,11 @@ class TransactionServiceRollbackTest {
         Transaction saved = transactionInDatabase(transactionId);
         Receipt receipt = saved.getReceipt();
         assertNotNull(receipt, "the transaction must carry its receipt");
-        assertEquals("SUCCESS", receipt.getStatus());
+        assertEquals("COMPLETED_RAW", receipt.getStatus());
+        List<ReceiptProcessingAttempt> readings = attemptRepository.findByReceiptIdOrderByAttemptNumberAsc(receipt.getId());
+        assertEquals(1, readings.size(), "the reading of the checkout is committed with the receipt");
+        assertEquals(FULL_SCAN, readings.get(0).getAiRawData(), "the receipt keeps what the AI answered, in its first attempt");
+        assertEquals("COMPLETED", readings.get(0).getStatus());
         assertEquals("Bách Hóa Xanh", receipt.getVendorName());
         assertMoney("245000", receipt.getExtractedTotal());
         assertEquals(LocalDateTime.of(2026, 5, 27, 10, 30), saved.getTransactionDate());
@@ -333,6 +341,7 @@ class TransactionServiceRollbackTest {
 
         assertMoney("1000000", walletInDatabase());
         assertEquals(0, receiptRepository.count(), "no receipt without its transaction");
+        assertEquals(0, attemptRepository.count(), "and no reading without its receipt");
         assertEquals(1, transactionRepository.count(), "only the transaction of the fixture is left");
     }
 
@@ -345,6 +354,7 @@ class TransactionServiceRollbackTest {
 
         assertMoney("1000000", walletInDatabase());
         assertEquals(0, receiptRepository.count(), "the receipt written before the failure must be rolled back with it");
+        assertEquals(0, attemptRepository.count(), "and so must the reading inserted with it");
         assertEquals(1, transactionRepository.count());
     }
 
@@ -419,7 +429,7 @@ class TransactionServiceRollbackTest {
 
         assertMoney("245000", transactionInDatabase(transactionId).getAmount());
         assertMoney("755000", walletInDatabase());
-        assertEquals("SUCCESS", receiptRepository.findById(receiptId).orElseThrow().getStatus());
+        assertEquals("APPROVED", receiptRepository.findById(receiptId).orElseThrow().getStatus());
     }
 
     @Test
@@ -433,7 +443,7 @@ class TransactionServiceRollbackTest {
 
         assertMoney("150000", transactionInDatabase(transactionId).getAmount());
         assertMoney("850000", walletInDatabase());
-        assertEquals("SUCCESS", receiptRepository.findById(receiptId).orElseThrow().getStatus());
+        assertEquals("APPROVED", receiptRepository.findById(receiptId).orElseThrow().getStatus());
     }
 
     @Test
@@ -706,7 +716,7 @@ class TransactionServiceRollbackTest {
                 User locked = entityManager.find(User.class, aliceId, LockModeType.PESSIMISTIC_WRITE);
                 locked.setWalletBalance(locked.getWalletBalance().subtract(new BigDecimal("60000")));
                 entityManager.find(Transaction.class, transactionId).setAmount(new BigDecimal("150000.00"));
-                entityManager.find(Receipt.class, receiptId).setStatus("SUCCESS");
+                entityManager.find(Receipt.class, receiptId).setStatus("APPROVED");
                 otherHoldsTheLock.countDown();
                 awaitQuietly(otherMayCommit);
             }));
@@ -729,7 +739,7 @@ class TransactionServiceRollbackTest {
         // another 60,000 from the wallet without the transaction growing any further.
         assertMoney("850000", walletInDatabase());
         assertMoney("150000", transactionInDatabase(transactionId).getAmount());
-        assertEquals("SUCCESS", receiptRepository.findById(receiptId).orElseThrow().getStatus());
+        assertEquals("APPROVED", receiptRepository.findById(receiptId).orElseThrow().getStatus());
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

@@ -21,10 +21,14 @@ public class TransactionResponseDto {
     private BigDecimal amount;
     private LocalDateTime date;
     private String category;
-    @JsonProperty("isExpense") 
-    private boolean isExpense;   
+    @JsonProperty("isExpense")
+    private boolean isExpense;
     private String imageUrl;
-    /** The name of the attached receipt's {@code ReceiptStatus} (as stored in {@code Receipt.status}); null without a receipt. */
+    /**
+     * The status of the attached receipt under the name the mobile app knows ({@code ReceiptStatus.legacyName}: a receipt
+     * that was read is SUCCESS, whether or not it was edited or approved since); null without a receipt. The lifecycle
+     * status itself is part of ReceiptResponseDto.
+     */
     private String receiptStatus;
 
     /** The title is the note when there is one, otherwise the name of the category. */
@@ -33,7 +37,7 @@ public class TransactionResponseDto {
         String title = (note != null && !note.isBlank()) ? note : transaction.getCategoryName();
         Receipt receipt = transaction.getReceipt();
         String imageUrl = (receipt != null) ? receipt.getImageUrl() : null;
-        String receiptStatus = (receipt != null) ? receipt.getStatus() : null;
+        String receiptStatus = (receipt != null) ? receipt.getLegacyStatus() : null;
 
         return TransactionResponseDto.builder()
                 .id(transaction.getId())
